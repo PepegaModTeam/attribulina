@@ -1,6 +1,6 @@
 # Attribulina
 
-Tool for EA's AttribSys database in in Black Box's Need for Speed games.
+Tool for EA's AttribSys database in Black Box's Need for Speed games.
 
 ## Features
 
