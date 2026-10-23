@@ -1,0 +1,151 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{8D22E30F-F936-0BC1-C2B8-AE202E8C07F2}</ProjectGuid>
+    <IgnoreWarnCompileDuplicatedFilename>true</IgnoreWarnCompileDuplicatedFilename>
+    <Keyword>Win32Proj</Keyword>
+    <RootNamespace>lua51</RootNamespace>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <CharacterSet>Unicode</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <CharacterSet>Unicode</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <OutDir>$(ProjectDir)..\bin\Debug\</OutDir>
+    <IntDir>$(ProjectDir)obj\Debug\lua51\</IntDir>
+    <TargetName>lua51</TargetName>
+    <TargetExt>.lib</TargetExt>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <OutDir>$(ProjectDir)..\bin\Release\</OutDir>
+    <IntDir>$(ProjectDir)obj\Release\lua51\</IntDir>
+    <TargetName>lua51</TargetName>
+    <TargetExt>.lib</TargetExt>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <PreprocessorDefinitions>_DEBUG;_CRT_SECURE_NO_WARNINGS;NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
+      <Optimization>Disabled</Optimization>
+      <MinimalRebuild>false</MinimalRebuild>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <AdditionalOptions>/utf-8 /permissive- /Zc:__cplusplus %(AdditionalOptions)</AdditionalOptions>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <ExternalWarningLevel>Level3</ExternalWarningLevel>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+    <ProjectReference>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <PreprocessorDefinitions>NDEBUG;_CRT_SECURE_NO_WARNINGS;NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <MinimalRebuild>false</MinimalRebuild>
+      <StringPooling>true</StringPooling>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <AdditionalOptions>/utf-8 /permissive- /Zc:__cplusplus %(AdditionalOptions)</AdditionalOptions>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <ExternalWarningLevel>Level3</ExternalWarningLevel>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+    </Link>
+    <ProjectReference>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClInclude Include="..\external\lua51\lua51_compile.h" />
+    <ClInclude Include="..\external\lua51\lua51_config.h" />
+    <ClInclude Include="..\external\lua51\src\lapi.h" />
+    <ClInclude Include="..\external\lua51\src\lcode.h" />
+    <ClInclude Include="..\external\lua51\src\ldebug.h" />
+    <ClInclude Include="..\external\lua51\src\ldo.h" />
+    <ClInclude Include="..\external\lua51\src\lfunc.h" />
+    <ClInclude Include="..\external\lua51\src\lgc.h" />
+    <ClInclude Include="..\external\lua51\src\llex.h" />
+    <ClInclude Include="..\external\lua51\src\llimits.h" />
+    <ClInclude Include="..\external\lua51\src\lmem.h" />
+    <ClInclude Include="..\external\lua51\src\lobject.h" />
+    <ClInclude Include="..\external\lua51\src\lopcodes.h" />
+    <ClInclude Include="..\external\lua51\src\lparser.h" />
+    <ClInclude Include="..\external\lua51\src\lstate.h" />
+    <ClInclude Include="..\external\lua51\src\lstring.h" />
+    <ClInclude Include="..\external\lua51\src\ltable.h" />
+    <ClInclude Include="..\external\lua51\src\ltm.h" />
+    <ClInclude Include="..\external\lua51\src\lua.h" />
+    <ClInclude Include="..\external\lua51\src\luaconf.h" />
+    <ClInclude Include="..\external\lua51\src\lundump.h" />
+    <ClInclude Include="..\external\lua51\src\lvm.h" />
+    <ClInclude Include="..\external\lua51\src\lzio.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\external\lua51\lua51_compile.cpp" />
+    <ClCompile Include="..\external\lua51\lua51_lapi.cpp" />
+    <ClCompile Include="..\external\lua51\lua51_lcode.cpp" />
+    <ClCompile Include="..\external\lua51\lua51_ldebug.cpp" />
+    <ClCompile Include="..\external\lua51\lua51_ldo.cpp" />
+    <ClCompile Include="..\external\lua51\lua51_ldump.cpp" />
+    <ClCompile Include="..\external\lua51\lua51_lfunc.cpp" />
+    <ClCompile Include="..\external\lua51\lua51_lgc.cpp" />
+    <ClCompile Include="..\external\lua51\lua51_llex.cpp" />
+    <ClCompile Include="..\external\lua51\lua51_lmem.cpp" />
+    <ClCompile Include="..\external\lua51\lua51_lobject.cpp" />
+    <ClCompile Include="..\external\lua51\lua51_lopcodes.cpp" />
+    <ClCompile Include="..\external\lua51\lua51_lparser.cpp" />
+    <ClCompile Include="..\external\lua51\lua51_lstate.cpp" />
+    <ClCompile Include="..\external\lua51\lua51_lstring.cpp" />
+    <ClCompile Include="..\external\lua51\lua51_ltable.cpp" />
+    <ClCompile Include="..\external\lua51\lua51_ltm.cpp" />
+    <ClCompile Include="..\external\lua51\lua51_lundump.cpp" />
+    <ClCompile Include="..\external\lua51\lua51_lvm.cpp" />
+    <ClCompile Include="..\external\lua51\lua51_lzio.cpp" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

@@ -1,0 +1,373 @@
+# One-line descriptions, <key><TAB><text>. Functions that retail scripts call are described
+# from how the scripts use them; the others are read from their names. build_api.py marks which.
+Activity.Run	Starts an activity element: a race, a post-race activity, a restart activity.
+Activity.Suspend	Suspends a running activity.
+Audio.IsCopSpeechPlaying	True while police radio speech is playing.
+Audio.SetFlag	Turns an audio game-flow state on or off. Names: eSYS_Error, eFMV_Active, eNIS_Start, eNIS_321GO, eNIS_Busted, eNIS_EndofRace, eFE_PostRaceScreen, eFE_CameraScreen, eFE_PauseMenu, eLOAD_GeneralLoading, eLOAD_BustedLoading, eFE_DemoCongrats, eFE_SMSMessaging, eFE_RaceOver, ePreRaceScreen.
+Bin.GetNumChallengesPassed	Number of challenges passed in a bin. Always 0 on PC.
+Bin.GetNumRacesWon	Number of races won in a bin. Always 0 on PC.
+Camera.SetGenericCamera	Switches to a named generic camera ("Challenge" in retail).
+Camera.SetSmoothExit	Makes the next camera change blend out instead of cutting. Used before rolling starts.
+Debug.Assert	Debug check. Does nothing in the retail build.
+Debug.ExecuteDebugScript	Runs the debug script. Does nothing on PC.
+Debug.IsDebugScriptActive	True when a debug script is loaded. Always false on PC.
+Debug.Print	Debug log line. Does nothing in the retail build.
+Debug.PrintInstance	Logs an instance. Does nothing in the retail build.
+Debug.ScreenPrint	Debug text on screen. Does nothing in the retail build.
+Debug.ShowScreenMessage	Fires a debug on-screen message event for the given number of seconds when a player car exists.
+GEvent:BestowRewards	Gives out the rewards of the race day event that just ended.
+GEvent:Cleanup	Cleans up the race day event after it ends.
+GEvent:IsFirstHeat	True during the first heat of the current event.
+GEvent:IsLastHeat	True during the last heat of the current event.
+GEvent:IsMultiHeat	True when the current event has more than one heat.
+GEvent:Prepare	Sets up the current race day event before its first heat.
+GEvent:Reset	Resets the event's heat progress. Used when a race is restarted.
+GEvent:Tally	Adds up the heat results after arbitration.
+GHub:DoTutorial	Starts the hub's tutorial, if it has one.
+GHub:GetEventCount	Number of events finished in this hub visit.
+GHub:HasDoneDelayedNIS	True once the hub's delayed NIS has played.
+GHub:HasDoneIntroNIS	True once the hub's intro NIS has played.
+GHub:HasDoneUnlockNIS	True once the hub's unlock NIS has played.
+GHub:IncrementEventCount	Adds one to the hub's finished event count.
+GHub:IsCareer	True when the hub is part of the career.
+GHub:IsDominated	True when the player has dominated the hub.
+GHub:IsWon	True when the player has won the hub.
+GHub:OnExitHubSelect	Called when leaving the hub event selection. Does nothing on PC.
+GHub:Reset	Resets the hub's per-visit state.
+GHub:SetDoneDelayedNIS	Marks the delayed NIS as played.
+GHub:SetDoneIntroNIS	Marks the intro NIS as played.
+GHub:SetDoneUnlockNIS	Marks the unlock NIS as played.
+GHub:SetPracticeMode	Turns the hub's practice mode on or off.
+GHub:SetSelectedEventIndex	Selects the event at this index on the hub screen.
+GHub:SetupPlayerCar	Sets a player's car. Takes the CarHandle userdata from MHubCarChanged and a player index.
+GHub:StartCurrentEvent	Starts the selected event.
+GHub:StartEventFromIndex	Starts the event at this index.
+GHub:StartEventFromKey	Starts the event given as a handle userdata.
+GHub:StartRace	Starts the race (heat) at this index of the current event.
+GHub:Unlock	Unlocks what the hub unlocks. Returns true if something was unlocked.
+GHub:UpdateCars	Refreshes the cars available in the hub.
+GHub:UpdatePostEventStats	Updates the hub statistics after an event.
+GMoviePlayer:Play	Plays a movie by name.
+GMoviePlayer:PlayAll	Plays the queued movies.
+GMoviePlayer:Queue	Queues a movie by name to play later.
+GMoviePlayer:ShouldPlayCareerMovie	True when career movies should play now.
+GProStreetGame:GetTrackRecordCount	Number of track records the player holds in a race mode (1 grip, 2 speed challenge, 3 drag, 4 drift, as the scripts define them).
+GProStreetGame:RepairAllLocalAIs	Repairs the cars of all local AI racers.
+GProStreetGame:RepairAllLocalPlayers	Repairs the cars of all local players.
+GProStreetGame:ShowFireworks	Shows the fireworks effect.
+GProStreetGame:UnlockEliteOrgTier	Unlocks the elite organisation tier for a race mode. Takes the mode number and the tier element.
+GRaceParameters:GetKnockoutsPerLap	Number of racers knocked out per lap in the current race.
+GRaceStatus:AddCheckpoint	Adds a checkpoint trigger to the race's checkpoint list.
+GRaceStatus:AwardBonusTime	Adds bonus time to the race clock.
+GRaceStatus:CalculateRankings	Works out the final rankings.
+GRaceStatus:CalculateStatistics	Works out the race statistics.
+GRaceStatus:ChangeToCinematicView	Switches the race to the cinematic camera.
+GRaceStatus:ChangeToPlayerView	Switches the race back to the player camera.
+GRaceStatus:Cleanup	Cleans up race state when the race is done.
+GRaceStatus:ClearCheckpoints	Empties the race's checkpoint list.
+GRaceStatus:ClearRacers	Removes all racers from the race status.
+GRaceStatus:DoDDayReset	Resets race day state at the start of racing. Retail calls it with a dot (RaceStatus.DoDDayReset()), which works only because this function ignores self.
+GRaceStatus:EnableDamage	Turns car damage on or off for all racers.
+GRaceStatus:EndStopAll	Ends the forced stop of all racers.
+GRaceStatus:EnterSuddenDeath	Puts the race into sudden death.
+GRaceStatus:FinalizeStatistics	Finishes the statistics before rankings.
+GRaceStatus:Finish	Finishes the race with a finish type (MNotifyRaceFinished.FinishType).
+GRaceStatus:FinishDisconnected	Finishes the racers that disconnected.
+GRaceStatus:GetNumRacers	Number of racers in the race.
+GRaceStatus:GetRaceBehaviour	The race behaviour: 1 single race, 2 dual race, as the scripts define them.
+GRaceStatus:GetRacerInfo	The racer info of a simable, or nil if it is not a racer.
+GRaceStatus:GetRacerInfoByIndex	The racer info at a 0-based index, or nil.
+GRaceStatus:GetRacerInfoByOpponentId	The racer info with this opponent id, or nil.
+GRaceStatus:HideTurnIndicator	Hides the turn indicator of a racer (0-based index).
+GRaceStatus:NotifyScriptWhenLoaded	Asks to be told when the race has loaded. The prerace state then waits for MLoadingComplete.
+GRaceStatus:PickBestShadowCarRecording	Chooses the best shadow car recording to keep.
+GRaceStatus:PlaceGrid	Places the racers on the starting grid at this start element.
+GRaceStatus:Prepare	Sets up the racers before the race.
+GRaceStatus:ResetRaceData	Clears the per-race data.
+GRaceStatus:SetActivelyRacing	Marks the race as actively racing or not.
+GRaceStatus:SetHandicap	Sets the race handicap (MNotifyLoadHeat.Handicap).
+GRaceStatus:SetHasBeenWon	Sets whether the race has been won.
+GRaceStatus:SetIsLoading	Marks the race as loading or not.
+GRaceStatus:SetIsRestartAllowed	Allows or forbids restarting the race.
+GRaceStatus:SetNextCheckpointPos	Sets the position of the next checkpoint from a trigger.
+GRaceStatus:SetNumSectors	Sets the number of sectors (sector shootout).
+GRaceStatus:SetRoaming	Leaves race mode and goes back to free roam.
+GRaceStatus:SetSectorBestPoints	Sets the best points of a sector (1-based sector, points).
+GRaceStatus:SetSectorDistances	Measures the sector distances from the sector triggers.
+GRaceStatus:SetSectorOwner	Sets the owner of a sector (1-based sector, 1-based racer, 0 for none).
+GRaceStatus:SetSectorTime	Sets the best time of a sector (1-based sector, seconds).
+GRaceStatus:SetTaskTime	Sets the time shown for a timed task, in seconds.
+GRaceStatus:SetWaitForMusicTransition	Makes the race wait for the music transition before starting.
+GRaceStatus:SetupAIRaceLine	Sets up the AI racing line.
+GRaceStatus:ShowTurnIndicator	Shows the turn indicator of a racer (0-based index) for a corner trigger.
+GRaceStatus:StartMasterTimer	Starts the race clock.
+GRaceStatus:StateCatchupAll	Moves every racer that is in state A on to state B (racer state numbers, see vars.State).
+GRaceStatus:StateCheck	Checks the racer states (two state numbers). Exact meaning not known.
+GRaceStatus:StateCheckAll	True when every racer is in this racer state.
+GRaceStatus:StateCheckAny	True when any racer is in one of the given racer states (meaning of the second number not known).
+GRaceStatus:StateCheckFirst	Checks the first racer's state (meaning of the two numbers not known).
+GRaceStatus:StateOverrideAll	Puts every racer into this racer state.
+GRaceStatus:StopMasterTimer	Stops the race clock.
+GRaceStatus:StoreStatistics	Stores the race statistics.
+GRaceStatus:UpdatePostRaceStats	Updates the statistics shown after the race.
+GRacerInfo:CheckpointReached	Tells the racer it reached this checkpoint number.
+GRacerInfo:DisableCollisions	Turns collisions off for this racer.
+GRacerInfo:EnableAiControl	Hands the racer's car to the AI, or takes it back.
+GRacerInfo:EnableCollisions	Turns collisions on for this racer.
+GRacerInfo:EnableDamage	Turns damage on or off for this racer.
+GRacerInfo:EnterStaging	Puts the racer into staging (drag start).
+GRacerInfo:ExitStaging	Takes the racer out of staging.
+GRacerInfo:ExtrapolateFinish	Estimates the racer's finish when it did not cross the line.
+GRacerInfo:FinishRace	Finishes the racer with a reason (MNotifyRacerFinished.Reason).
+GRacerInfo:ForceStop	Forces the racer's car to stop.
+GRacerInfo:GetDidDisconnect	True when this racer disconnected.
+GRacerInfo:GetFinishReason	The racer's finish reason number.
+GRacerInfo:GetHandicap	The racer's handicap delay in seconds.
+GRacerInfo:GetIndex	The racer's 0-based index. Scripts add 1 for their own tables.
+GRacerInfo:GetIsKnockedOut	True when the racer has been knocked out.
+GRacerInfo:GetIsLocalPlayer	True when this racer is a local player.
+GRacerInfo:GetIsLocalRacer	True when this racer is simulated on this machine.
+GRacerInfo:GetLapsCompleted	Number of laps the racer has completed.
+GRacerInfo:GetName	The racer's name.
+GRacerInfo:GetRaceTime	The racer's race time in seconds.
+GRacerInfo:GetSectorDynamicTargetTimeBaseOne	The racer's target time for a 1-based sector.
+GRacerInfo:GetSimable	The racer's simable (car), or nil.
+GRacerInfo:GetState	The racer's state number (see vars.State).
+GRacerInfo:HasFinishReason	True once the racer has a finish reason.
+GRacerInfo:HitRouteTrigger	Reports a route trigger hit. Does nothing on PC.
+GRacerInfo:IsCountdownDisabled	True when the countdown is turned off for this racer.
+GRacerInfo:IsFinishedRacing	True when the racer has finished.
+GRacerInfo:KillTimer	Stops a named timer of this racer.
+GRacerInfo:Launch	Launches the racer's car off the line.
+GRacerInfo:PrePassStatistics	Prepares the racer's statistics before the finish pass.
+GRacerInfo:RaceOver	Ends the race for this racer.
+GRacerInfo:ResetRaceTimer	Resets the racer's race time.
+GRacerInfo:SaveStartPosition	Remembers the racer's current position as its start position.
+GRacerInfo:SetCountdownDisabled	Turns the countdown off or on for this racer.
+GRacerInfo:SetDistDriven	Sets the distance the racer has driven.
+GRacerInfo:SetForBestSector	Records points for the racer's best sector.
+GRacerInfo:SetHandicap	Sets the racer's handicap delay in seconds.
+GRacerInfo:SetNextGoal	Sets the trigger the racer drives to next.
+GRacerInfo:SetSectorPoints	Sets the racer's sector points.
+GRacerInfo:SetStaging	Marks the racer as staging or not.
+GRacerInfo:SetState	Puts the racer into a state number (see vars.State). Scripts handle the change in MPlayerStateExit and MPlayerStateEnter.
+GRacerInfo:SetTimer	Starts a named timer for this racer, in seconds. Scripts expect MNotifyRacerTimer with that Name when it runs out.
+GRacerInfo:StartCountdown	Starts the racer's countdown.
+GRacerInfo:StartExtrapolation	Starts estimating the racer's progress.
+GRacerInfo:StartRace	Starts the race for this racer.
+GRacerInfo:StartingLineCrossed	Reports that the racer crossed the start line. Does nothing on PC.
+GRacerInfo:StopExtrapolation	Stops estimating the racer's progress.
+GTier:GetHubDominatedCount	Number of hubs dominated in this tier.
+GTier:GetHubDominatedThreshold	Hubs to dominate to finish this tier.
+GTier:GetHubRecordCount	Number of hub records in this tier.
+GTier:GetHubRecordThreshold	Hub records needed in this tier.
+GTier:GetHubWonCount	Number of hubs won in this tier.
+GTier:GetHubWonThreshold	Hubs to win to finish this tier.
+GTier:IncrementConsecutiveRacesLost	Adds one to the run of races lost.
+GTier:IncrementConsecutiveRacesWon	Adds one to the run of races won.
+GTier:IncrementHubDominated	Adds one to the hubs dominated.
+GTier:IncrementHubRecordReached	Adds one to the hub records reached.
+GTier:IncrementHubWon	Adds one to the hubs won.
+GTier:Initialize	Sets up the tier.
+GTier:Unlock	Unlocks the tier.
+Game.AbandonRace	Abandons the current race.
+Game.ActivateDefaultCameraOverride	Forces a default camera view. The function references the names POV_OUTSIDE_TUNING, POV_BUMPER, POV_HOOD, POV_OUTSIDE_CLOSE, POV_OUTSIDE_FAR.
+Game.ActivateDriftCamera	Switches to the drift camera.
+Game.ActivateDriftMode	Turns on drift scoring.
+Game.AllHumanPlayersDone	True when every human player has finished.
+Game.AllRacersDone	True when every racer has finished.
+Game.AllowEngageEvents	True when the player may start an event from a trigger now.
+Game.AllowEngageSafehouse	True when the player may enter the safehouse now.
+Game.AllowMenuGates	True when menu gate zones may open now.
+Game.AwardCash	Gives (or with a negative amount takes) cash to the racer driving this simable.
+Game.AwardPlayerBounty	Gives the player this much bounty.
+Game.AwardPoints	Gives points to the racer driving this simable.
+Game.BlowEngine	Blows the engine of this simable.
+Game.CalculateSectorPoints	Points for a sector: simable, seconds under the target time, points per second.
+Game.CareerPostRaceFlow	Runs the career post-race flow. Does nothing on PC.
+Game.ChallengeComplete	Marks the challenge complete for this simable.
+Game.ChallengeCompleted	Marks the current milestone challenge as completed.
+Game.CheckKingHubDominated	True when the king's hub is dominated.
+Game.ClearAIControl	Gives control of player n's car back to the player (0-based).
+Game.DeactivateDefaultCameraOverride	Ends the forced default camera view.
+Game.DeactivateDriftMode	Turns off drift scoring.
+Game.DetachCameraFromRacer	Detaches the camera from this simable.
+Game.DoSpecialFinalization	Runs activity-specific finishing work for this activity.
+Game.DoSpecialSetup	Runs activity-specific setup for this activity. Returns true if it did something.
+Game.DoZoneMenuAction	Opens the menu of a menu gate zone element.
+Game.DriftFeedbackTriggerEntered	Drift feedback trigger: simable, section index, target score percent.
+Game.DriftFinalizeScore	Finalises the drift score of this simable.
+Game.DriftResetScore	Resets the drift scores.
+Game.DriftSectionEntered	Starts scoring a drift section: simable, section index, entry bonus multiplier.
+Game.DriftSectionExited	Ends scoring a drift section: simable, section index.
+Game.DumpLapTime	Logs a lap time. Does nothing on PC.
+Game.EnableTrigger	Turns a trigger element on or off.
+Game.EnterEngagableTrigger	Shows the "start event" prompt for a trigger or activity element.
+Game.EnterGateZone	Enters a menu gate zone: zone element, zone type, area name.
+Game.EnterPostRaceFlow	Starts the post-race screens.
+Game.EnterRaceActivity	Enters race activity mode. Does nothing on PC.
+Game.ExitEngagableTrigger	Removes the "start event" prompt of a trigger or activity element.
+Game.ExitGateZone	Leaves a menu gate zone: zone element, zone type, area name.
+Game.ExitRaceActivity	Leaves race activity mode. Does nothing on PC.
+Game.Fade	Fades the screen. Does nothing on PC.
+Game.ForceAIControl	Hands player n's car to the AI (0-based).
+Game.ForceGridPlacement	Places the cars on the grid now.
+Game.ForcePursuitStart	Starts a police pursuit at a heat level. Does nothing on PC.
+Game.GetCurrentHubDifficultyLevel	Difficulty level of the current hub, 0-based.
+Game.GetPlayerBounty	The player's bounty.
+Game.GetPlayerClass	The player's car class. Always 0 on PC.
+Game.GetPlayerElement	The simable of player n, or nil.
+Game.GetRacerCharacter	The character element of racer n (1-based), or nil.
+Game.GetRacerElement	The simable of racer n (1-based), or nil.
+Game.GetRacerIndex	The 1-based racer index of a simable. Scripts treat values below 1 as "not a racer".
+Game.GetRacerPctComplete	How much of the race racer n has completed.
+Game.GetSimTime	Simulation time in seconds.
+Game.GetSimableSpeedKmh	Speed of a simable in km/h.
+Game.HideLoadingScreen	Hides the loading screen. The number is a reason or id (0 to 6 in retail).
+Game.HideRaceOverSummary	Hides the race over summary. Does nothing on PC.
+Game.HideTriggerIcon	Hides the map icon of a trigger element.
+Game.InfiniteLaps	True when laps are infinite. Always false on PC.
+Game.IsActiveMenuGate	True when this menu gate element is active.
+Game.IsActiveSpeedTrap	True when this speed trap element is active. Always false on PC.
+Game.IsCareerMode	True in career mode.
+Game.IsLANGame	True in a LAN game. Always false on PC.
+Game.IsOnlineGame	True in an online game.
+Game.IsPracticeMode	True in practice mode.
+Game.IsRaceCompleted	True when this race element has been completed.
+Game.IsRaceUnlocked	True when this race element is unlocked.
+Game.IsSlotcarRace	True in a slot car race.
+Game.IsSplitScreen	True in split screen.
+Game.IsTargetRaceUnlocked	True when the race a trigger element leads to is unlocked.
+Game.JackKnife	Jack-knifes a traffic truck element.
+Game.JumpToCarLot	Takes the player to the car lot.
+Game.JumpToSafeHouse	Takes the player to the safehouse.
+Game.KillTimer	Stops a named activity timer started with Game.SetTimer.
+Game.KnockoutRacer	Knocks a racer out of the race.
+Game.NavigatePlayerTo	Sets a GPS route: target element, map item element, a number, and a flag (retail passes 0, true).
+Game.NoNewPursuitsOrCops	Stops new pursuits and cops. Does nothing on PC.
+Game.NotifyActivityFinsihed	Tells the game this activity has finished. The typo is in the game.
+Game.NotifyFailedToPostSectorRecord	Sector shootout: a racer's points did not beat the record (simable, sector, points, record points).
+Game.NotifyLapFinished	Reports that a racer finished a lap: simable, lap number.
+Game.NotifyRaceFinished	Reports that a racer finished the race.
+Game.NotifyRacerFinished	Reports that a racer crossed the finish line for the last time.
+Game.NotifySectorCompleted	Sector shootout: a racer completed a sector (simable, sector).
+Game.NotifySectorDomination	Sector shootout: a racer owns every sector (1-based racer).
+Game.NotifySectorOwnershipChanged	Sector shootout: sector, new owner, old owner.
+Game.NotifySectorRecordBroken	Sector shootout: sector, racer, previous record holder.
+Game.NotifySectorRecordPosted	Sector shootout: sector, racer, previous owner.
+Game.NotifySectorTriggerEnter	Sector shootout: racer index, sector, race time, target time. The sector shootout script then handles MNotifySectorTriggerEnter.
+Game.NotifySpeedTrapTriggered	Reports a speed trap hit: activity, trap element, simable, speed in km/h.
+Game.NotifyTurnFinished	Reports a finished turn. Does nothing on PC.
+Game.PlayFinishCamera	Plays the finish camera: NIS for a win, NIS for a loss. "(Automatic)" picks one.
+Game.PlayTutorial	Plays the activity's tutorial. The tutorial state then waits for MNotifyMovieFinished.
+Game.PlayerBrake	Applies the player's brake (0 to 1).
+Game.PlayerGas	Applies the player's throttle (0 to 1).
+Game.PlayerGetSpeed	The player's speed.
+Game.PlayerHandBrake	Applies the player's handbrake (0 to 1).
+Game.PlayerIsLocal	True when this simable is a local player's car.
+Game.PlayerNOS	Applies the player's nitrous (0 to 1).
+Game.PlayerSteer	Steers the player's car (-1 to 1).
+Game.PlayerWasTooSlowInDriftRace	True when the player was too slow in a drift race. Always false on PC.
+Game.PlayerWon	True when the player won the race.
+Game.PrecalculateDriftOpponentScores	Precomputes the drift scores of opponents. Does nothing on PC.
+Game.PreventPlayerBeingBusted	Stops the player from being busted. Does nothing on PC.
+Game.RacerIsHuman	True when racer n is a human player.
+Game.ReloadWorld	Reloads the world around a marker element.
+Game.ResetCopsForRestart	Resets the police for a restart. Does nothing on PC.
+Game.ResetPlayerTriggerEntered	A reset trigger was entered: start element, simable.
+Game.ResetTrigger	Re-arms a trigger element so it fires again.
+Game.ResetTriggerEntered	A reset trigger was entered by this simable.
+Game.RestoreStartPositions	Puts the racers back on their saved start positions.
+Game.SabotageEngine	Damages the engine of a simable by an amount.
+Game.SaveStartPositions	Saves the racers' start positions.
+Game.SendCharacterStimulus	Sends a named stimulus to a character element.
+Game.SetAIGoal	Sets a named AI goal for a simable.
+Game.SetAllStaging	Turns staging on or off for all racers.
+Game.SetChanceOfRain	Sets the chance of rain (the activity's ChanceOfRain field).
+Game.SetCopsEnabled	Turns the police on or off.
+Game.SetFreeRoamStartMarker	Sets the marker where free roam starts.
+Game.SetMaxScoreForSection	Sets the maximum drift score of a section: section index, score.
+Game.SetPlayerStartPosition	Moves the player's start position to a marker element.
+Game.SetPursuitOffset	Sets a pursuit offset for a simable (two numbers).
+Game.SetPursuitTarget	Makes one simable pursue another.
+Game.SetRaceActivity	Tells the game which activity is the current race.
+Game.SetRaceExpired	Marks the race as expired (time ran out).
+Game.SetRacerLapsLeft	Sets the laps left of racer n (1-based).
+Game.SetTimer	Starts a named activity timer, in seconds. Scripts expect MNotifyTimer with that Name when it runs out.
+Game.SetTrafficSpeed	Sets traffic speed for a traffic element (two numbers).
+Game.SetVehicleOnGround	Puts a simable's car on the ground at a position and orientation (six numbers).
+Game.SetWorldHeat	Sets the world heat level.
+Game.ShouldHideSpeedTrap	True when a speed trap element's icon should be hidden after it is hit.
+Game.ShouldSkipMatchupScreen	True when the pre-race matchup screen should be skipped.
+Game.ShowGPS	Shows or hides the GPS route.
+Game.ShowLoadingScreen	Shows the loading screen. The number is a reason or id (0 to 6 in retail).
+Game.ShowLosingPostRaceScreen	Shows the post-race screen for a loss.
+Game.ShowOnlinePostRaceScreen	Shows the online post-race screen.
+Game.ShowPauseMenu	Opens the pause menu.
+Game.ShowRaceOverSummary	Shows the race over summary.
+Game.ShowTriggerIcon	Shows the map icon of a trigger element.
+Game.ShowWinningPostRaceScreen	Shows the post-race screen for a win.
+Game.SimableAngle	Angle between a simable and an element.
+Game.SimableDistance	Distance between a simable and an element.
+Game.SimableIsWingman	True when this simable is the wingman. Always false on PC.
+Game.SkipCareerIntro	True when the career intro should be skipped.
+Game.SpawnCharacter	Spawns a character: character, spawn point, a third element, a number.
+Game.SpawnCop	Spawns a police car at a spawn point element: point, cop type, two flags (retail passes true, false).
+Game.SpawnIcons	Spawns the map icons.
+Game.StartRace	Starts the race of this activity.
+Game.StartRaceFromInGame	Starts a race by name from in-game.
+Game.StoreCheckpointSpeed	Stores the speed of a simable at a checkpoint element (top speed challenge).
+Game.TimePlayerFacingWrongWay	How long the player has been facing the wrong way, in seconds.
+Game.TotalRacer	Wrecks a racer. Bound to the same function as Game.KnockoutRacer on PC.
+Game.UnlockRace	Unlocks a race element.
+Game.UnspawnCharacter	Removes a spawned character element.
+Game.UpdateEventScores	Updates the race day event scores.
+Game.UpdateScores	Updates the race scores.
+Game.UseSectionsInDrift	Turns drift sections on or off.
+Game.WarpPlayerAndWingmanToMarker	Moves the player (and wingman) to a marker element. The flag is passed as true in retail.
+Game.WarpPlayerToTrigger	Moves the player to a trigger or marker element.
+Game.WarpToMarkerWhenRoaming	Moves the player to a marker element when back in free roam.
+Game.WindTriggerEntered	Wind trigger: section index, simable, min and max wind speed in mph, rotation.
+Game.YouWon	Win notification. Does nothing on PC.
+HUD.HideLoopingMessage	Hides the looping HUD message.
+HUD.ShowLoopingMessage	Shows a HUD message by text key, repeating, with a time in seconds.
+HUD.ShowMessage	Shows a HUD message by text key, e.g. "HUD_TOO_SLOW".
+HUD.ShowTimeExtension	Shows a time extension of this many seconds.
+ISimable:IsPlayer	True when the simable is a player's car.
+Lua.ResetHeap	Asks for the Lua heap to be reset to its snapshot. Inside a handler the reset waits until the delivery ends.
+LuaDebug.ExecuteLine	Runs a line of Lua. Does nothing on PC.
+Math.RandomInt	Random whole number from 1 to n.
+MiniMap.AddEngagedRace	Adds a race trigger to the minimap. Does nothing on PC.
+Movie.RefreshTrackAfterPlaying	Sets whether the track is refreshed after a movie (0 or 1).
+Music.ForceCanyonMusic	Forces the canyon music.
+Music.ForceCrewMusic	Forces the crew music.
+Music.ForceKillMusic	Stops the music.
+Music.ForceLicensedMusic	Forces the licensed music.
+Music.ForcePursuitMusic	Forces the pursuit music.
+Music.RequestTransition	Asks for a music transition. The init_audio state then waits for MNotifyAudioTransitionStarted and MNotifyAudioTransitionDone.
+Music.SetWaitState	Sets the music wait state.
+NIS.DisablePIP	Turns off the picture-in-picture NIS. Does nothing on PC.
+NIS.End	Ends the playing NIS.
+NIS.FreezeCamera	Freezes or unfreezes the camera.
+NIS.IsNISReplacedByMovie	True when this NIS is replaced by a movie. Always false on PC.
+NIS.IsPIPLoaded	True when the picture-in-picture NIS is loaded.
+NIS.LaunchPIP	Starts a picture-in-picture NIS by name.
+NIS.Play	Plays an NIS: start marker element (or nil), scene name, scene type ("Intro", "Outro", "Career", "HUB" in retail), camera track, movie before, movie after. Scripts then wait for MNISComplete or MNISFailed.
+NIS.WaitForPIP	True while waiting for a picture-in-picture NIS. Always false on PC.
+Platform.IsNextGen	True on next-gen platforms. Always true on PC.
+Racer.EndForceStop	Ends the forced stop of racer n.
+Racer.ForceCoast	Makes racer n coast.
+Render.EnableCrashVisualTreatment	Turns the crash visual effect on or off.
+Render.KillSmoke	Removes tyre smoke.
+Speech.AbandonRace	Plays the abandon race speech. Does nothing on PC.
+Speech.RaceOver	Plays the race over speech.
+Table.Randomize	Shuffles the array part of a table in place.
+Track.EnableZoneSwitching	Turns track zone switching on (1) or off (0).
+RaceStatus	the current race (GRaceStatus userdata), set at startup
+ProStreetGame	the game (GProStreetGame userdata), set at startup
+Career	the career (GCareer userdata), set at startup; no methods are bound on PC
+GEvent	the current race day event (GEvent userdata), set at startup
+GMoviePlayer	the movie player (GMoviePlayer userdata), set at startup
+GHub	the current hub (GHub userdata), looked up on every read; nil outside a hub
+GTier	the current tier (GTier userdata), looked up on every read; nil when there is none
+GRaceParameters	the current race's parameters (GRaceParameters userdata), looked up on every read; nil when there is none

@@ -1,0 +1,1933 @@
+# NFS-VltEd 4.6's names for the parts of Undercover (PC) values: the words nfsms
+# scripts write after the field (update_field car_tuning x TORQUE MinY 90).
+# doc/nfsms.md. Written by scripts/nfsms/gen_words.py; rerun it rather than editing
+# by hand.
+#
+# Read from the NFS-VltEd decompilation (NFS-VltEd/). A/_0007_0014.cs registers one
+# C# class per AttribSys type and game, keyed by StringHash32 of the type name; each
+# class names its properties with an attribute and reads them in order, which gives
+# each name its offset in the PC files NFS-VltEd reads. The path after the offset
+# names the member of Undercover's PC types (below) at those bytes, so a word finds
+# its member by name on a platform whose layout differs (4-byte bools move later
+# members). An Undercover type not listed here gets NFS-VltEd's raw class: its one
+# property is Data, the value's bytes in hex ("00 00 80 3F").
+#
+# NFS-VltEd's Undercover is the PC game, the current-generation one (PC, 360). Its
+# Wii and PS2 versions are another game on Carbon's engine with mostly other types
+# (the "# not on wii" comments). This script lays the PC's types out from
+# nfs-data/SpeedDebugOpt-enUS.h (the 360 debug build, member order only) at the PC's
+# alignment, checked against the PC type table's sizes, as
+# data/schema/undercover_pc.txt does, and the paths name those members.
+#
+# game <code>
+# type <AttribSys type name>      Attrib::StringKey(MODEL): a StringKey field named MODEL
+#   single                        one property: NFS-VltEd ignores the word after the field
+#   <word> <offset> [<path>] [list <element words>]
+# end
+#
+# <path>: member names joined with ".", [i] for an element of an inline array, down
+# to the member the word sets (Reaction.mClassKey, ValueMin[1]). A word over several
+# members has the deepest member holding them all (X for X.mArray and X.mLength). A
+# path ending in +N: the word's bytes start N bytes into that member. No path: the
+# word's members have nothing in common but the value itself, or the type has no
+# struct in our schema (enums, vectors, simple values), where the offset is the same
+# on every platform.
+#
+# The comments give where each class was read and how sure the game assignment is:
+# "read" means registered for Undercover or for every game, or in a compiled array
+# whose bytes other code shows; "inferred" and "uncertain" mean the game list is a
+# compiled array the decompilation lacks, so it was worked out (see the comment and
+# scripts/nfsms/registry.py). After a word, "# x" lists our schema's members at its
+# bytes where the path doesn't name them all. "# not on <platform>" marks a word
+# that can't be found that way in that platform's schema, or a type its files lack;
+# "# on <platform>" a type laid out otherwise there whose words all find their
+# members.
+
+game UC
+
+type AI::GlueCurve
+  # A/_0013_0019.cs
+  # read (registered for UC; registry line 361)
+  Easy_MinX 0 Easy.xMin
+  Easy_MaxX 4 Easy.xMax
+  Easy_MinY 8 Easy.yMin
+  Easy_MaxY 12 Easy.yMax
+  Easy_GraphScale 16 Easy.graphScale
+  Easy_XValues 20 Easy.X list Value  # Easy.X.mArray,Easy.X.mLength
+  Easy_YValues 28 Easy.Y list Value  # Easy.Y.mArray,Easy.Y.mLength
+  Easy_Y2Values 36 Easy.Y2 list Value  # Easy.Y2.mArray,Easy.Y2.mLength
+  Easy_AllocatedMemory 44 Easy.allocatedMemory
+  Hard_MinX 48 Hard.xMin
+  Hard_MaxX 52 Hard.xMax
+  Hard_MinY 56 Hard.yMin
+  Hard_MaxY 60 Hard.yMax
+  Hard_GraphScale 64 Hard.graphScale
+  Hard_XValues 68 Hard.X list Value  # Hard.X.mArray,Hard.X.mLength
+  Hard_YValues 76 Hard.Y list Value  # Hard.Y.mArray,Hard.Y.mLength
+  Hard_Y2Values 84 Hard.Y2 list Value  # Hard.Y2.mArray,Hard.Y2.mLength
+  Hard_AllocatedMemory 92 Hard.allocatedMemory
+  # not on wii: its files have no AI::GlueCurve
+  # not on ps2: no struct AI::GlueCurve in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type AICollisionReactionRecord
+  # A/_001D_0019.cs
+  # read (registered for ALL; registry line 184)
+  Goal 0 Goal
+  ClassKey 4 Reaction.mClassKey
+  DefinitionKey 8 Reaction.mCollectionKey
+end
+
+type AIDriverSubclass
+  # A/_0009_0019.cs
+  # no struct of this name in our schema (database kind: bytes)
+  # read (registered for UC; registry line 364)
+  single
+  Value 0
+end
+
+type AirSupport
+  # A/_000E_0019.cs
+  # inferred (game list is a static array (_001D/5); MW,C,UC,W,WB: only these games have Csis::Type_car_type; fits the SHA-1 order; registry line 829)
+  HeliStrategy 0 HeliStrategy
+  Chance 4 Chance
+  Duration 8 Duration
+end
+
+type Attrib::Blob
+  # A/_0012_0012.cs
+  # inferred (game list is a static array (_001A/4); MW,C,PS,UC: its field and _000D/4 after it sort between _000D/3 (UC,W,WB) and _001D/3 (MW,C,PS), where only MW,C,PS,UC and C,UC,W,WB do; registry line 753)
+  single
+  Blob 0  # mSize,mData
+end
+
+type Attrib::Gen::ClassRefSpec_aud_moment
+  # A/_0005_0019.cs
+  # no struct of this name in our schema (database kind: bytes)
+  # inferred (game list is a static array (_000D/3); UC,W,WB: only these games have its Sound:: types; fits the SHA-1 order; registry line 833)
+  single
+  CollectionKey 0
+end
+
+type Attrib::Gen::ClassRefSpec_aud_wall_reverb
+  # A/_000B_0019.cs
+  # no struct of this name in our schema (database kind: bytes)
+  # read (registered for UC,W; registry line 837)
+  single
+  CollectionKey 0
+end
+
+type Attrib::Gen::ClassRefSpec_highway_pattern
+  # A/_001F_0019.cs
+  # no struct of this name in our schema (database kind: bytes)
+  # read (registered for UC; registry line 388)
+  single
+  CollectionKey 0
+end
+
+type Attrib::Gen::ClassRefSpec_presetride
+  # A/_0002_0019.cs
+  # no struct of this name in our schema (database kind: bytes)
+  # read (registered for UC; registry line 481)
+  Class 0
+  Collection 4
+end
+
+type Attrib::Gen::ClassRefSpec_pursuit_threat_select
+  # A/_0018_0019.cs
+  # no struct of this name in our schema (database kind: bytes)
+  # read (registered for UC; registry line 391)
+  single
+  CollectionKey 0
+end
+
+type Attrib::RefSpec
+  # A/_0010_0012.cs
+  # read (registered for ALL; registry line 169)
+  Class 0 mClassKey
+  Collection 4 mCollectionKey
+end
+
+type Attrib::StringKey
+  # A/_0001_0012.cs
+  # inferred (game list is a static array (_000D/5); C,PS,UC,W,WB: the complement of the MW-only ControllerDataRecord/JunkmanMod/StringKey classes; fits the SHA-1 order; registry line 87)
+  single
+  Value 4 mString
+  # note: the hash at 0 is recomputed from the text when written.
+end
+
+type Attrib::Types::FloatColour
+  # A/_0015_0012.cs
+  # no struct of this name in our schema (database kind: float colour)
+  # inferred (game list is a static array (_0013/4); PS,UC,W,WB: only these games have its types; fits the SHA-1 order; registry line 841)
+  R 0
+  G 4
+  B 8
+  A 12
+end
+
+type Attrib::Types::Matrix
+  # A/_000F_0012.cs
+  # no struct of this name in our schema (database kind: matrix)
+  # read (registered for ALL; registry line 172)
+  M[1,1] 0
+  M[1,2] 4
+  M[1,3] 8
+  M[1,4] 12
+  M[2,1] 16
+  M[2,2] 20
+  M[2,3] 24
+  M[2,4] 28
+  M[3,1] 32
+  M[3,2] 36
+  M[3,3] 40
+  M[3,4] 44
+  M[4,1] 48
+  M[4,2] 52
+  M[4,3] 56
+  M[4,4] 60
+end
+
+type Attrib::Types::Vector2
+  # A/_0009_001B.cs
+  # no struct of this name in our schema (database kind: vector2)
+  # read (registered for ALL; registry line 175)
+  X 0
+  Y 4
+end
+
+type Attrib::Types::Vector3
+  # A/_001A_001B.cs
+  # no struct of this name in our schema (database kind: vector3)
+  # read (registered for ALL; registry line 178)
+  X 0
+  Y 4
+  Z 8
+end
+
+type Attrib::Types::Vector4
+  # A/_000D_001B.cs
+  # no struct of this name in our schema (database kind: vector4)
+  # read (registered for ALL; registry line 181)
+  X 0
+  Y 4
+  Z 8
+  W 12
+end
+
+type AtttributeRefSpec
+  # A/_001E_0019.cs
+  # read (registered for UC; registry line 382)
+  ClassKey 0 mClassKey
+  DefinitionKey 4 mDefinitionKey
+  # not on wii: its files have no AtttributeRefSpec
+  # not on ps2: no struct AtttributeRefSpec in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type AxlePair
+  # A/_0017_0012.cs
+  # read (registered for ALL; registry line 187)
+  Front 0 Front
+  Rear 4 Rear
+end
+
+type AxlePairCurve
+  # A/_0006_0012.cs
+  # read (registered for UC; registry line 385)
+  Front_MinX 0 Front.xMin
+  Front_MaxX 4 Front.xMax
+  Front_MinY 8 Front.yMin
+  Front_MaxY 12 Front.yMax
+  Front_GraphScale 16 Front.graphScale
+  Front_XValues 20 Front.X list Value  # Front.X.mArray,Front.X.mLength
+  Front_YValues 28 Front.Y list Value  # Front.Y.mArray,Front.Y.mLength
+  Front_Y2Values 36 Front.Y2 list Value  # Front.Y2.mArray,Front.Y2.mLength
+  Front_AllocatedMemory 44 Front.allocatedMemory
+  Rear_MinX 48 Rear.xMin
+  Rear_MaxX 52 Rear.xMax
+  Rear_MinY 56 Rear.yMin
+  Rear_MaxY 60 Rear.yMax
+  Rear_GraphScale 64 Rear.graphScale
+  Rear_XValues 68 Rear.X list Value  # Rear.X.mArray,Rear.X.mLength
+  Rear_YValues 76 Rear.Y list Value  # Rear.Y.mArray,Rear.Y.mLength
+  Rear_Y2Values 84 Rear.Y2 list Value  # Rear.Y2.mArray,Rear.Y2.mLength
+  Rear_AllocatedMemory 92 Rear.allocatedMemory
+end
+
+type BluePrintType
+  # A/_0015_000F.cs
+  # read (registered for PS,UC; registry line 669)
+  single
+  Value 0
+end
+
+type CameraCurveReactionRecord
+  # A/_0016_0019.cs
+  # read (registered for UC; registry line 517)
+  1 0 mType
+  2 4 mCurve.xMin
+  3 8 mCurve.xMax
+  4 12 mCurve.yMin
+  5 16 mCurve.yMax
+  6 20 mCurve.graphScale
+  7 24 mCurve.X list Value  # mCurve.X.mArray,mCurve.X.mLength
+  9 32 mCurve.Y list Value  # mCurve.Y.mArray,mCurve.Y.mLength
+  11 40 mCurve.Y2 list Value  # mCurve.Y2.mArray,mCurve.Y2.mLength
+  13 48 mCurve.allocatedMemory
+  # not on wii: its files have no CameraCurveReactionRecord
+  # not on ps2: no struct CameraCurveReactionRecord in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type CameraReactionRecord
+  # A/_0003_0019.cs
+  # read (registered for PS,UC; registry line 673)
+  Type 0 Type
+  InputMin 4 InputMin
+  ValueMin1 8 ValueMin[0]
+  ValueMin2 12 ValueMin[1]
+  InputMax 16 InputMax
+  ValueMax1 20 ValueMax[0]
+  ValueMax2 24 ValueMax[1]
+end
+
+type CameraSpeedReactionRecord
+  # A/_001C_0019.cs
+  # read (registered for PS,UC; registry line 677)
+  SpeedMin 0 SpeedMin
+  ValueMin 4 ValueMin
+  SpeedMax 8 SpeedMax
+  ValueMax 12 ValueMax
+end
+
+type CAR_SLOT_ID
+  # A/_0006_000F.cs
+  # inferred (game list is a static array (_0013/4); PS,UC,W,WB: only these games have its types; fits the SHA-1 order; registry line 853)
+  single
+  Value 0
+end
+
+type CarBodyMotion
+  # A/_001B_0012.cs
+  # read (registered for ALL; registry line 190)
+  DegPerG 0 DegPerG
+  DegPerSec 4 MaxGs
+  MaxG 8 DegPerSec
+  # note: the game's order is DegPerG, MaxGs, DegPerSec (PS, UC, MW and Carbon headers alike). NFS-VltEd declares DegPerG, DegPerSec, MaxG and its setters are proxies, so the decompilation can't show whether DegPerSec lands at 4 or 8. Taken in declaration order here; may be swapped.
+end
+
+type CarClassType
+  # A/_000A_000C.cs
+  # read (registered for UC; registry line 367)
+  single
+  Value 0
+end
+
+type CarPaintSwatch
+  # A/_0014_0019.cs
+  # read (registered for UC; registry line 370)
+  RGB 0 rgb
+  MaterialA 4 material_a
+  MaterialB 8 material_b
+  Blend 12 blend
+  SpeechColour 16 speechColour
+  # not on wii: its files have no CarPaintSwatch
+  # not on ps2: no struct CarPaintSwatch in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type CCarDamageEntry
+  # A/_0004_0019.cs
+  # read (registered for UC; registry line 373)
+  PartID 0 part
+  AttachPart 4 attachPart
+  MaterialClassKey 8 material.mClassKey
+  MaterialCollectionKey 12 material.mCollectionKey
+  SmackableCollisionName 20 SmackableCollisionName
+  SmackableCollisionAttributeClassKey 24 SmackableCollisionAttribute.mClassKey
+  SmackableCollisionAttributeCollectionKey 28 SmackableCollisionAttribute.mCollectionKey
+  # not on wii: its files have no CCarDamageEntry
+  # not on ps2: no struct CCarDamageEntry in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type CCarDamageLevels
+  # A/_0015_0019.cs
+  # read (registered for PS,UC; registry line 681)
+  Speed0 0 speed0
+  Speed1 4 speed1
+  Speed2 8 speed2
+  Influence 12 influence
+  LightCrack 16 lightcrack
+  LightShatter 20 lightshatter
+  WindowCrack 24 windowcrack
+  WindowShatter 28 windowshatter
+  # not on wii: its files have no CCarDamageLevels
+  # not on ps2: no struct CCarDamageLevels in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type CCarDamageMarkerEntry
+  # A/_0006_0019.cs
+  # read (registered for UC; registry line 520)
+  Name 0 markerName
+  PartID 4 partID
+  SlotID 8 slotID
+  4 12 attachPart
+  5 16 SmackableCollisionName
+  6 20 SmackableCollisionAttribute.mClassKey
+  7 24 SmackableCollisionAttribute.mCollectionKey
+  8 28 SmackableCollisionAttribute.mCollectionPtr
+  # not on wii: its files have no CCarDamageMarkerEntry
+  # not on ps2: no struct CCarDamageMarkerEntry in undercover_ps2.txt, so the paths don't resolve there
+  # note: out of declaration order: Value5 read before Value6
+end
+
+type CCarDamageThreshold
+  # A/_0019_0019.cs
+  # read (registered for PS,UC; registry line 685)
+  Threshold0 0 threshold0
+  Threshold1 4 threshold1
+  Threshold2 8 threshold2
+  Threshold3 12 threshold3
+  DeltaThreshold0 16 deltaThreshold0
+  DeltaThreshold1 20 deltaThreshold1
+  DeltaThreshold2 24 deltaThreshold2
+  DeltaThreshold3 28 deltaThreshold3
+  # not on wii: its files have no CCarDamageThreshold
+  # not on ps2: no struct CCarDamageThreshold in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type CCarKitSlotEntry
+  # A/_0017_0019.cs
+  # read (registered for PS,UC; registry line 689)
+  Group 0 part.mClassKey
+  Name 4 part.mCollectionKey
+  Value 8 part.mCollectionPtr
+  Type 12 slotName
+  # not on wii: its files have no CCarKitSlotEntry
+  # not on ps2: no struct CCarKitSlotEntry in undercover_ps2.txt, so the paths don't resolve there
+  # note: out of declaration order: Value1 read before Value4
+  # note: out of declaration order: Value2 read before Value4
+  # note: out of declaration order: Value3 read before Value4
+  # note: Type is declared first but read last (offset 12). It carries DataType key on a string property, so how a value converts is unclear.
+end
+
+type CCarSlotEntry
+  # A/_0007_0006.cs
+  # read (registered for PS,UC; registry line 693)
+  Parts 0 parts list Group Name Value  # parts.mArray,parts.mLength
+  Type 8 slotName
+  # not on wii: its files have no CCarSlotEntry
+  # not on ps2: no struct CCarSlotEntry in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type CollisionReactionRecord
+  # A/_000B_0015.cs
+  # read (registered for UC; registry line 46)
+  Elasticity 0 Restitution
+  RollHeight 4 RollHeight
+  WeightBias 8 WeightBias
+  MassScale 12 MassScale
+  # not on wii: word Elasticity (Restitution): no member Restitution in CollisionReactionRecord
+  # not on wii: 24 bytes there, not 16
+  # not on ps2: word Elasticity (Restitution): no member Restitution in CollisionReactionRecord
+  # not on ps2: 24 bytes there, not 16
+end
+
+type COLLISIONSFX_LAYERS
+  # A/_0019_000F.cs
+  # inferred (game list is a static array (_0013/4); PS,UC,W,WB: only these games have its types; fits the SHA-1 order; registry line 857)
+  single
+  Value 0
+end
+
+type ControllerDataRecord
+  # A/_001B_0019.cs
+  # inferred (game list is a static array (_000D/5); C,PS,UC,W,WB: the complement of the MW-only ControllerDataRecord/JunkmanMod/StringKey classes; fits the SHA-1 order; registry line 50)
+  DeviceName 4 mDeviceID.mString
+  UpdateType 8 mUpdateType
+  LowerDZ 12 mLowerDZ
+  UpperDZ 16 mUpperDZ
+end
+
+type CopCountRecord
+  # A/_000C_0019.cs
+  # inferred (game list is a static array (_000D/4); C,UC,W,WB: its field and _001A/4 before it sort between _000D/3 (UC,W,WB) and _001D/3 (MW,C,PS), where only MW,C,PS,UC and C,UC,W,WB do; registry line 72)
+  CopType 0 CopType
+  Count 8 Count
+  Chance 12 Chance
+end
+
+type CopFormationRecord
+  # A/_0008_0019.cs
+  # inferred (game list is a static array (_001D/5); MW,C,UC,W,WB: only these games have Csis::Type_car_type; fits the SHA-1 order; registry line 865)
+  Formation 0 Formation
+  Duration 4 Duration
+  Frequency 8 Frequency
+end
+
+type CPartsPackageEntry
+  # A/_000F_0019.cs
+  # read (registered for PS,UC; registry line 697)
+  PartClass 0 part.mClassKey
+  PartCollection 4 part.mCollectionKey
+  KitNumber 12 kitNum
+  # not on wii: its files have no CPartsPackageEntry
+  # not on ps2: no struct CPartsPackageEntry in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type Csis::Type_car_type
+  # A/_001E_0008.cs
+  # inferred (game list is a static array (_001D/5); MW,C,UC,W,WB: only these games have Csis::Type_car_type; fits the SHA-1 order; registry line 869)
+  single
+  Value 0
+end
+
+type Csis::Type_offroad_moment_id
+  # A/_0020_000C.cs
+  # read (registered for UC; registry line 394)
+  single
+  Value 0
+end
+
+type Csis::Type_pursuit_breaker_type
+  # A/_0016_0008.cs
+  # read (registered for UC; registry line 397)
+  single
+  Value 0
+end
+
+type Csis::Type_vo_linenumber
+  # A/_0003_0008.cs
+  # read (registered for UC; registry line 376)
+  single
+  Value 0
+end
+
+type CubeType
+  # A/_001C_0008.cs
+  # no struct of this name in our schema (database kind: bytes)
+  # read (registered for UC; registry line 379)
+  single
+  Value 0
+end
+
+type Curve
+  # A/_0019_0012.cs
+  # inferred (game list is a static array (_000D/3); UC,W,WB: only these games have its Sound:: types; fits the SHA-1 order; registry line 36)
+  MinX 0 xMin
+  MaxX 4 xMax
+  MinY 8 yMin
+  MaxY 12 yMax
+  GraphScale 16 graphScale
+  XValues 20 X list Value  # X.mArray,X.mLength
+  YValues 28 Y list Value  # Y.mArray,Y.mLength
+  Y2Values 36 Y2 list Value  # Y2.mArray,Y2.mLength
+  AllocatedMemory 44 allocatedMemory
+end
+
+type DamageFilter::Control
+  # A/_0010_0019.cs
+  # read (registered for UC; registry line 400)
+  Allow 0 mAllow
+  Reject 4 mReject
+  MaxCausalityTime 8 MaxCausalityTime
+  # not on wii: its files have no DamageFilter::Control
+  # not on ps2: no struct DamageFilter::Control in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type DamageScaleRecord
+  # A/_0001_0019.cs
+  # read (registered for ALL; registry line 199)
+  VisualScale 0 VisualScale
+  HitPointScale 4 HitPointScale
+end
+
+type EA::Reflection::Bool
+  # A/_000F_0010.cs
+  # no struct of this name in our schema (database kind: bool)
+  # read (registered for ALL; registry line 136)
+  single
+  Value 0
+end
+
+type EA::Reflection::Double
+  # A/_0010_0010.cs
+  # no struct of this name in our schema (database kind: double)
+  # read (registered for ALL; registry line 163)
+  single
+  Value 0
+end
+
+type EA::Reflection::Float
+  # A/_0001_0010.cs
+  # no struct of this name in our schema (database kind: float)
+  # read (registered for ALL; registry line 139)
+  single
+  Value 0
+end
+
+type EA::Reflection::Int16
+  # A/_000A_0010.cs
+  # no struct of this name in our schema (database kind: int16)
+  # read (registered for ALL; registry line 142)
+  single
+  Value 0
+end
+
+type EA::Reflection::Int32
+  # A/_0020_0010.cs
+  # no struct of this name in our schema (database kind: int32)
+  # read (registered for ALL; registry line 145)
+  single
+  Value 0
+end
+
+type EA::Reflection::Int64
+  # A/_0011_0001.cs
+  # no struct of this name in our schema (database kind: int64)
+  # read (registered for ALL; registry line 166)
+  single
+  Value 0
+end
+
+type EA::Reflection::Int8
+  # A/_0009_0001.cs
+  # no struct of this name in our schema (database kind: int8)
+  # read (registered for ALL; registry line 148)
+  single
+  Value 0
+end
+
+type EA::Reflection::Text
+  # A/_000A_0012.cs
+  # no struct of this name in our schema (database kind: text)
+  # read (registered for ALL; registry line 151)
+  single
+  Value 0
+end
+
+type EA::Reflection::UInt16
+  # A/_000D_0001.cs
+  # no struct of this name in our schema (database kind: uint16)
+  # read (registered for ALL; registry line 154)
+  single
+  Value 0
+end
+
+type EA::Reflection::UInt32
+  # A/_001D_0001.cs
+  # no struct of this name in our schema (database kind: uint32)
+  # read (registered for ALL; registry line 157)
+  single
+  Value 0
+end
+
+type EA::Reflection::UInt8
+  # A/_000E_0001.cs
+  # no struct of this name in our schema (database kind: uint8)
+  # read (registered for ALL; registry line 160)
+  single
+  Value 0
+end
+
+type EAIBreakerType
+  # A/_000F_000F.cs
+  # inferred (game list is a static array (_000D/5); C,PS,UC,W,WB: the complement of the MW-only ControllerDataRecord/JunkmanMod/StringKey classes; fits the SHA-1 order; registry line 881)
+  single
+  Value 0
+end
+
+type eControllerHudType
+  # A/_0020_0008.cs
+  # inferred (game list is a static array (_0009/4); C,PS,UC,WB: its field sorts between _0011/5 (MW,C,PS,UC,WB) and _000D/3 (UC,W,WB), where the 4-game lists are C,PS,UC,WB and MW,UC,W,WB, and MW has none of its types; registry line 885)
+  single
+  Value 0
+end
+
+type eControllerTypeMask
+  # A/_0011_000F.cs
+  # inferred (game list is a static array (_0009/4); C,PS,UC,WB: its field sorts between _0011/5 (MW,C,PS,UC,WB) and _000D/3 (UC,W,WB), where the 4-game lists are C,PS,UC,WB and MW,UC,W,WB, and MW has none of its types; registry line 889)
+  single
+  Value 0
+end
+
+type eDecalType
+  # A/_0009_000F.cs
+  # inferred (game list is a static array (_0013/4); PS,UC,W,WB: only these games have its types; fits the SHA-1 order; registry line 893)
+  single
+  Value 0
+end
+
+type eDRIVE_BY_TYPE
+  # A/_001A_000F.cs
+  # read (registered for ALL; registry line 202)
+  single
+  Value 0
+end
+
+type EffectLinkageRecord
+  # A/_0007_0019.cs
+  # inferred (game list is a static array (_000D/3); UC,W,WB: only these games have its Sound:: types; fits the SHA-1 order; registry line 79)
+  SurfaceClassKey 0 mSurface.mClassKey
+  SurfaceCollectionKey 4 mSurface.mCollectionKey
+  EffectClassKey 12 mEffect.mClassKey
+  EffectCollectionKey 16 mEffect.mCollectionKey
+  AudioClassKey 24 mAudio.mClassKey
+  AudioCollectionKey 28 mAudio.mCollectionKey
+  MinSpeed 36 mMinSpeed
+  MaxSpeed 40 mMaxSpeed
+  SFXMinSpeed 44 mSFXMinSpeed
+  SFXMaxSpeed 48 mSFXMaxSpeed
+  # not on wii: word AudioClassKey (mAudio.mClassKey): no member mAudio in EffectLinkageRecord
+  # not on wii: word AudioCollectionKey (mAudio.mCollectionKey): no member mAudio in EffectLinkageRecord
+  # not on wii: word SFXMinSpeed (mSFXMinSpeed): no member mSFXMinSpeed in EffectLinkageRecord
+  # not on wii: word SFXMaxSpeed (mSFXMaxSpeed): no member mSFXMaxSpeed in EffectLinkageRecord
+  # not on wii: 32 bytes there, not 52
+  # not on ps2: word AudioClassKey (mAudio.mClassKey): no member mAudio in EffectLinkageRecord
+  # not on ps2: word AudioCollectionKey (mAudio.mCollectionKey): no member mAudio in EffectLinkageRecord
+  # not on ps2: word SFXMinSpeed (mSFXMinSpeed): no member mSFXMinSpeed in EffectLinkageRecord
+  # not on ps2: word SFXMaxSpeed (mSFXMaxSpeed): no member mSFXMaxSpeed in EffectLinkageRecord
+  # not on ps2: 32 bytes there, not 52
+end
+
+type EffectParticleConstraint
+  # A/_0010_000F.cs
+  # read (registered for ALL; registry line 205)
+  single
+  Value 0
+end
+
+type eLiveryID
+  # A/_001D_000F.cs
+  # read (registered for PS,UC; registry line 709)
+  single
+  Value 0
+end
+
+type EmittedGeometryRecord
+  # A/_000A_0019.cs
+  # inferred (game list is a static array (_000D/5); C,PS,UC,W,WB: the complement of the MW-only ControllerDataRecord/JunkmanMod/StringKey classes; fits the SHA-1 order; registry line 901)
+  1 0 mEnum
+  2 4 mIndex
+end
+
+type EmitterPostProcessingEffect
+  # A/_0001_000F.cs
+  # read (registered for PS,UC; registry line 705)
+  single
+  Value 0
+end
+
+type EmitterShaderTechnique
+  # A/_0014_0008.cs
+  # read (registered for UC; registry line 403)
+  single
+  Value 0
+end
+
+type EngineLFOParams
+  # A/_0020_0019.cs
+  # uncertain (game list is a static array (_0009/3); its field sorts before _0011/5 (MW,C,PS,UC,WB); of the lists that do, PS,W,WB and PS,UC,W name only games that have EngineLFOParams (PS,UC,W alone if _0011/3 is the message box's OK, Yes, Retry); one of them with UC; registry line 905)
+  FrequencyStart 0 frequency_start
+  FrequencyEnd 4 frequency_end
+  RpmAmplitude 8 RPM_amplitude
+  VolumeAmplitude 12 vol_amplitude
+  Lifespan 16 lifespan
+  # not on wii: its files have no EngineLFOParams
+  # not on ps2: no struct EngineLFOParams in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type ePackageType
+  # A/_0013_000F.cs
+  # read (registered for PS,UC; registry line 701)
+  single
+  Value 0
+end
+
+type ePaintSlot
+  # A/_0004_0008.cs
+  # read (registered for UC; registry line 406)
+  single
+  Value 0
+end
+
+type ePaintUsage
+  # A/_0015_0008.cs
+  # read (registered for UC; registry line 409)
+  single
+  Value 0
+end
+
+type ePresetCarFilter
+  # A/_000E_000F.cs
+  # inferred (game list is a static array (_0009/4); C,PS,UC,WB: its field sorts between _0011/5 (MW,C,PS,UC,WB) and _000D/3 (UC,W,WB), where the 4-game lists are C,PS,UC,WB and MW,UC,W,WB, and MW has none of its types; registry line 909)
+  single
+  Value 0
+end
+
+type eRewardCardArea
+  # A/_000B_000F.cs
+  # inferred (game list is a static array (_0013/3); C,PS,UC: only these games have the eRewardCard* types; fits the SHA-1 order; registry line 757)
+  single
+  Value 0
+end
+
+type eRewardCardConditionModifyer
+  # A/_001F_000F.cs
+  # inferred (game list is a static array (_0013/3); C,PS,UC: only these games have the eRewardCard* types; fits the SHA-1 order; registry line 761)
+  single
+  Value 0
+end
+
+type eRewardCardConditions
+  # A/_0002_000F.cs
+  # inferred (game list is a static array (_0013/3); C,PS,UC: only these games have the eRewardCard* types; fits the SHA-1 order; registry line 765)
+  single
+  Value 0
+end
+
+type eRewardCardDifficulty
+  # A/_0018_000F.cs
+  # inferred (game list is a static array (_0013/3); C,PS,UC: only these games have the eRewardCard* types; fits the SHA-1 order; registry line 769)
+  single
+  Value 0
+end
+
+type eRewardCardOnlineStat
+  # A/_001E_000F.cs
+  # inferred (game list is a static array (_0013/3); C,PS,UC: only these games have the eRewardCard* types; fits the SHA-1 order; registry line 773)
+  single
+  Value 0
+end
+
+type eRewardCardUnit
+  # A/_0016_000F.cs
+  # inferred (game list is a static array (_0013/3); C,PS,UC: only these games have the eRewardCard* types; fits the SHA-1 order; registry line 777)
+  single
+  Value 0
+end
+
+type eSFXOBJ_MOMENT_MIXINPUT
+  # A/_0006_0008.cs
+  # no struct of this name in our schema (database kind: bytes)
+  # inferred (game list is a static array (_000D/3); UC,W,WB: only these games have its Sound:: types; fits the SHA-1 order; registry line 913)
+  single
+  Value 0
+end
+
+type eSFXOBJ_MOMENT_MIXOUT
+  # A/_0019_0008.cs
+  # no struct of this name in our schema (database kind: bytes)
+  # inferred (game list is a static array (_000D/3); UC,W,WB: only these games have its Sound:: types; fits the SHA-1 order; registry line 917)
+  single
+  Value 0
+end
+
+type eSkyStyle
+  # A/_0003_000F.cs
+  # read (registered for PS,UC; registry line 713)
+  single
+  Value 0
+end
+
+type eSNDCTLSTATE
+  # A/_0017_0008.cs
+  # read (registered for UC; registry line 412)
+  single
+  Value 0
+end
+
+type FEAutosculptAliasing::Alias
+  # A/_000A_0006.cs
+  # read (registered for UC; registry line 487)
+  Data1 0 kit
+  Data2 4 region
+  Sliders 8 list Region Zone  # sliders,slidersLength
+  # not on wii: its files have no FEAutosculptAliasing::Alias
+  # not on ps2: no struct FEAutosculptAliasing::Alias in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type FEHintsData
+  # A/_0011_0017.cs
+  # read (registered for UC; registry line 415)
+  Subject 0 subjectHALId.hash
+  Text 4 textHALId.hash
+  Picture 8 pic
+  # not on wii: its files have no FEHintsData
+  # not on ps2: no struct FEHintsData in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type FEMsgToSoundTrigger
+  # A/_0009_0017.cs
+  # inferred (game list is a static array (_000D/5); C,PS,UC,W,WB: the complement of the MW-only ControllerDataRecord/JunkmanMod/StringKey classes; fits the SHA-1 order; registry line 937)
+  1 0 FEngMsg.hash
+  2 4 SoundTrigger
+end
+
+type FEPartCamera
+  # A/_001A_0017.cs
+  # read (registered for UC; registry line 105)
+  SlotName 0 SlotName
+  CameraClassKey 4 Camera.mClassKey
+  CameraCollectionKey 8 Camera.mCollectionKey
+  Camera_4_3ClassKey 16 Camera_4_3.mClassKey
+  Camera_4_3CollectionKey 20 Camera_4_3.mCollectionKey
+  # not on wii: its files have no FEPartCamera
+  # not on ps2: no struct FEPartCamera in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type FEPartData
+  # A/_0001_0015.cs
+  # read (registered for UC; registry line 418)
+  HAL_ID 0 HAL_ID.hash
+  CF_HAL_ID 4 CF_HAL_ID.hash
+  Price 8 price
+  ShowroomUnlock 12 showroom_unlock
+  Tier1Price 16 tier1_price
+  Tier2Price 20 tier2_price
+  Tier3Price 24 tier3_price
+  Tier4Price 28 tier4_price
+  Tier 32 tier
+  Tier1ShowroomUnlock 33 tier_1_showroom_unlock
+  Tier2ShowroomUnlock 34 tier_2_showroom_unlock
+  Tier3ShowroomUnlock 35 tier_3_showroom_unlock
+  Tier4ShowroomUnlock 36 tier_4_showroom_unlock
+  BrandHALId 40 BrandHALId.hash
+  LogoTextureId 44 LogoTextureId.hash
+  DetailHash 48 DetailHash.hash
+  # PartDetails 52: ptr2u32, not editable  # PartDetails
+  OfferID 56 OfferID
+  IsOnlineLockable 60 IsOnlineLockable
+  # not on wii: its files have no FEPartData
+  # not on ps2: no struct FEPartData in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type FEQuickUpgrade
+  # A/_001D_0017.cs
+  # read (registered for UC; registry line 421)
+  Packages 0 Packages list Package Level
+  Cost 4 Cost
+  Tier1Cost 8 tier1_cost
+  Tier2Cost 12 tier2_cost
+  Tier3Cost 16 tier3_cost
+  Tier4Cost 20 tier4_cost
+  OfferID 24 OfferID
+  # not on wii: its files have no FEQuickUpgrade
+  # not on ps2: no struct FEQuickUpgrade in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type FETuningSlider
+  # A/_0013_0017.cs
+  # read (registered for PS,UC; registry line 721)
+  Group 0 Ref.mClassKey
+  Name 4 Ref.mCollectionKey
+  3 8 Ref.mCollectionPtr
+  4 12 TitleHash.hash
+  5 16 LeftHash.hash
+  6 20 RightHash.hash
+  7 24 HelpHash.hash
+  # not on wii: its files have no FETuningSlider
+  # not on ps2: no struct FETuningSlider in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type FEVinylGroupInfo
+  # A/_000E_0017.cs
+  # read (registered for UC; registry line 490)
+  Index 0 group_number
+  2 4 HAL_ID.hash
+  3 8  # sort_order,combine_group,combine_group_number,black_and_white_only
+  4 12  # not_user_selectable,non_deformable,collectors_edition,showroom_unlock
+  5 16 price
+  # not on wii: its files have no FEVinylGroupInfo
+  # not on ps2: no struct FEVinylGroupInfo in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type FFBWaveRecord
+  # A/_0005_0017.cs
+  # read (registered for ALL; registry line 208)
+  FrequencyA 0 Frequency_A
+  AmplitudeA 4 Amplitude_A
+  OffsetA 8 Offset_A
+  ThresholdA 12 Threshold_A
+  FrequencyB 16 Frequency_B
+  AmplitudeB 20 Amplitude_B
+  OffsetB 24 Offset_B
+  ThresholdB 28 Threshold_B
+end
+
+type Game::EventRegion
+  # A/_0011_0008.cs
+  # read (registered for UC; registry line 424)
+  single
+  Value 0
+end
+
+type Game::GameMode
+  # A/_0009_0008.cs
+  # read (registered for UC; registry line 427)
+  single
+  Value 0
+end
+
+type Game::RewardType
+  # A/_001A_0008.cs
+  # read (registered for UC; registry line 430)
+  single
+  Value 0
+end
+
+type GCollectionKey
+  # A/_0007_0010.cs
+  # inferred (game list is a static array (_001A/4); MW,C,PS,UC: its field and _000D/4 after it sort between _000D/3 (UC,W,WB) and _001D/3 (MW,C,PS), where only MW,C,PS,UC and C,UC,W,WB do; registry line 749)
+  single
+  Value 0 mCollectionKey
+end
+
+type GMapCurve
+  # A/_001A_0019.cs
+  # read (registered for C,UC; registry line 725)
+  PointCount 0 mPointStart
+  PointStart 2 mPointCount
+  # note: taken in declaration order, PointCount sets mPointStart and PointStart sets mPointCount, though the names say otherwise. The setters are proxies, so the decompilation can't show which is right.
+end
+
+type GMapCurvePoint
+  # A/_0020_0006.cs
+  # read (registered for C,UC; registry line 729)
+  X 0 mX
+  Y 4 mY
+end
+
+type GMapCurveRef
+  # A/_000D_0019.cs
+  # read (registered for C,UC; registry line 733)
+  CurveIndex 0 mCurveIndex
+  Flags 2 mFlags
+end
+
+type GMapRegionInfo
+  # A/_0011_0019.cs
+  # read (registered for UC; registry line 93)
+  Name 0 mName
+  CurveStart 4 mCurveStart
+  CurveCount 6 mCurveCount
+  TriangleStart 8 mTriangleStart
+  TriangleCount 10 mTriangleCount
+  BoundsMinX 12 mBoundsMinX
+  BoundsMinY 16 mBoundsMinY
+  BoundsMaxX 20 mBoundsMaxX
+  BoundsMaxY 24 mBoundsMaxY
+  # not on wii: word BoundsMinX (mBoundsMinX): no member mBoundsMinX in GMapRegionInfo
+  # not on wii: word BoundsMinY (mBoundsMinY): no member mBoundsMinY in GMapRegionInfo
+  # not on wii: word BoundsMaxX (mBoundsMaxX): no member mBoundsMaxX in GMapRegionInfo
+  # not on wii: word BoundsMaxY (mBoundsMaxY): no member mBoundsMaxY in GMapRegionInfo
+  # not on wii: 12 bytes there, not 28
+  # not on ps2: word BoundsMinX (mBoundsMinX): no member mBoundsMinX in GMapRegionInfo
+  # not on ps2: word BoundsMinY (mBoundsMinY): no member mBoundsMinY in GMapRegionInfo
+  # not on ps2: word BoundsMaxX (mBoundsMaxX): no member mBoundsMaxX in GMapRegionInfo
+  # not on ps2: word BoundsMaxY (mBoundsMaxY): no member mBoundsMaxY in GMapRegionInfo
+  # not on ps2: 12 bytes there, not 28
+end
+
+type GMapTriangle
+  # A/_000D_0008.cs
+  # read (registered for C,UC; registry line 737)
+  Point0 0 mPoint0
+  Point1 2 mPoint1
+  Point2 4 mPoint2
+end
+
+type GRace::AIOpponentGoal
+  # A/_001D_0008.cs
+  # read (registered for UC; registry line 484)
+  single
+  Value 0
+end
+
+type GRace::CornerMarker
+  # A/_0013_0008.cs
+  # read (registered for C,UC; registry line 741)
+  single
+  Value 0
+end
+
+type GRace::MissionType
+  # A/_000E_0008.cs
+  # read (registered for UC; registry line 433)
+  single
+  Value 0
+end
+
+type GRace::NISLength
+  # A/_0005_0008.cs
+  # read (registered for UC; registry line 436)
+  single
+  Value 0
+end
+
+type GRace::RaceCarClass
+  # A/_000A_000F.cs
+  # inferred (game list is a static array (_000D/5); C,PS,UC,W,WB: the complement of the MW-only ControllerDataRecord/JunkmanMod/StringKey classes; fits the SHA-1 order; registry line 953)
+  single
+  Value 0
+end
+
+type GRace::RaceLigthingMode
+  # A/_000B_0008.cs
+  # inferred (game list is a static array (_0013/3); C,PS,UC: only these games have the eRewardCard* types; fits the SHA-1 order; registry line 781)
+  single
+  Value 0
+end
+
+type GRace::ShortcutType
+  # A/_001F_0008.cs
+  # inferred (game list is a static array (_0013/3); C,PS,UC: only these games have the eRewardCard* types; fits the SHA-1 order; registry line 785)
+  single
+  Value 0
+end
+
+type GRace::Tier
+  # A/_0020_000F.cs
+  # inferred (game list is a static array (_000D/5); C,PS,UC,W,WB: the complement of the MW-only ControllerDataRecord/JunkmanMod/StringKey classes; fits the SHA-1 order; registry line 957)
+  single
+  Value 0
+end
+
+type GRace::Type
+  # A/_0002_0008.cs
+  # inferred (game list is a static array (_000D/4); C,UC,W,WB: its field and _001A/4 before it sort between _000D/3 (UC,W,WB) and _001D/3 (MW,C,PS), where only MW,C,PS,UC and C,UC,W,WB do; registry line 961)
+  single
+  Value 0
+end
+
+type HeavySupport
+  # A/_000B_0017.cs
+  # inferred (game list is a static array (_001D/5); MW,C,UC,W,WB: only these games have Csis::Type_car_type; fits the SHA-1 order; registry line 969)
+  HeavyStrategy 0 HeavyStrategy
+  Chance 4 Chance
+  Duration 8 Duration
+  ChanceBigSUV 12 ChanceBigSUV
+end
+
+type HighwayPatternCarData
+  # A/_001F_0017.cs
+  # read (registered for UC; registry line 439)
+  Row 0 row
+  Lane 4 lane
+  VehicleClassKey 8 mVehicle.mClassKey
+  VehicleCollectionKey 12 mVehicle.mCollectionKey
+  Change 20 mChange
+  Unk 24 mChangeDist
+  # not on wii: its files have no HighwayPatternCarData
+  # not on ps2: no struct HighwayPatternCarData in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type ICEContextIDs
+  # A/_0012_0008.cs
+  # read (registered for UC; registry line 442)
+  single
+  Value 0
+end
+
+type IndexedBarrierName
+  # A/_0018_0008.cs
+  # read (registered for C,UC; registry line 745)
+  single
+  Value 0 mIndex
+end
+
+type JunkmanMod
+  # A/_0008_0012.cs
+  # inferred (game list is a static array (_000D/5); C,PS,UC,W,WB: the complement of the MW-only ControllerDataRecord/JunkmanMod/StringKey classes; fits the SHA-1 order; registry line 65)
+  Class 0 ClassKey
+  Definition 4 DefinitionKey
+  ScaleF 8 ScaleF
+  ScaleR 12 ScaleR
+end
+
+type KIT_TYPE
+  # A/_001A_0010.cs
+  # read (registered for PS,UC; registry line 629)
+  single
+  Value 0
+end
+
+type LeaderSupport
+  # A/_0002_0017.cs
+  # inferred (game list is a static array (_001D/5); MW,C,UC,W,WB: only these games have Csis::Type_car_type; fits the SHA-1 order; registry line 977)
+  LeaderStrategy 0 LeaderStrategy
+  Chance 4 Chance
+  Duration 8 Duration
+  PriorityChance 12 PriorityChance
+  PriorityTime 16 PriorityTime
+end
+
+type LightFlash
+  # A/_0018_0017.cs
+  # read (registered for UC; registry line 493)
+  1 0 mLightsOn
+  2 4 mDuration
+  # not on wii: its files have no LightFlash
+  # not on ps2: no struct LightFlash in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type MovieVolume
+  # A/_001E_0017.cs
+  # inferred (game list is a static array (_000D/5); C,PS,UC,W,WB: the complement of the MW-only ControllerDataRecord/JunkmanMod/StringKey classes; fits the SHA-1 order; registry line 985)
+  1 0 Name.hash
+  2 4 Volume
+end
+
+type NIS::eBustedLevel
+  # A/_001B_0008.cs
+  # read (registered for UC; registry line 448)
+  single
+  Value 0
+end
+
+type NIS::eFinishOutcome
+  # A/_000C_0008.cs
+  # read (registered for UC; registry line 445)
+  single
+  Value 0
+end
+
+type NIS::EndTransition
+  # A/_0016_0017.cs
+  # read (registered for UC; registry line 451)
+  TransitionType 0 mTransitionType
+  TransitionSec 4 mTransitionSec
+  # not on wii: its files have no NIS::EndTransition
+  # not on ps2: no struct NIS::EndTransition in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type NIS::eOnlineStatus
+  # A/_0008_0008.cs
+  # read (registered for UC; registry line 454)
+  single
+  Value 0
+end
+
+type NIS::ePlayerUnderAIControl
+  # A/_000F_0008.cs
+  # read (registered for UC; registry line 457)
+  single
+  Value 0
+end
+
+type NIS::eRaceType
+  # A/_0010_0008.cs
+  # read (registered for UC; registry line 460)
+  single
+  Value 0
+end
+
+type NIS::NISActor
+  # A/_0003_0017.cs
+  # read (registered for UC; registry line 463)
+  ActorName 0 mActorName
+  CarChannelName 4 mCarChannelName
+  IsDriver 8 mIsDriver
+  ExitAnimSec 12 mExitAnimSec
+  IsFacePixelation 16 mIsFacePixelation
+  # not on wii: its files have no NIS::NISActor
+  # not on ps2: no struct NIS::NISActor in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type NIS::NISCar
+  # A/_001C_0017.cs
+  # read (registered for UC; registry line 466)
+  PresetRideClassKey 0 mPresetRide.mClassKey
+  PresetRideCollectionKey 4 mPresetRide.mCollectionKey
+  PresetSkinName 12 mPresetSkinName
+  VehicleCategory 16 mVehicleCategory
+  ChannelName 20 mChannelName
+  # not on wii: its files have no NIS::NISCar
+  # not on ps2: no struct NIS::NISCar in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type NIS::SceneRoot
+  # A/_0014_0017.cs
+  # read (registered for UC; registry line 469)
+  SceneRootType 0 mSceneRootType
+  MarkerName 4 mMarkerName
+  # not on wii: its files have no NIS::SceneRoot
+  # not on ps2: no struct NIS::SceneRoot in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type ParticleAnimationInfo
+  # A/_0004_0017.cs
+  # read (registered for ALL; registry line 193)
+  AnimType 0 AnimType
+  FPS 4 FPS
+  RandomStartFrame 5 RandomStartFrame
+end
+
+type ParticleTextureRecord
+  # A/_0015_0017.cs
+  # read (registered for ALL; registry line 196)
+  TextureType 0 mEnum
+  Index 4 mIndex
+end
+
+type PartType
+  # A/_000B_0010.cs
+  # read (registered for PS,UC; registry line 717)
+  single
+  Value 0
+end
+
+type PathEventEnum
+  # A/_001F_0010.cs
+  # no struct of this name in our schema (database kind: bytes)
+  # inferred (game list is a static array (_0011/5); MW,C,PS,UC,WB: the only 5-game list whose SHA-1 sorts before _000D/3 (UC,W,WB), as its field does; registry line 1001)
+  single
+  Value 0
+end
+
+type PerformanceStatsRange
+  # A/_0006_0017.cs
+  # read (registered for PS,UC; registry line 633)
+  PerformanceType 0 mPerformanceType
+  Min 4 mMin
+  Max 8 mMax
+  # not on wii: its files have no PerformanceStatsRange
+  # not on ps2: no struct PerformanceStatsRange in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type PerformanceWeight
+  # A/_0019_0017.cs
+  # read (registered for PS,UC; registry line 637)
+  PerformanceType 0 mPerformanceType
+  Percentage 4 mPercentage
+  # not on wii: its files have no PerformanceWeight
+  # not on ps2: no struct PerformanceWeight in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type PerformanceWeightWithDirection
+  # A/_0017_0017.cs
+  # read (registered for PS,UC; registry line 641)
+  PerformanceType 0 mPerformanceType
+  Inverse 4 mInverse
+  Percentage 8 mPercentage
+  # not on wii: its files have no PerformanceWeightWithDirection
+  # not on ps2: no struct PerformanceWeightWithDirection in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type Physics::ePerformanceType
+  # A/_0002_0010.cs
+  # read (registered for PS,UC; registry line 645)
+  single
+  Value 0
+end
+
+type Physics::Info::eInductionType
+  # A/_0018_0010.cs
+  # read (registered for PS,UC; registry line 649)
+  single
+  Value 0
+end
+
+type PhysicsTuningDescription
+  # A/_0012_0017.cs
+  # read (registered for PS,UC; registry line 653)
+  1 0 mPhysicsTuning.mClassKey
+  2 4 mPhysicsTuning.mCollectionKey
+  3 8 mPhysicsTuning.mCollectionPtr
+  4 12 mIncrease
+  # not on wii: its files have no PhysicsTuningDescription
+  # not on ps2: no struct PhysicsTuningDescription in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type PhysicsUpgrade
+  # A/_001B_0017.cs
+  # read (registered for UC; registry line 99)
+  ClassKey 0 mClassKey
+  DefinitionKey 4 mDefinitionKey
+  BlendingPower 8 mBlendingPower
+  # not on wii: its files have no PhysicsUpgrade
+  # not on ps2: no struct PhysicsUpgrade in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type PresetRideAutosculpt
+  # A/_0004_0015.cs
+  # read (registered for UC; registry line 124)
+  RegionID 0 mRegionID
+  Zone1 4 zones[0]
+  Zone2 8 zones[1]
+  Zone3 12 zones[2]
+  Zone4 16 zones[3]
+  Zone5 20 zones[4]
+  Zone6 24 zones[5]
+  Zone7 28 zones[6]
+  Zone8 32 zones[7]
+  Zone9 36 zones[8]
+  Zone10 40 zones[9]
+  Zone11 44 zones[10]
+  # not on wii: its files have no PresetRideAutosculpt
+  # not on ps2: no struct PresetRideAutosculpt in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type PresetRidePaint
+  # A/_0008_0017.cs
+  # read (registered for UC; registry line 130)
+  1 0 mSlotID
+  2 4 mGroup.mClassKey
+  3 8 mGroup.mCollectionKey
+  4 12 mGroup.mCollectionPtr
+  5 16 mSwatch
+  6 20 mSaturation
+  7 24 mVariance
+  8 28 mMaterialFlags
+  # not on wii: its files have no PresetRidePaint
+  # not on ps2: no struct PresetRidePaint in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type PresetRidePart
+  # A/_000F_0017.cs
+  # read (registered for UC; registry line 118)
+  SlotID 0 mSlotID
+  PartClassKey 4 mPart.mClassKey
+  PartCollectionKey 8 mPart.mCollectionKey
+  KitNumber 16 mKitNumber
+  # not on wii: its files have no PresetRidePart
+  # not on ps2: no struct PresetRidePart in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type PresetRideRandomPaint
+  # A/_0010_0017.cs
+  # read (registered for UC; registry line 472)
+  SlotID 0 paint.mSlotID
+  GroupClassKey 4 paint.mGroup.mClassKey
+  GroupCollectionKey 8 paint.mGroup.mCollectionKey
+  5 16 paint.mSwatch
+  6 20 paint.mSaturation
+  7 24 paint.mVariance
+  8 28 paint.mMaterialFlags
+  Chance 32 chance
+  # not on wii: its files have no PresetRideRandomPaint
+  # not on ps2: no struct PresetRideRandomPaint in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type RenderReflect::cBlendStateAttribDefinition
+  # A/_0001_0017.cs
+  # read (registered for UC; registry line 496)
+  1 0 mDebugName
+  2 4  # mBlendEnable,mAlphaTestEnable
+  3 8 mAlphaTestRef
+  4 12 mAlphaTestFunc
+  5 16 mSourceColour[0]
+  6 20 mSourceColour[1]
+  7 24 mSourceColour[2]
+  8 28 mSourceColour[3]
+  9 32 mDestColour[0]
+  10 36 mDestColour[1]
+  11 40 mDestColour[2]
+  12 44 mDestColour[3]
+  13 48 mOperationColour[0]
+  14 52 mOperationColour[1]
+  15 56 mOperationColour[2]
+  16 60 mOperationColour[3]
+  17 64 mSourceAlpha[0]
+  18 68 mSourceAlpha[1]
+  19 72 mSourceAlpha[2]
+  20 76 mSourceAlpha[3]
+  21 80 mDestAlpha[0]
+  22 84 mDestAlpha[1]
+  23 88 mDestAlpha[2]
+  24 92 mDestAlpha[3]
+  25 96 mOperationAlpha[0]
+  26 100 mOperationAlpha[1]
+  27 104 mOperationAlpha[2]
+  28 108 mOperationAlpha[3]
+  29 112 mBlendFactor.x
+  30 116 mBlendFactor.y
+  31 120 mBlendFactor.z
+  32 124 mBlendFactor.w
+  33 128  # mRGBAEnableRT0[0],mRGBAEnableRT0[1],mRGBAEnableRT0[2],mRGBAEnableRT0[3]
+  34 132  # mRGBAEnableRT1[0],mRGBAEnableRT1[1],mRGBAEnableRT1[2],mRGBAEnableRT1[3]
+  35 136  # mRGBAEnableRT2[0],mRGBAEnableRT2[1],mRGBAEnableRT2[2],mRGBAEnableRT2[3]
+  36 140  # mRGBAEnableRT3[0],mRGBAEnableRT3[1],mRGBAEnableRT3[2],mRGBAEnableRT3[3]
+  37 144  # mAlphaToMaskEnable_XENON,mHiPrecisionBlendEnable_XENON[0],mHiPrecisionBlendEnable_XENON[1],mHiPrecisionBlendEnable_XENON[2]
+  38 148  # mHiPrecisionBlendEnable_XENON[3],mBlendEnable_PS3[0],mBlendEnable_PS3[1],mBlendEnable_PS3[2]
+  39 152  # mBlendEnable_PS3[3],mBlendFactorF16_PS3
+  # not on wii: its files have no RenderReflect::cBlendStateAttribDefinition
+  # not on ps2: no struct RenderReflect::cBlendStateAttribDefinition in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type RenderReflect::cDepthStencilStateAttribDefinition
+  # A/_0007_0017.cs
+  # read (registered for UC; registry line 499)
+  1 0 mDebugName
+  2 4  # mTwoSidedStencilMode,mZEnable,mZWriteEnable,mStencilEnable
+  3 8 mZFunc
+  4 12 mStencilFunc
+  5 16 mStencilFuncCCW
+  6 20 mStencilRef
+  7 24 mStencilRefCCW
+  8 28 mStencilMask
+  9 32 mStencilMaskCCW
+  10 36 mStencilWriteMask
+  11 40 mStencilWriteMaskCCW
+  12 44 mStencilFailOp
+  13 48 mStencilFailOpCCW
+  14 52 mStencilZFailOp
+  15 56 mStencilZFailOpCCW
+  16 60 mStencilPassOp
+  17 64 mStencilPassOpCCW
+  18 68 mHiStencilFunc
+  19 72 mHiStencilRef
+  20 76  # mHiStencilEnable,mHiStencilWriteEnable
+  # not on wii: its files have no RenderReflect::cDepthStencilStateAttribDefinition
+  # not on ps2: no struct RenderReflect::cDepthStencilStateAttribDefinition in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type RenderReflect::cRasterizerStateAttribDefinition
+  # A/_000A_0017.cs
+  # read (registered for UC; registry line 502)
+  1 0 mDebugName
+  2 4 mCullMode
+  3 8 mDepthBias
+  4 12 mScaleDepthBias
+  5 16  # mScissorTestEnable,mPrimitiveResetEnable
+  6 20 mPrimitiveResetIndex
+  7 24 mScissorData.x
+  8 28 mScissorData.y
+  9 32 mScissorData.width
+  10 36 mScissorData.height
+  11 40 mFillMode_XENON
+  12 44 mMultiSampleAntialiasEnable_XENON
+  13 48 mMultiSampleMask_XENON
+  14 52  # mViewPortEnable_XENON,mHalfPixelOffsetEnable_XENON
+  15 56 mShadeMode_PS3
+  16 60 mFrontFace_PS3
+  # not on wii: its files have no RenderReflect::cRasterizerStateAttribDefinition
+  # not on ps2: no struct RenderReflect::cRasterizerStateAttribDefinition in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type RenderReflect::cRenderTargetAttribDefinition
+  # A/_0020_0017.cs
+  # read (registered for UC; registry line 505)
+  1 0 mNumColorSurfaces
+  2 4 mWidthMode
+  3 8 mWidth
+  4 12 mWidthMultiplier
+  5 16 mHeightMode
+  6 20 mHeight
+  7 24 mHeightMultiplier
+  8 28 mColorTargetMode
+  9 32 mTargetColorFormat
+  10 36 mDepthStencilTargetMode
+  11 40 mTargetDepthStencilFormat
+  12 44 mMultiSampleMode
+  # not on wii: its files have no RenderReflect::cRenderTargetAttribDefinition
+  # not on ps2: no struct RenderReflect::cRenderTargetAttribDefinition in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type RenderReflect::cSamplerStateAttribDefinition
+  # A/_0011_0012.cs
+  # read (registered for UC; registry line 508)
+  1 0 mName
+  2 4 mAddressU
+  3 8 mAddressV
+  4 12 mAddressW
+  5 16 mBias
+  6 20 mMaxLevel
+  7 24 mMinLevel
+  8 28 mMaxAnisotropy
+  9 32 mMagFilter
+  10 36 mMinFilter
+  11 40 mMipFilter
+  12 44 mTrilinearThreshold
+  13 48 mBrilinearSlope
+  14 52 mZFunc
+  15 56 mConv
+  16 60 mDoGammaCorrectionPS3
+  # not on wii: its files have no RenderReflect::cSamplerStateAttribDefinition
+  # not on ps2: no struct RenderReflect::cSamplerStateAttribDefinition in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type RoadblockSetup
+  # A/_0009_0012.cs
+  # read (registered for UC; registry line 475)
+  MinimumWidthRequired 0 mMinimumWidthRequired
+  RequiredVehicles 4 mRequiredVehicles
+  MinimumThreatLevel 8 mMinimumThreatLevel
+  MaximumThreatLevel 12 mMaximumThreatLevel
+  ElementType1 16 mContents[0].mElementType
+  OffsetX1 20 mContents[0].mOffsetX
+  OffsetZ1 24 mContents[0].mOffsetZ
+  Angle1 28 mContents[0].mAngle
+  ElementType2 32 mContents[1].mElementType
+  OffsetX2 36 mContents[1].mOffsetX
+  OffsetZ2 40 mContents[1].mOffsetZ
+  Angle2 44 mContents[1].mAngle
+  ElementType3 48 mContents[2].mElementType
+  OffsetX3 52 mContents[2].mOffsetX
+  OffsetZ3 56 mContents[2].mOffsetZ
+  Angle3 60 mContents[2].mAngle
+  ElementType4 64 mContents[3].mElementType
+  OffsetX4 68 mContents[3].mOffsetX
+  OffsetZ4 72 mContents[3].mOffsetZ
+  Angle4 76 mContents[3].mAngle
+  ElementType5 80 mContents[4].mElementType
+  OffsetX5 84 mContents[4].mOffsetX
+  OffsetZ5 88 mContents[4].mOffsetZ
+  Angle5 92 mContents[4].mAngle
+  ElementType6 96 mContents[5].mElementType
+  OffsetX6 100 mContents[5].mOffsetX
+  OffsetZ6 104 mContents[5].mOffsetZ
+  Angle6 108 mContents[5].mAngle
+  # not on wii: its files have no RoadblockSetup
+  # not on ps2: no struct RoadblockSetup in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type RoadNoiseRecord
+  # A/_001A_0012.cs
+  # read (registered for ALL; registry line 211)
+  Frequency 0 Frequency
+  Amplitude 4 Amplitude
+  MinSpeed 8 MinSpeed
+  MaxSpeed 12 MaxSpeed
+end
+
+type ROLLFX_LOOP
+  # A/_001E_0010.cs
+  # inferred (game list is a static array (_0013/4); PS,UC,W,WB: only these games have its types; fits the SHA-1 order; registry line 1005)
+  single
+  Value 0
+end
+
+type RUMBLEFX
+  # A/_0016_0010.cs
+  # inferred (game list is a static array (_0013/4); PS,UC,W,WB: only these games have its types; fits the SHA-1 order; registry line 1013)
+  single
+  Value 0
+end
+
+type RwacSampleBankAsset
+  # A/_000D_0012.cs
+  # inferred (game list is a static array (_000D/3); UC,W,WB: only these games have its Sound:: types; fits the SHA-1 order; registry line 1017)
+  1 0 mBank
+  2 4 mAsset
+  # not on wii: its files have no RwacSampleBankAsset
+  # not on ps2: no struct RwacSampleBankAsset in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type SCRAPE_SURFACES
+  # A/_0003_0010.cs
+  # inferred (game list is a static array (_0013/4); PS,UC,W,WB: only these games have its types; fits the SHA-1 order; registry line 1021)
+  single
+  Value 0
+end
+
+type Sound::BattleMusicTuning
+  # A/_001D_0012.cs
+  # inferred (game list is a static array (_000D/3); UC,W,WB: only these games have its Sound:: types; fits the SHA-1 order; registry line 1025)
+  TimeAheadHiToMed 0 TimeAhead_HiToMed
+  TimeAheadMedToLo 4 TimeAhead_MedToLo
+  TimeBehindHiToFail 8 TimeBehind_HiToFail
+  TimeAheadFailToHi 12 TimeAhead_FailToHi
+  # not on wii: its files have no Sound::BattleMusicTuning
+  # not on ps2: no struct Sound::BattleMusicTuning in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type Sound::BinarySequence
+  # A/_0013_0012.cs
+  # read (registered for UC,W; registry line 1029)
+  1 0 mbValue
+  2 4 mfDuration
+  # not on wii: its files have no Sound::BinarySequence
+  # not on ps2: no struct Sound::BinarySequence in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type Sound::ChasedownMusicTuning
+  # A/_000E_0012.cs
+  # inferred (game list is a static array (_000D/3); UC,W,WB: only these games have its Sound:: types; fits the SHA-1 order; registry line 1033)
+  StartTimeLimit1 0 StartTimeLimit[0]
+  StartTimeLimit2 4 StartTimeLimit[1]
+  LowTimeLimit1 8 LowTimeLimit[0]
+  LowTimeLimit2 12 LowTimeLimit[1]
+  FailureTimeLimit1 16 FailureTimeLimit[0]
+  FailureTimeLimit2 20 FailureTimeLimit[1]
+  MediumTimeLimit1 24 MediumTimeLimit[0]
+  MediumTimeLimit2 28 MediumTimeLimit[1]
+  HighTimeLimit1 32 HighTimeLimit[0]
+  HighTimeLimit2 36 HighTimeLimit[1]
+  OpponentDamageThreshold1 40 OpponentDamageThreshold[0]
+  OpponentDamageThreshold2 44 OpponentDamageThreshold[1]
+  # not on wii: its files have no Sound::ChasedownMusicTuning
+  # not on ps2: no struct Sound::ChasedownMusicTuning in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type Sound::EMomentChokeGroup
+  # A/_0001_0008.cs
+  # no struct of this name in our schema (database kind: bytes)
+  # inferred (game list is a static array (_000D/3); UC,W,WB: only these games have its Sound:: types; fits the SHA-1 order; registry line 1037)
+  single
+  Value 0
+end
+
+type Sound::EMomentPanning
+  # A/_0007_0008.cs
+  # inferred (game list is a static array (_000D/3); UC,W,WB: only these games have its Sound:: types; fits the SHA-1 order; registry line 1041)
+  single
+  Value 0
+end
+
+type Sound::JittererParams
+  # A/_0005_0012.cs
+  # read (registered for UC; registry line 511)
+  1 0 MidPoint
+  2 2 MidPoint+2
+  3 4 Range
+  4 6 Range+2
+  5 8 MaxDelta
+  6 10 MaxDelta+2
+  7 12 Multiplier
+  8 14 Multiplier+2
+  # not on wii: its files have no Sound::JittererParams
+  # not on ps2: no struct Sound::JittererParams in undercover_ps2.txt, so the paths don't resolve there
+  # note: NFS-VltEd reads the value as eight u16s; the game's struct is four floats (SpeedDebugOpt-enUS.h), so each word sets half of one.
+end
+
+type Sound::PursuitMusicTuning
+  # A/_000B_0012.cs
+  # inferred (game list is a static array (_000D/3); UC,W,WB: only these games have its Sound:: types; fits the SHA-1 order; registry line 1045)
+  PlayerSpeedUR 0 PlayerSpeedUR
+  PursuitUR 4 PursuitUR
+  PursuitDistThresh 8 PursuitDistThresh
+  Evade2OutrunSpeedThresh 12 Evade2OutrunSpeedThresh
+  HighTimeLimit1 16 HighTimeLimit[0]
+  HighTimeLimit2 20 HighTimeLimit[1]
+  LowTimeLimit1 24 LowTimeLimit[0]
+  LowTimeLimit2 28 LowTimeLimit[1]
+  EvadeTimeLimit1 32 EvadeTimeLimit[0]
+  EvadeTimeLimit2 36 EvadeTimeLimit[1]
+  NormalTimeLimit1 40 NormalTimeLimit[0]
+  NormalTimeLimit2 44 NormalTimeLimit[1]
+  OutrunTimeLimit1 48 OutrunTimeLimit[0]
+  OutrunTimeLimit2 52 OutrunTimeLimit[1]
+  SafeTimeLimit1 56 SafeTimeLimit[0]
+  SafeTimeLimit2 60 SafeTimeLimit[1]
+  UnsafeTimeLimit1 64 UnsafeTimeLimit[0]
+  UnsafeTimeLimit2 68 UnsafeTimeLimit[1]
+  StartupDelay 72 StartupDelay
+  MinTimeLost 76 PctMaxVel_Low
+  PctMaxVel_Low 80 MinTimeLost
+  MinTimeLastCrashed 84 MinTimeLastCrashed
+  PctMaxVel_High 88 PctMaxVel_High
+  MaxPursuitDist 92 MaxPursuitDist
+  MinCopCohesion 96 MinCopCohesion
+  # not on wii: its files have no Sound::PursuitMusicTuning
+  # not on ps2: no struct Sound::PursuitMusicTuning in undercover_ps2.txt, so the paths don't resolve there
+  # note: taken in declaration order, MinTimeLost sets PctMaxVel_Low and PctMaxVel_Low sets MinTimeLost, though the names say otherwise. The setters are proxies, so the decompilation can't show which is right.
+end
+
+type Sound::SirenSequence
+  # A/_001F_0012.cs
+  # inferred (game list is a static array (_000D/3); UC,W,WB: only these games have its Sound:: types; fits the SHA-1 order; registry line 1049)
+  Mode 0 mMode
+  Duration 4 mDuration
+  # not on wii: its files have no Sound::SirenSequence
+  # not on ps2: no struct Sound::SirenSequence in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type Sound::SirenTuning
+  # A/_0002_0012.cs
+  # inferred (game list is a static array (_000D/3); UC,W,WB: only these games have its Sound:: types; fits the SHA-1 order; registry line 1053)
+  OpRadiusLimit1 0 OpRadiusLimit[0]
+  OpRadiusLimit2 4 OpRadiusLimit[1]
+  SpeedThresh 8 SpeedThresh
+  HornLimit1 12 HornLimit[0]
+  HornLimit2 16 HornLimit[1]
+  PriorityLimit1 20 PriorityLimit[0]
+  PriorityLimit2 24 PriorityLimit[1]
+  WailLimit1 28 WailLimit[0]
+  WailLimit2 32 WailLimit[1]
+  YelpLimit1 36 YelpLimit[0]
+  YelpLimit2 40 YelpLimit[1]
+  LoopXFadeRange1 44 LoopXFadeRange[0]
+  LoopXFadeRange2 48 LoopXFadeRange[1]
+  14 52 MaxWailing
+  15 56 MaxYelping
+  16 60 MaxPriorityCount
+  17 64 PriorityRadius_Online
+  # not on wii: its files have no Sound::SirenTuning
+  # not on ps2: no struct Sound::SirenTuning in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type SPCHType_1_EventID
+  # A/_001C_0010.cs
+  # read (registered for ALL; registry line 217)
+  single
+  Value 0
+end
+
+type SpecialSliderType
+  # A/_0014_0010.cs
+  # read (registered for PS,UC; registry line 665)
+  single
+  Value 0
+end
+
+type SPLICE_DAMAGE
+  # A/_0012_0010.cs
+  # inferred (game list is a static array (_0013/4); PS,UC,W,WB: only these games have its types; fits the SHA-1 order; registry line 1057)
+  single
+  Value 0
+end
+
+type Splicer_Collision_Core
+  # A/_0006_0010.cs
+  # inferred (game list is a static array (_0013/4); PS,UC,W,WB: only these games have its types; fits the SHA-1 order; registry line 1061)
+  single
+  Value 0
+end
+
+type Splicer_Collision_Object
+  # A/_0019_0010.cs
+  # inferred (game list is a static array (_0013/4); PS,UC,W,WB: only these games have its types; fits the SHA-1 order; registry line 1065)
+  single
+  Value 0
+end
+
+type Splicer_Collision_Surface
+  # A/_0017_0010.cs
+  # inferred (game list is a static array (_0013/4); PS,UC,W,WB: only these games have its types; fits the SHA-1 order; registry line 1069)
+  single
+  Value 0
+end
+
+type stShiftPair
+  # A/_0007_000C.cs
+  # uncertain (game list is a static array (_001A/3); its field sorts between _0011/5 (MW,C,PS,UC,WB) and _0009/4, where the lists are C,UC,W / MW,C,WB / MW,UC,W; two of them with UC; registry line 1085)
+  single
+  Value 0  # RPM,Time
+end
+
+type SURFACE_SFX
+  # A/_0008_0010.cs
+  # inferred (game list is a static array (_0013/4); PS,UC,W,WB: only these games have its types; fits the SHA-1 order; registry line 1089)
+  single
+  Value 0
+end
+
+type SurfaceEffectType
+  # A/_000C_0010.cs
+  # read (registered for ALL; registry line 220)
+  single
+  Value 0
+end
+
+type TargetTimeOverrides
+  # A/_0018_0012.cs
+  # read (registered for PS,UC; registry line 657)
+  1 0 mCar.mClassKey
+  2 4 mCar.mCollectionKey
+  3 8 mCar.mCollectionPtr
+  4 12 mEvent
+  5 16 mMinDelta
+  6 20 mMaxDelta
+  7 24 mShift
+  # not on wii: its files have no TargetTimeOverrides
+  # not on ps2: no struct TargetTimeOverrides in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type TireEffectRecord
+  # A/_0012_0015.cs
+  # read (registered for PS,UC; registry line 61)
+  TireCondition 0 mTireCondition
+  EmitterClass 4 mEmitter.mClassKey
+  EmitterCollection 8 mEmitter.mCollectionKey
+  EmitterLowLodClass 16 mEmitterLowLod.mClassKey
+  EmitterLowLodCollection 20 mEmitterLowLod.mCollectionKey
+  MinSpeed 28 mMinSpeed
+  MaxSpeed 32 mMaxSpeed
+  # not on wii: word TireCondition (mTireCondition): no member mTireCondition in TireEffectRecord
+  # not on wii: word EmitterLowLodClass (mEmitterLowLod.mClassKey): no member mEmitterLowLod in TireEffectRecord
+  # not on wii: word EmitterLowLodCollection (mEmitterLowLod.mCollectionKey): no member mEmitterLowLod in TireEffectRecord
+  # not on wii: 20 bytes there, not 36
+  # not on ps2: word TireCondition (mTireCondition): no member mTireCondition in TireEffectRecord
+  # not on ps2: word EmitterLowLodClass (mEmitterLowLod.mClassKey): no member mEmitterLowLod in TireEffectRecord
+  # not on ps2: word EmitterLowLodCollection (mEmitterLowLod.mCollectionKey): no member mEmitterLowLod in TireEffectRecord
+  # not on ps2: 20 bytes there, not 36
+end
+
+type TireTimeEffectRecord
+  # A/_0016_0012.cs
+  # inferred (game list is a static array (_0013/4); PS,UC,W,WB: only these games have its types; fits the SHA-1 order; registry line 1093)
+  TireCondition 0 mTireCondition
+  EmitterClass 4 mEmitter.mClassKey
+  EmitterCollection 8 mEmitter.mCollectionKey
+  EmitterLowLodClass 16 mEmitterLowLod.mClassKey
+  EmitterLowLodCollection 20 mEmitterLowLod.mCollectionKey
+  MinTime 28 mMinTime
+  MaxTime 32 mMaxTime
+  # not on wii: its files have no TireTimeEffectRecord
+  # not on ps2: no struct TireTimeEffectRecord in undercover_ps2.txt, so the paths don't resolve there
+end
+
+type TrafficPatternRecord
+  # A/_0003_0012.cs
+  # inferred (game list is a static array (_001D/5); MW,C,UC,W,WB: only these games have Csis::Type_car_type; fits the SHA-1 order; registry line 1097)
+  Group 0 Vehicle.mClassKey
+  Name 4 Vehicle.mCollectionKey
+  Density 12 Rate
+  5 16 MaxInstances
+  6 20 Percent
+end
+
+type type_bStringHash
+  # A/_0014_000F.cs
+  # read (registered for ALL; registry line 214)
+  single
+  Value 0 hash
+end
+
+type UpgradeDescription
+  # A/_001C_0012.cs
+  # read (registered for PS,UC; registry line 661)
+  Set 0 mPhysicsUpgradeSet.mClassKey
+  Type 4 mPhysicsUpgradeSet.mCollectionKey
+  3 8 mPhysicsUpgradeSet.mCollectionPtr
+  4 12 mBlendingPower
+  # not on wii: its files have no UpgradeDescription
+  # not on ps2: no struct UpgradeDescription in undercover_ps2.txt, so the paths don't resolve there
+  # note: '3' and '4' are the author's member numbers (1-based), not offsets.
+end
+
+type UpgradeSpecs
+  # A/_0011_001B.cs
+  # inferred (game list is a static array (_001D/5); MW,C,UC,W,WB: only these games have Csis::Type_car_type; fits the SHA-1 order; registry line 1101)
+  Class 0 Item.mClassKey
+  Collection 4 Item.mCollectionKey
+  Level 12 Level
+end
+
+type VinylsAttrib::VinylFinish
+  # A/_000A_0008.cs
+  # read (registered for UC; registry line 478)
+  single
+  Value 0
+end
+
+type VinylsAttrib::VinylLayer
+  # A/_0014_0012.cs
+  # read (registered for UC; registry line 514)
+  1 0 partNameHash
+  2 4  # mirrored,transform.translationX
+  3 8 transform+2  # transform.translationY,transform.rotation,transform.scaleX
+  4 12 transform+6  # transform.scaleY,transform.proportionalScale,transform.shear
+  5 16  # colors[0].swatch,colors[0].saturation,colors[0].brightness,colors[1].swatch
+  6 20  # colors[1].saturation,colors[1].brightness,colors[2].swatch,colors[2].saturation
+  7 24  # colors[2].brightness,colors[3].swatch,colors[3].saturation,colors[3].brightness
+  # not on wii: its files have no VinylsAttrib::VinylLayer
+  # not on ps2: no struct VinylsAttrib::VinylLayer in undercover_ps2.txt, so the paths don't resolve there
+  # note: NFS-VltEd reads the value as seven u32s in hex; past partNameHash each covers parts of several members.
+end
+
+type Attrib::StringKey(MODEL)
+  # A/_0007_0012.cs
+  # read (A/_0007_0014.cs:1293)
+  Collision 0 mHash32
+  Visual 4 mString
+end

@@ -1,0 +1,323 @@
+# Most Wanted PC gameplay Lua API. <kind> <name> <signature>  # description
+# Made by scripts/lua_api/run_others.sh from exes/pc/mw/speed.exe: the functions, methods and objects that
+# LuaBindery::BindToGameCode binds, the E<Name> globals (events that have a Lua binding) and ChangeState. The
+# game opens no Lua standard library.
+# There are no M<Name> globals: the game's global lookup only answers names that start with E.
+# The types of the 142 bindings whose PC binder has no map name come from the GameCube build
+# (nfs-data/mw/gc-release/NFSMWRELEASE.ELF), which binds the same names.
+# The E<Name> argument names are the events' fields in the GameCube build's debug header
+# (exes/gamecube/mw-vanilla/NFSMWRELEASE.h). The Xbox build (exes/xbox/mw-vanilla/default.xbe) binds the same
+# names and events; scripts/lua_api/scan_mw.py compares them (mw_builds.txt in its work folder).
+# Signatures and descriptions of names Pro Street also binds come from data/lua/prostreet_pc.txt and were not
+# checked against this game; the stub notes ("Does nothing on PC.") were. The E<Name> lines are written from
+# this game's own definitions.
+# Types: number, string, boolean, table, instance (GRuntimeInstance userdata), simable (ISimable userdata).
+table Activity  # start and suspend activities
+table Audio  # audio game-flow flags
+table Bin  # career bin queries
+table Camera  # camera control
+table Debug  # debug output
+table Demo
+table Game  # most game functions: races, racers, triggers, cops, drift, UI flow
+table HUD  # HUD messages
+table Math  # RandomInt
+table MiniMap  # minimap
+table Movie
+table NIS  # in-game cinematics (NIS)
+table Platform  # platform queries
+table Table  # Randomize
+table RaceStatus  # the current race (GRaceStatus userdata), set at startup
+function Activity.Run (activity: instance)  # Starts an activity element: a race, a post-race activity, a restart activity.
+function Activity.Suspend (activity: instance)  # Suspends a running activity.
+function Audio.IsCopSpeechPlaying () -> boolean  # True while police radio speech is playing.
+function Audio.SetFlag (flag: string, on: boolean)  # Turns an audio game-flow state on or off.
+function Bin.GetNumChallengesPassed (bin: number) -> number  # Number of challenges passed in a bin.
+function Bin.GetNumRacesWon (bin: number) -> number  # Number of races won in a bin.
+function Camera.SetGenericCamera (string, string)
+function Debug.Assert (condition: boolean, text: string)  # Debug check. Does nothing on PC.
+function Debug.Print (text: string)  # Debug log line. Does nothing on PC.
+function Debug.PrintInstance (instance: instance)  # Logs an instance. Does nothing on PC.
+function Debug.ShowScreenMessage (text: string, seconds: number)  # Fires a debug on-screen message event for the given number of seconds when a player car exists.
+function Demo.SetRaceCompleteForFE (instance)  # Does nothing on PC.
+function Demo.StorePursuitRepForFE (instance)  # Does nothing on PC.
+method RaceStatus:AddAvailableEventToMap (instance, instance)  # Does nothing on PC.
+method RaceStatus:AddCheckpoint (trigger: instance)  # Adds a checkpoint trigger to the race's checkpoint list.
+method RaceStatus:AddRacer (instance)
+method RaceStatus:AddSpeedTrapToMap (instance)  # Does nothing on PC.
+method RaceStatus:AwardBonusTime (seconds: number)  # Adds bonus time to the race clock.
+method RaceStatus:ClearCheckpoints ()  # Empties the race's checkpoint list.
+method RaceStatus:ClearRacers ()  # Removes all racers from the race status.
+method RaceStatus:DisableBarriers ()
+method RaceStatus:EnableBinBarriers ()
+method RaceStatus:EnterSuddenDeath ()  # Puts the race into sudden death.
+method RaceStatus:NotifyScriptWhenLoaded ()  # Asks to be told when the race has loaded.
+method RaceStatus:SetActivelyRacing (on: boolean)  # Marks the race as actively racing or not.
+method RaceStatus:SetHasBeenWon (won: boolean)  # Sets whether the race has been won.
+method RaceStatus:SetIsLoading (loading: boolean)  # Marks the race as loading or not.
+method RaceStatus:SetNextCheckpointPos (trigger: instance)  # Sets the position of the next checkpoint from a trigger.
+method RaceStatus:SetRoaming ()  # Leaves race mode and goes back to free roam.
+method RaceStatus:SetTaskTime (seconds: number)  # Sets the time shown for a timed task, in seconds.
+function Game.AbandonRace ()  # Abandons the current race.
+function Game.AllHumanPlayersDone () -> boolean  # True when every human player has finished.
+function Game.AllRacersDone () -> boolean  # True when every racer has finished.
+function Game.AllowEngageEvents () -> boolean  # True when the player may start an event from a trigger now.
+function Game.AllowEngageSafehouse () -> boolean  # True when the player may enter the safehouse now.
+function Game.AllowMenuGates () -> boolean  # True when menu gate zones may open now.
+function Game.AwardCash (simable: simable, amount: number)  # Gives (or with a negative amount takes) cash to the racer driving this simable.
+function Game.AwardPlayerBounty (bounty: number)  # Gives the player this much bounty.
+function Game.AwardPoints (simable: simable, points: number)  # Gives points to the racer driving this simable.
+function Game.BlowEngine (simable: simable)  # Blows the engine of this simable.
+function Game.CalculateRanking (simable, number) -> number
+function Game.ChallengeComplete (simable: simable)  # Marks the challenge complete for this simable.
+function Game.ChallengeCompleted ()  # Marks the current milestone challenge as completed.
+function Game.ClearAIControl (player: number)  # Gives control of player n's car back to the player (0-based).
+function Game.DetachCameraFromRacer (simable: simable)  # Detaches the camera from this simable.
+function Game.DoSafeHouseIntro (instance)
+function Game.DoSpecialFinalization (activity: instance)  # Runs activity-specific finishing work for this activity.
+function Game.DoSpecialSetup (activity: instance) -> boolean  # Runs activity-specific setup for this activity. Returns true if it did something.
+function Game.DoZoneMenuAction (zone: instance)  # Opens the menu of a menu gate zone element.
+function Game.EnterEngagableTrigger (trigger: instance)  # Shows the "start event" prompt for a trigger or activity element.
+function Game.EnterGateZone (instance, string)
+function Game.EnterPostRaceFlow ()  # Starts the post-race screens.
+function Game.ExitEngagableTrigger (trigger: instance)  # Removes the "start event" prompt of a trigger or activity element.
+function Game.ExitGateZone (instance, string)
+function Game.Fade ()  # Fades the screen.
+function Game.ForceAIControl (player: number)  # Hands player n's car to the AI (0-based).
+function Game.ForcePursuitStart (heatLevel: number)  # Starts a police pursuit at a heat level.
+function Game.GetNumRacers () -> number
+function Game.GetPlayerBounty () -> number  # The player's bounty.
+function Game.GetPlayerElement (player: number) -> simable  # The simable of player n, or nil.
+function Game.GetRacerCharacter (racer: number) -> instance  # The character element of racer n (1-based), or nil.
+function Game.GetRacerElement (racer: number) -> simable  # The simable of racer n (1-based), or nil.
+function Game.GetRacerIndex (simable: simable) -> number  # The 1-based racer index of a simable.
+function Game.GetSimTime () -> number  # Simulation time in seconds.
+function Game.GetSimableSpeedKmh (simable: simable) -> number  # Speed of a simable in km/h.
+function Game.HideRaceOverSummary ()  # Hides the race over summary. Does nothing on PC.
+function Game.HideTriggerIcon (trigger: instance)  # Hides the map icon of a trigger element.
+function Game.InitRacers (instance)
+function Game.IntroduceRival ()  # Does nothing on PC.
+function Game.IsActiveMenuGate (zone: instance) -> boolean  # True when this menu gate element is active.
+function Game.IsActiveSpeedTrap (trap: instance) -> boolean  # True when this speed trap element is active.
+function Game.IsCareerMode () -> boolean  # True in career mode.
+function Game.IsLANGame () -> boolean  # True in a LAN game.
+function Game.IsOnlineGame () -> boolean  # True in an online game.
+function Game.IsRaceCompleted (race: instance) -> boolean  # True when this race element has been completed.
+function Game.IsRaceUnlocked (race: instance) -> boolean  # True when this race element is unlocked.
+function Game.IsSplitScreen () -> boolean  # True in split screen.
+function Game.JackKnife (truck: instance)  # Jack-knifes a traffic truck element.
+function Game.JumpToCarLot ()  # Takes the player to the car lot.
+function Game.JumpToSafeHouse ()  # Takes the player to the safehouse.
+function Game.KillTimer (name: string)  # Stops a named activity timer started with Game.SetTimer.
+function Game.KnockoutRacer (simable: simable)  # Knocks a racer out of the race. Bound to the same function as Game.TotalRacer on PC.
+function Game.NavigatePlayerTo (target: instance, mapItem: instance, value: number, flag: boolean)  # Sets a GPS route: target element, map item element, a number, and a flag.
+function Game.NoNewPursuitsOrCops ()  # Stops new pursuits and cops.
+function Game.NotifyActivityFinsihed (activity: instance)  # Tells the game this activity has finished. The typo is in the game.
+function Game.NotifyCheckpointReached (simable, number)
+function Game.NotifyCountdownDone ()
+function Game.NotifyLapFinished (simable: simable, lap: number)  # Reports that a racer finished a lap: simable, lap number.
+function Game.NotifyRaceFinished (simable: simable)  # Reports that a racer finished the race.
+function Game.NotifyRacePlacement (instance, simable, number)
+function Game.NotifySpeedTrapTriggered (activity: instance, trap: instance, simable: simable, speedKmh: number)  # Reports a speed trap hit: activity, trap element, simable, speed in km/h.
+function Game.PlayTutorial ()  # Plays the activity's tutorial.
+function Game.PlayerIsLocal (simable: simable) -> boolean  # True when this simable is a local player's car.
+function Game.PreventPlayerBeingBusted ()  # Stops the player from being busted.
+function Game.RacerIsHuman (racer: number) -> boolean  # True when racer n is a human player.
+function Game.ReloadWorld (marker: instance)  # Reloads the world around a marker element.
+function Game.ResetCopsForRestart ()  # Resets the police for a restart.
+function Game.ResetTrigger (trigger: instance)  # Re-arms a trigger element so it fires again.
+function Game.RestoreStartPositions ()  # Puts the racers back on their saved start positions.
+function Game.SabotageEngine (simable: simable, amount: number)  # Damages the engine of a simable by an amount.
+function Game.SaveStartPositions ()  # Saves the racers' start positions.
+function Game.SendCharacterStimulus (character: instance, stimulus: string)  # Sends a named stimulus to a character element.
+function Game.SetAllStaging (on: boolean)  # Turns staging on or off for all racers.
+function Game.SetChanceOfRain (chance: number)  # Sets the chance of rain (the activity's ChanceOfRain field).
+function Game.SetCopsEnabled (on: boolean)  # Turns the police on or off.
+function Game.SetCurrentTimeOfDay (instance) -> boolean
+function Game.SetHasRapSheet ()
+function Game.SetPlayerStartPosition (marker: instance)  # Moves the player's start position to a marker element.
+function Game.SetRaceActivity (activity: instance)  # Tells the game which activity is the current race.
+function Game.SetRacerGoal (number, instance)
+function Game.SetRacerLapsLeft (racer: number, laps: number)  # Sets the laps left of racer n (1-based).
+function Game.SetTimer (name: string, seconds: number)  # Starts a named activity timer, in seconds.
+function Game.SetTrafficSpeed (traffic: instance, speed: number, speed2: number)  # Sets traffic speed for a traffic element (two numbers).
+function Game.SetWorldHeat (heat: number)  # Sets the world heat level.
+function Game.ShowGPS (on: boolean)  # Shows or hides the GPS route.
+function Game.ShowLosingPostRaceScreen ()  # Shows the post-race screen for a loss.
+function Game.ShowOnlinePostRaceScreen () -> boolean  # Shows the online post-race screen.
+function Game.ShowPauseMenu ()  # Opens the pause menu.
+function Game.ShowRaceOverSummary ()  # Shows the race over summary.
+function Game.ShowTriggerIcon (trigger: instance)  # Shows the map icon of a trigger element.
+function Game.ShowWinningPostRaceScreen ()  # Shows the post-race screen for a win.
+function Game.SimableAngle (simable: simable, element: instance) -> number  # Angle between a simable and an element.
+function Game.SimableDistance (simable: simable, element: instance) -> number  # Distance between a simable and an element.
+function Game.SkipCareerIntro () -> boolean  # True when the career intro should be skipped.
+function Game.SpawnCharacter (character: instance, spawnPoint: instance, element: instance, value: number)  # Spawns a character: character, spawn point, a third element, a number.
+function Game.SpawnCop (spawnPoint: instance, copType: string, flag1: boolean, flag2: boolean)  # Spawns a police car at a spawn point element: point, cop type, two flags.
+function Game.StartRace (activity: instance)  # Starts the race of this activity.
+function Game.StartRaceTimers ()
+function Game.TotalRacer (simable: simable)  # Wrecks a racer. Bound to the same function as Game.KnockoutRacer on PC.
+function Game.UnlockRace (race: instance)  # Unlocks a race element.
+function Game.UnspawnCharacter (character: instance)  # Removes a spawned character element.
+function Game.WarpPlayerToTrigger (trigger: instance)  # Moves the player to a trigger or marker element.
+function Game.WarpToMarkerWhenRoaming (marker: instance)  # Moves the player to a marker element when back in free roam.
+function HUD.ShowMessage (textKey: string)  # Shows a HUD message by text key, e.g. "HUD_TOO_SLOW".
+function HUD.ShowTimeExtension (seconds: number)  # Shows a time extension of this many seconds.
+method ISimable:IsPlayer () -> boolean  # True when the simable is a player's car.
+function Math.RandomInt (n: number) -> number  # Random whole number from 1 to n.
+function MiniMap.AddEngagedRace (trigger: instance)  # Adds a race trigger to the minimap.
+function Movie.PlayHackE3FMV ()  # Does nothing on PC.
+function NIS.Play (marker: instance, scene: string, sceneType: string, cameraTrack: number, preMovie: string, postMovie: string)  # Plays an NIS: start marker element (or nil), scene name, scene type, camera track, movie before, movie after.
+function Platform.IsNextGen () -> boolean  # True on next-gen platforms. Always returns true on PC.
+function Table.Randomize (t: table)  # Shuffles the array part of a table in place.
+function ChangeState (state) -> nil  # Queues a switch of this activity to the state whose Name is state ("done"); the handler keeps running
+function E911Call ()  # Fires the E911Call event; needs exactly 0 arguments
+function EAIEngineRev (hSimable: number, CarID: number)  # Fires the EAIEngineRev event; needs exactly 2 arguments
+function EAccelerate (AccelerationX: number, AccelerationY: number, AccelerationZ: number, LocalToObject: number, LocalToTrigger: number, PALOnly: number)  # Fires the EAccelerate event; needs exactly 6 arguments
+function EAddSMS (Number: number)  # Fires the EAddSMS event; needs exactly 1 argument
+function EAutoSave ()  # Fires the EAutoSave event; needs exactly 0 arguments
+function EBailPursuit (PlayAudio: number, DisperseCops: number)  # Fires the EBailPursuit event; needs exactly 2 arguments
+function EBecomeAiCar ()  # Fires the EBecomeAiCar event; needs exactly 0 arguments
+function EBecomePlayerCar ()  # Fires the EBecomePlayerCar event; needs exactly 0 arguments
+function EBecomePursuitCar ()  # Fires the EBecomePursuitCar event; needs exactly 0 arguments
+function EBreakerStopCops (EventRadius: number, Duration: number)  # Fires the EBreakerStopCops event; needs exactly 2 arguments
+function ECameraPhotoFinish ()  # Fires the ECameraPhotoFinish event; needs exactly 0 arguments
+function ECameraShake ()  # Fires the ECameraShake event; needs exactly 0 arguments
+function ECellCall (ID: number)  # Fires the ECellCall event; needs exactly 1 argument
+function ECinematicMoment (GenericGroupName: string, GenericTrackName: string, EventRadius: number)  # Fires the ECinematicMoment event; needs exactly 3 arguments
+function EDDaySpeech ()  # Fires the EDDaySpeech event; needs exactly 0 arguments
+function EDamageLights (Name: string)  # Fires the EDamageLights event; needs exactly 1 argument
+function EDebugPrint (DebugMsg: string)  # Fires the EDebugPrint event; needs exactly 1 argument
+function EDebugScreenMessage (DebugMsg: string, Duration: number, X: number, Y: number)  # Fires the EDebugScreenMessage event; needs exactly 4 arguments
+function EDestroyVehicle ()  # Fires the EDestroyVehicle event; needs exactly 0 arguments
+function EDisablePursuitVehicle ()  # Fires the EDisablePursuitVehicle event; needs exactly 0 arguments
+function EDisableTrigger (Trigger: string)  # Fires the EDisableTrigger event; needs exactly 1 argument
+function EDispIntroRace ()  # Fires the EDispIntroRace event; needs exactly 0 arguments
+function EDynamicRegion (On: number)  # Fires the EDynamicRegion event; needs exactly 1 argument
+function EEnableCollisionElement (Enable: number, ColElement: string)  # Fires the EEnableCollisionElement event; needs exactly 2 arguments
+function EEnableModeling (Enable: number)  # Fires the EEnableModeling event; needs exactly 1 argument
+function EEnableTrigger (Trigger: string)  # Fires the EEnableTrigger event; needs exactly 1 argument
+function EEndCarStop (DontRetestInput: number)  # Fires the EEndCarStop event; needs exactly 1 argument
+function EEnterBin (BinIndex: number)  # Fires the EEnterBin event; needs exactly 1 argument
+function EEnterEngagableTrigger (RaceActivity: string)  # Fires the EEnterEngagableTrigger event; needs exactly 1 argument
+function EExitEngagableTrigger (RaceActivity: string)  # Fires the EExitEngagableTrigger event; needs exactly 1 argument
+function EFadeScreenNoLoadingBarOff ()  # Fires the EFadeScreenNoLoadingBarOff event; needs exactly 0 arguments
+function EFadeScreenNoLoadingBarOn ()  # Fires the EFadeScreenNoLoadingBarOn event; needs exactly 0 arguments
+function EFireEventList (EventList: string, Delayed: number, Verbose: number)  # Fires the EFireEventList event; needs exactly 3 arguments
+function EFireRandomTrigger (Trigger1: string, Chance1: number, Trigger2: string, Chance2: number, Trigger3: string, Chance3: number, Trigger4: string, Chance4: number)  # Fires the EFireRandomTrigger event; needs exactly 8 arguments
+function EFireTriggerSpeedCondition (Trigger: string, Speed: number, TriggerIfSpeedBelow: number)  # Fires the EFireTriggerSpeedCondition event; needs exactly 3 arguments
+function EForceCarStop (StopInstantly: number)  # Fires the EForceCarStop event; needs exactly 1 argument
+function EHideObject ()  # Fires the EHideObject event; needs exactly 0 arguments
+function EHidePart (PartName: string)  # Fires the EHidePart event; needs exactly 1 argument
+function EHideRaceOverMessage (Player: string)  # Fires the EHideRaceOverMessage event; needs exactly 1 argument
+function EJumpToStrategyFlow ()  # Fires the EJumpToStrategyFlow event; needs exactly 0 arguments
+function EKillJoint ()  # Fires the EKillJoint event; needs exactly 0 arguments
+function EKillObject ()  # Fires the EKillObject event; needs exactly 0 arguments
+function ELoadLost ()  # Fires the ELoadLost event; needs exactly 0 arguments
+function EMomentStrm (Position: string, Vector: string)  # Fires the EMomentStrm event; needs exactly 2 arguments
+function ENISAeroDynamics (Aerodynamics: number)  # Fires the ENISAeroDynamics event; needs exactly 1 argument
+function ENISBrakelock (Front: number, Rear: number)  # Fires the ENISBrakelock event; needs exactly 2 arguments
+function ENISBurnout (Speed: number)  # Fires the ENISBurnout event; needs exactly 1 argument
+function ENISCarDamageReset ()  # Fires the ENISCarDamageReset event; needs exactly 0 arguments
+function ENISCarPitch (Pitch: number, Time: number)  # Fires the ENISCarPitch event; needs exactly 2 arguments
+function ENISCarRoll (Roll: number, Time: number)  # Fires the ENISCarRoll event; needs exactly 2 arguments
+function ENISCarShake (Shake: number, Rate: number, Ramp: number, Time: number)  # Fires the ENISCarShake event; needs exactly 4 arguments
+function ENISConstraint (Degrees: number)  # Fires the ENISConstraint event; needs exactly 1 argument
+function ENISCopCarDoors (CarDoor: number, CarDoorPos: number, CarDoorAnimLength: number, CarDoorEndPos: number)  # Fires the ENISCopCarDoors event; needs exactly 4 arguments
+function ENISCopLights (Enable: number, LightIntensity: number, LightPosX: number, LightPosY: number, LightPosZ: number)  # Fires the ENISCopLights event; needs exactly 5 arguments
+function ENISDetach (Speed: number)  # Fires the ENISDetach event; needs exactly 1 argument
+function ENISDetail (SceneryDetail: number)  # Fires the ENISDetail event; needs exactly 1 argument
+function ENISFakeFar (FakeFar: number)  # Fires the ENISFakeFar event; needs exactly 1 argument
+function ENISFreeze (FreezeAnimation: number)  # Fires the ENISFreeze event; needs exactly 1 argument
+function ENISHideCharacter (AnimModelName: string, AnimShow: number)  # Fires the ENISHideCharacter event; needs exactly 2 arguments
+function ENISLights (CopLights: number, HeadLights: number)  # Fires the ENISLights event; needs exactly 2 arguments
+function ENISMotionBlur (EnableMotionBlur: number)  # Fires the ENISMotionBlur event; needs exactly 1 argument
+function ENISNeutralRev (On: number, Throttle: number, Speed: number)  # Fires the ENISNeutralRev event; needs exactly 3 arguments
+function ENISNitro (On: number)  # Fires the ENISNitro event; needs exactly 1 argument
+function ENISNukeSmack (PositionX: number, PositionY: number, PositionZ: number, Radius: number)  # Fires the ENISNukeSmack event; needs exactly 4 arguments
+function ENISOverlayMessage (OverlayName: string, OverlayMessage: string)  # Fires the ENISOverlayMessage event; needs exactly 2 arguments
+function ENISPixelate (Enable: number, Width: number, Height: number)  # Fires the ENISPixelate event; needs exactly 3 arguments
+function ENISPlayEffect (Effect: string, PositionX: number, PositionY: number, PositionZ: number, MagnitudeX: number, MagnitudeY: number, MagnitudeZ: number)  # Fires the ENISPlayEffect event; needs exactly 7 arguments
+function ENISRain (RainIntensity: number)  # Fires the ENISRain event; needs exactly 1 argument
+function ENISReattach (RepairDamage: number)  # Fires the ENISReattach event; needs exactly 1 argument
+function ENISRoadNoise (DisableRoadNoise: number)  # Fires the ENISRoadNoise event; needs exactly 1 argument
+function ENISScreenFlash (Length: number)  # Fires the ENISScreenFlash event; needs exactly 1 argument
+function ENISSteering (Degrees: number, BlendWeight: number)  # Fires the ENISSteering event; needs exactly 2 arguments
+function ENISStopEffects ()  # Fires the ENISStopEffects event; needs exactly 0 arguments
+function ENISTimeOfDay (TimeOfDay: number, UpdateRate: number, SunAzimuth: number, TimeOfDayOvercast: number)  # Fires the ENISTimeOfDay event; needs exactly 4 arguments
+function ENISVisualLook (Desaturation: number, ColourBloom: number, BleachFactor: number, UseHDR: number, FacingScale: number, GrazingScale: number)  # Fires the ENISVisualLook event; needs exactly 6 arguments
+function ENISWolrdGeometry (SceneryGroupName: string, Enable: number)  # Fires the ENISWolrdGeometry event; needs exactly 2 arguments
+function ENISWorldAnimTrigger (AnimTreeName: string, TimeSet: number, AnimPause: number, AnimHide: number)  # Fires the ENISWorldAnimTrigger event; needs exactly 4 arguments
+function EPlayEndNIS (SceneName: string)  # Fires the EPlayEndNIS event; needs exactly 1 argument
+function EPlayObjectEffect (Effect: string, Position: string, Intensity: number, ID: string, Tracking: number, AllowHiddenSpawn: number)  # Fires the EPlayObjectEffect event; needs exactly 6 arguments
+function EPlayRaceMovie (MovieName: string)  # Fires the EPlayRaceMovie event; needs exactly 1 argument
+function EPlayRaceNIS (StartMarker: string, SceneName: string, SceneType: string, PlayerIdx: number, CameraTrack: number, PreMovie: string, PostMovie: string)  # Fires the EPlayRaceNIS event; needs exactly 7 arguments
+function EProcessAreaStimulus (SystemName: string, Stimulus: string, QueueMode: string, Radius: number)  # Fires the EProcessAreaStimulus event; needs exactly 4 arguments
+function EProcessStimulus (SystemName: string, Stimulus: string, QueueMode: string)  # Fires the EProcessStimulus event; needs exactly 3 arguments
+function ERandomEventList (EventList: string)  # Fires the ERandomEventList event; needs exactly 1 argument
+function ERandomExplosion (Class: number, Type: number)  # Fires the ERandomExplosion event; needs exactly 2 arguments
+function EReloadGame (RestartRace: string)  # Fires the EReloadGame event; needs exactly 1 argument
+function EReloadHud ()  # Fires the EReloadHud event; needs exactly 0 arguments
+function EReportMilestoneAtStake (MilestonePtr: string)  # Fires the EReportMilestoneAtStake event; needs exactly 1 argument
+function ERequestEventInfoDialog (JoyPort: number, RaceActivity: string)  # Fires the ERequestEventInfoDialog event; needs exactly 2 arguments
+function EResetPlayerCar ()  # Fires the EResetPlayerCar event; needs exactly 0 arguments
+function EResetProps ()  # Fires the EResetProps event; needs exactly 0 arguments
+function EResetSequencer ()  # Fires the EResetSequencer event; needs exactly 0 arguments
+function EResetSystem (SystemName: string)  # Fires the EResetSystem event; needs exactly 1 argument
+function EScheduleEvent (EventList: string, TimeDelay: number)  # Fires the EScheduleEvent event; needs exactly 2 arguments
+function ESetCopAutoSpawnMode (AutoSpawn: number)  # Fires the ESetCopAutoSpawnMode event; needs exactly 1 argument
+function ESetPlayerCarReset (UseTrigger: number, Trigger: string)  # Fires the ESetPlayerCarReset event; needs exactly 2 arguments
+function ESetPlayerCollisionCache ()  # Fires the ESetPlayerCollisionCache event; needs exactly 0 arguments
+function ESetSimRate (Speed: number, TransitionStepSize: number)  # Fires the ESetSimRate event; needs exactly 2 arguments
+function EShockObject (Amount: number)  # Fires the EShockObject event; needs exactly 1 argument
+function EShowMarketingScreen (ShowFor: number)  # Fires the EShowMarketingScreen event; needs exactly 1 argument
+function EShowMessageScreen (ID: number)  # Fires the EShowMessageScreen event; needs exactly 1 argument
+function EShowRaceCountdown ()  # Fires the EShowRaceCountdown event; needs exactly 0 arguments
+function EShowRaceOverMessage (Player: string)  # Fires the EShowRaceOverMessage event; needs exactly 1 argument
+function EShowSMS (ShowMsg: number)  # Fires the EShowSMS event; needs exactly 1 argument
+function EShowTimeExtension (Player: string, TimeToShow: number)  # Fires the EShowTimeExtension event; needs exactly 2 arguments
+function ESndGameState (State: number, TurningOn: boolean)  # Fires the ESndGameState event; needs exactly 2 arguments
+function ESpawnExplosion (Position: string, Speed: number, Radius: number, StartRadius: number, EffectThis: number, DoesDamage: number, IncludePlayers: number, ExcludeVehicles: number, ExcludeSmackables: number)  # Fires the ESpawnExplosion event; needs exactly 9 arguments
+function ESpawnFragment (PartName: string, CollisionName: string, AttributeName: string, JointName: string, AllowDupes: number, InheritVelocity: number, HideParent: number, HidePart: number, AllowHiddenSpawn: number, NoPhysics: number, SimplePhysics: number)  # Fires the ESpawnFragment event; needs exactly 11 arguments
+function EStopObjectEffect (ID: string)  # Fires the EStopObjectEffect event; needs exactly 1 argument
+function EStopObjectEffects ()  # Fires the EStopObjectEffects event; needs exactly 0 arguments
+function ETerminateMusic ()  # Fires the ETerminateMusic event; needs exactly 0 arguments
+function ETips (PlayerIndex: number, TipNum: number)  # Fires the ETips event; needs exactly 2 arguments
+function ETriggerMomentNIS (SceneName: string)  # Fires the ETriggerMomentNIS event; needs exactly 1 argument
+function EWakeObject ()  # Fires the EWakeObject event; needs exactly 0 arguments
+function EWorldMapOn ()  # Fires the EWorldMapOn event; needs exactly 0 arguments
+stdlib print  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib type  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib tostring  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib tonumber  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib pairs  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib ipairs  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib next  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib unpack  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib assert  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib error  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib pcall  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib xpcall  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib setmetatable  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib getmetatable  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib rawget  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib rawset  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib rawequal  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib loadstring  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib loadfile  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib dofile  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib require  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib collectgarbage  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib gcinfo  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib getfenv  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib setfenv  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib newproxy  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib _G  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib _VERSION  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib LUA_PATH  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib string  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib table  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib math  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib io  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib os  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib coroutine  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib debug  # NOT available: the game opens no Lua standard library, so this global is nil

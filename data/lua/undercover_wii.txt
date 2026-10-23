@@ -1,0 +1,664 @@
+# Undercover Wii gameplay Lua API. <kind> <name> <signature>  # description
+# Made by scripts/lua_api/run_others.sh from exes/wii/uc-vanilla/NfsMWEuropeEnDuRelease.elf: the functions,
+# methods and objects that LuaBindery::BindToGameCode and BindCustomMethods bind (SPrintf, PrintValue,
+# GetMetatable as bare globals), the M<Name> globals (messages the global lookup sends), the E<Name> globals
+# (events marked callable from Lua) and ChangeState. The game opens no Lua standard library.
+# Signatures and descriptions of names Pro Street also binds come from data/lua/prostreet_pc.txt and were not
+# checked against this game; the stub notes ("Does nothing on Wii.") were. The E<Name> and M<Name> lines are
+# written from this game's own definitions.
+# Types: number, string, boolean, table, instance (GRuntimeInstance userdata), simable (ISimable userdata),
+# racerinfo (GRacerInfo userdata), userdata (another game object), any (a value of any type), ignored (a
+# message argument the game never reads). "..." takes any arguments.
+table Activity  # start and suspend activities
+table Arena
+table Audio  # audio game-flow flags
+table Camera  # camera control
+table ChaseDown
+table Debug  # debug output
+table DriverJob
+table Game  # most game functions: races, racers, triggers, cops, drift, UI flow
+table HUD  # HUD messages
+table MiniMap  # minimap
+table Music  # music control
+table NIS  # in-game cinematics (NIS)
+table Racer  # per-racer control by index
+table Render  # render effects
+table Speech  # race speech
+table Table  # Randomize
+table Career  # the career (GCareer userdata), set at startup
+table RaceStatus  # the current race (GRaceStatus userdata), set at startup
+function GetMetatable (any) -> table  # Returns the metatable of its last argument (lua_getmetatable).
+function PrintValue (...)
+function SPrintf (key: string, ...) -> string  # Returns the localized string named key (FEHashUpper, GetLocalizedString) formatted with up to five more arguments, at most 127 characters.
+function Activity.Run (activity: instance)  # Starts an activity element: a race, a post-race activity, a restart activity.
+function Arena.ActivateDropOff (number, number) -> instance
+function Arena.AddDropOff (instance)
+function Arena.AddMoneyBag (string) -> number
+function Arena.AddSpawn (instance)
+function Arena.AddStyleScore ()  # Does nothing on Wii.
+function Arena.ArrangeTeams (number)
+function Arena.ChooseDropOff (number) -> number
+function Arena.CleanupHUD ()
+function Arena.ClearAllGPSTargets ()
+function Arena.ClearCashCarried (number)
+function Arena.ClearCopsGPS ()
+function Arena.ClearCopsRobbersScore ()
+function Arena.ClearHeistScores ()
+function Arena.ClearRobbersGPS ()
+function Arena.DetermineHeistWinner ()
+function Arena.EnableCarCollisions (number, boolean)
+function Arena.FindAccessibleSegments ()
+function Arena.GetCashCarried (number) -> number
+function Arena.GetCashDropped (number) -> number
+function Arena.GetCopScore () -> number
+function Arena.GetRobberScore () -> number
+function Arena.GetTimeLeft () -> number
+function Arena.GiveBagToPlayer (number, number)
+function Arena.HideDropBeam ()
+function Arena.IncCashCarried (number, number)
+function Arena.IncCashDropped (number, number)
+function Arena.IncCopScore (number)
+function Arena.IncNumberBusts (number)
+function Arena.IncNumberDrops (number)
+function Arena.IncRobberScore (number)
+function Arena.IncTotalPoints (number, number)
+function Arena.MessageCops (string, number, string)
+function Arena.MessageOpponents (number, string, number, string)
+function Arena.MessageRobbers (string, number, string)
+function Arena.MessageTeamMates (number, string, number, string)
+function Arena.PlayBusted ()
+function Arena.PlayDropCash ()
+function Arena.PlayGainCash ()
+function Arena.PlayGameOver ()
+function Arena.PlayRoundOver ()
+function Arena.ReloadHUD ()
+function Arena.ResetMoneyBag (number)
+function Arena.RespawnPlayer (number)
+function Arena.Restart ()
+function Arena.ScriptGotMoneyBag (instance, number, number, boolean)
+function Arena.ScriptMadeDropOff (instance, number, number)
+function Arena.SetAllStaging (boolean)
+function Arena.SetCopsGPS (number)
+function Arena.SetDamageRate (number, number)
+function Arena.SetFixedBagSpawn (instance)
+function Arena.SetGPSNone (number)
+function Arena.SetGPSStatic (number, instance)
+function Arena.SetGPSTrack (number, number)
+function Arena.SetRobbersGPS (instance)
+function Arena.ShowDropBeam (instance)
+function Arena.ShowLoadingScreen ()
+function Arena.ShowPostRaceScreen ()
+function Arena.ShowPostRoundScreen ()
+function Arena.ShuffleSpawns ()
+function Arena.StartRound ()
+function Arena.TeleportPlayerVehicles ()
+function Audio.SetFlag (flag: string, on: boolean)  # Turns an audio game-flow state on or off.
+function Camera.ActivateDefectorCamera () -> boolean
+function Camera.SetGenericCamera (camera: string, index: number)  # Switches to a named generic camera.
+function Camera.SetSmoothExit (on: boolean)  # Makes the next camera change blend out instead of cutting.
+function ChaseDown.ActivateOpponent (number, number, number)
+function ChaseDown.AwardCashPrize ()
+function ChaseDown.Destroyed (number) -> boolean
+function ChaseDown.SetIndex (number)
+function ChaseDown.SetOpponent (number, number)
+function ChaseDown.WarpNearPlayer (number, number, number)
+function Debug.Assert (condition: boolean, text: string)  # Debug check. Does nothing on Wii.
+function Debug.ExecuteDebugScript (vars: table)  # Runs the debug script. Does nothing on Wii.
+function Debug.IsDebugScriptActive () -> boolean  # True when a debug script is loaded. Always returns false on Wii.
+function Debug.Print (text: string)  # Debug log line. Does nothing on Wii.
+function Debug.ShowScreenMessage (text: string, seconds: number)  # Fires a debug on-screen message event for the given number of seconds when a player car exists.
+function DriverJob.AllowPursuitToEnd (boolean)
+function DriverJob.CarmenPostNIS ()
+function DriverJob.CarmenPreNIS ()
+function DriverJob.ChaseConversation (boolean, boolean)
+function DriverJob.CreateIcon (instance)
+function DriverJob.FugitiveMessage (number)
+function DriverJob.GetCarmenStage () -> number
+function DriverJob.HideIcon ()
+function DriverJob.IsCarmenOK () -> boolean
+function DriverJob.IsChopShop () -> boolean
+function DriverJob.PlayDamagePIP ()
+function DriverJob.PlayPIP (number, boolean)
+function DriverJob.PlayPursuitPIP (boolean)
+function DriverJob.ReleaseSpawnedSmackables ()
+function DriverJob.Set05DelivAllowFinish (boolean)
+function DriverJob.SetCarmenStage (number)
+function DriverJob.SpawnFugitiveCops (string)
+function DriverJob.SpawnRandomSmackables (instance, number, number)
+method Career:AbortBossFlow ()
+method Career:SetPendingFEMovie (string)
+method RaceStatus:AddAvailableEventToMap (instance, instance)  # Does nothing on Wii.
+method RaceStatus:AddCheckpoint (trigger: instance)  # Adds a checkpoint trigger to the race's checkpoint list.
+method RaceStatus:AddSpeedTrapToMap (instance)  # Does nothing on Wii.
+method RaceStatus:AwardBonusTime (seconds: number)  # Adds bonus time to the race clock.
+method RaceStatus:ClearCheckpoints ()  # Empties the race's checkpoint list.
+method RaceStatus:ClearRacers ()  # Removes all racers from the race status.
+method RaceStatus:ClearTimes ()
+method RaceStatus:DisableBarriers ()
+method RaceStatus:EnableBarriers (boolean)
+method RaceStatus:EnableBinBarriers ()
+method RaceStatus:EndStopAll ()  # Ends the forced stop of all racers.
+method RaceStatus:FinalizeRaceStats ()
+method RaceStatus:GetNumRacers () -> number  # Number of racers in the race.
+method RaceStatus:GetRaceTimeElapsed () -> number
+method RaceStatus:GetRacerInfo (simable: simable) -> racerinfo  # The racer info of a simable, or nil if it is not a racer.
+method RaceStatus:InitRacers (instance)
+method RaceStatus:IsCareerMode () -> boolean
+method RaceStatus:IsTimedCircuit () -> boolean
+method RaceStatus:NotifyScriptWhenLoaded ()  # Asks to be told when the race has loaded.
+method RaceStatus:ResetDamage ()
+method RaceStatus:ResetMasterTimer ()
+method RaceStatus:ResetRaceData ()  # Clears the per-race data.
+method RaceStatus:SetActivelyRacing (on: boolean)  # Marks the race as actively racing or not.
+method RaceStatus:SetDamageLimit (number)
+method RaceStatus:SetHasBeenWon (won: boolean)  # Sets whether the race has been won.
+method RaceStatus:SetInPostRaceFlow (boolean)
+method RaceStatus:SetRoaming ()  # Leaves race mode and goes back to free roam.
+method RaceStatus:SetTaskTime (seconds: number)  # Sets the time shown for a timed task, in seconds.
+method RaceStatus:SetTrafficDensity (number)
+method RaceStatus:SetWaitForMusicTransition ()  # Makes the race wait for the music transition before starting.
+method RaceStatus:SetWantedEventActiveMilestone (string)
+method RaceStatus:SetupCopsRobbers (instance)
+method RaceStatus:SetupHeist (instance)
+method RaceStatus:StopMasterTimer ()  # Stops the race clock.
+method GRacerInfo:AppendDamageRatio (number)
+method GRacerInfo:Finish (number)
+method GRacerInfo:GetDamageRatio () -> number
+method GRacerInfo:SetName (string)
+function Game.AbandonRace ()  # Abandons the current race.
+function Game.ActivateCheckpoint (instance)
+function Game.ActivateDriftCamera ()  # Switches to the drift camera. Does nothing on Wii.
+function Game.ActivateDriftMode ()  # Turns on drift scoring. Does nothing on Wii.
+function Game.AllCopsFlee ()
+function Game.AllHumanPlayersDone () -> boolean  # True when every human player has finished.
+function Game.AllRacersDone () -> boolean  # True when every racer has finished.
+function Game.AllTargetsDestroyed () -> boolean
+function Game.AllowEngageEvents () -> boolean  # True when the player may start an event from a trigger now.
+function Game.AllowEngageSafehouse () -> boolean  # True when the player may enter the safehouse now.
+function Game.AllowFinishLine (number) -> boolean
+function Game.AllowMenuGates () -> boolean  # True when menu gate zones may open now.
+function Game.AllowNewPursuitsOrCops ()
+function Game.AwardCash (simable: simable, amount: number)  # Gives (or with a negative amount takes) cash to the racer driving this simable.
+function Game.AwardPlayerBounty (bounty: number)  # Gives the player this much bounty.
+function Game.AwardPoints (simable: simable, points: number)  # Gives points to the racer driving this simable.
+function Game.AwardWinner ()
+function Game.CalculateRanking (simable, number) -> number
+function Game.CanyonRaceClear ()  # Does nothing on Wii.
+function Game.CanyonRaceSetup (instance, boolean)  # Does nothing on Wii.
+function Game.CanyonRaceState () -> number  # Always returns 0 on Wii.
+function Game.CanyonRaceUpdate (number)  # Does nothing on Wii.
+function Game.CareerPostRaceFlow ()  # Runs the career post-race flow.
+function Game.ChallengeComplete (simable: simable)  # Marks the challenge complete for this simable.
+function Game.CleanUpMidNIS ()
+function Game.ClearAIControl (player: number)  # Gives control of player n's car back to the player (0-based).
+function Game.ClearPassiveCollisions ()
+function Game.ClearRacerHitPoints ()
+function Game.CreateDefectorCar (instance, boolean)  # Does nothing on Wii.
+function Game.DeactivateCheckpoint (instance)
+function Game.DeactivateDriftMode ()  # Turns off drift scoring. Does nothing on Wii.
+function Game.DestroyRacer (number)
+function Game.DistanceDifference (number, number, boolean) -> boolean
+function Game.DoPostBossFlow (instance)
+function Game.DoSpecialFinalization (instance, instance)
+function Game.DoSpecialSetup (activity: instance) -> boolean  # Runs activity-specific setup for this activity. Returns true if it did something.
+function Game.DoSpecialSpawns (instance)
+function Game.DoZoneMenuAction (zone: instance)  # Opens the menu of a menu gate zone element.
+function Game.DriftFinalizeScore ()  # Does nothing on Wii.
+function Game.DriftResetScore ()  # Resets the drift scores. Does nothing on Wii.
+function Game.DriftSectionEntered (number, number)  # Does nothing on Wii.
+function Game.DriftSectionEntryEnded (number)  # Does nothing on Wii.
+function Game.DriftSectionExited (number)  # Does nothing on Wii.
+function Game.DriverJobCheckpoint (instance) -> boolean
+function Game.EnableTrigger (instance, boolean, boolean)
+function Game.EnableTriggerIcon (instance, boolean)
+function Game.EnterEngagableTrigger (trigger: instance)  # Shows the "start event" prompt for a trigger or activity element.
+function Game.EnterGateZone (zone: instance, zoneType: string, areaName: string)  # Enters a menu gate zone: zone element, zone type, area name.
+function Game.EnterHighway ()
+function Game.EnterPostRaceFlow ()  # Starts the post-race screens.
+function Game.EnterRaceActivity ()  # Enters race activity mode. Does nothing on Wii.
+function Game.EnterTakedown (instance)
+function Game.ExitEngagableTrigger (trigger: instance)  # Removes the "start event" prompt of a trigger or activity element.
+function Game.ExitGateZone (zone: instance, zoneType: string, areaName: string)  # Leaves a menu gate zone: zone element, zone type, area name.
+function Game.ExitHighway (number)
+function Game.ExitRaceActivity ()  # Leaves race activity mode. Does nothing on Wii.
+function Game.Fade ()  # Fades the screen. Does nothing on Wii.
+function Game.FadeOff ()
+function Game.FadeToBlack ()
+function Game.FinishCrewDefectionFlow (instance, boolean, instance, boolean)  # Does nothing on Wii.
+function Game.FireTriggerForPlayer (instance)
+function Game.FocusOnCar (number)
+function Game.ForceAIAction (string, simable)
+function Game.ForceAIControl (player: number)  # Hands player n's car to the AI (0-based).
+function Game.ForcePursuitStart (number, number)
+function Game.GenerateTrackMap ()  # Does nothing on Wii.
+function Game.GetCopInGetaway () -> number
+function Game.GetDynaIntroMovie (instance) -> string
+function Game.GetDynaIntroNIS (instance) -> string
+function Game.GetDynaOutroMovie (instance) -> string  # Always returns 0 on Wii.
+function Game.GetDynaOutroNIS (instance) -> string  # Always returns 0 on Wii.
+function Game.GetGetawayDistance () -> number
+function Game.GetLocalizedString (string) -> string
+function Game.GetNextCheckpoint () -> userdata
+function Game.GetRacerCharacter (racer: number) -> instance  # The character element of racer n (1-based), or nil.
+function Game.GetRacerElement (racer: number) -> simable  # The simable of racer n (1-based), or nil.
+function Game.GetRacerInGetaway () -> number
+function Game.GetRacerIndex (simable: simable) -> number  # The 1-based racer index of a simable.
+function Game.GetRanking (number) -> number
+function Game.GetSimTime () -> number  # Simulation time in seconds.
+function Game.GetSimableSpeedKmh (simable: simable) -> number  # Speed of a simable in km/h.
+function Game.HideLoadingScreen (id: number)  # Hides the loading screen. The number is a reason or id.
+function Game.HideRaceOverSummary ()  # Hides the race over summary. Does nothing on Wii.
+function Game.HideTriggerIcon (trigger: instance)  # Hides the map icon of a trigger element.
+function Game.HumanPlayersLeft () -> number
+function Game.IsActiveMenuGate (zone: instance) -> boolean  # True when this menu gate element is active.
+function Game.IsActiveSpeedTrap (trap: instance) -> boolean  # True when this speed trap element is active.
+function Game.IsCrewVehicleLoaded ()  # Does nothing on Wii.
+function Game.IsDriverJob () -> boolean
+function Game.IsEncounterRace () -> boolean
+function Game.IsPlayerPursuitActive () -> boolean
+function Game.IsRaceContinued () -> boolean  # Always returns false on Wii.
+function Game.IsRaceUnlocked (race: instance) -> boolean  # True when this race element is unlocked.
+function Game.IsSplitScreen () -> boolean  # True in split screen.
+function Game.IsTargetRaceUnlocked (trigger: instance) -> boolean  # True when the race a trigger element leads to is unlocked.
+function Game.KillTimer (name: string)  # Stops a named activity timer started with Game.SetTimer.
+function Game.KnockoutRaceSetup ()
+function Game.KnockoutRaceUpdate (number)
+function Game.LocaliseAmount (number) -> string
+function Game.MaybeNavPlayer ()
+function Game.MaybeStartPursuit ()
+function Game.MoveRacerToMarker (number, instance)
+function Game.NavigatePlayerTo (target: instance, mapItem: instance, value: number, flag: boolean)  # Sets a GPS route: target element, map item element, a number, and a flag.
+function Game.NoNewPursuitsOrCops ()  # Stops new pursuits and cops.
+function Game.NotifyCheckpointReached (simable, number)
+function Game.NotifyCountdownDone ()
+function Game.NotifyLapFinished (simable: simable, lap: number)  # Reports that a racer finished a lap: simable, lap number.
+function Game.NotifyMilestoneProgress (string, number)
+function Game.NotifyRaceFinished (simable: simable)  # Reports that a racer finished the race.
+function Game.NotifySpeedTrapTriggered (activity: instance, trap: instance, simable: simable, speedKmh: number)  # Reports a speed trap hit: activity, trap element, simable, speed in km/h.
+function Game.NotifyWantedEventProgress (instance, boolean)
+function Game.OutrunWinnerCheck ()
+function Game.OutrunWinnerSet (number)
+function Game.PlaceCrewVehicle (instance) -> boolean  # Always returns false on Wii.
+function Game.PlayBustedSFX ()  # Does nothing on Wii.
+function Game.PlayEscapedSFX ()  # Does nothing on Wii.
+function Game.PlayEvadedSFX ()  # Does nothing on Wii.
+function Game.PlayFinishCamera (string, string, boolean)
+function Game.PlayFirstContact ()
+function Game.PlayIntroInstruction (instance)
+function Game.PlayTotalledSFX ()  # Does nothing on Wii.
+function Game.PlayTutorial ()  # Plays the activity's tutorial.
+function Game.PlayerHudExist () -> boolean
+function Game.PlayerIsLocal (simable: simable) -> boolean  # True when this simable is a local player's car.
+function Game.PlayerWasTooSlowInDriftRace () -> boolean  # True when the player was too slow in a drift race. Always returns false on Wii.
+function Game.PlayerWentOverboardInCanyonDuel () -> boolean  # Always returns false on Wii.
+function Game.PlayerWentOverboardInCheckPointRace () -> boolean  # Always returns false on Wii.
+function Game.PlayerWentOverboardInDriftRace () -> boolean  # Always returns false on Wii.
+function Game.PlayerWon () -> number
+function Game.PrecalculateDriftOpponentScores ()  # Precomputes the drift scores of opponents. Does nothing on Wii.
+function Game.PreventPlayerBeingBusted ()  # Stops the player from being busted.
+function Game.QueueMidNIS ()
+function Game.RaceDone ()
+function Game.RaceOverCarBehaviour ()
+function Game.RacerIsHuman (racer: number) -> boolean  # True when racer n is a human player.
+function Game.RacerSetProximity (number, number)
+function Game.RacerStartFlee (number, boolean)
+function Game.ReloadWorld (marker: instance)  # Reloads the world around a marker element.
+function Game.RemoveDJCar ()
+function Game.ResetCamera ()
+function Game.ResetCops ()
+function Game.ResetCopsForRestart ()  # Resets the police for a restart.
+function Game.ResetDeploymentCount ()
+function Game.ResetHighway (number)
+function Game.ResetInTheZone ()
+function Game.ResetPlayer ()
+function Game.ResetPlayerDamage ()
+function Game.ResetTrigger (trigger: instance)  # Re-arms a trigger element so it fires again.
+function Game.RestorePlayerPosition ()
+function Game.RestoreStartPositions ()  # Puts the racers back on their saved start positions.
+function Game.SavePlayerPosition ()
+function Game.SaveStartPositions ()  # Saves the racers' start positions.
+function Game.SetAllStaging (on: boolean)  # Turns staging on or off for all racers.
+function Game.SetBusted ()
+function Game.SetCareerContext ()
+function Game.SetChanceOfRain (chance: number)  # Sets the chance of rain (the activity's ChanceOfRain field).
+function Game.SetCopsStickAroundFlag (boolean)
+function Game.SetCurrentTimeOfDay (instance) -> boolean
+function Game.SetHighThreat (number)
+function Game.SetInstructionFlasher (string)
+function Game.SetLowThreat (number)
+function Game.SetMaxScoreForSection (section: number, score: number)  # Sets the maximum drift score of a section: section index, score. Does nothing on Wii.
+function Game.SetPlayerStartPosition (instance, userdata)
+function Game.SetPlayersStartPosition (instance)
+function Game.SetRaceActivity (activity: instance)  # Tells the game which activity is the current race.
+function Game.SetRaceEnded ()
+function Game.SetRacerBusted ()
+function Game.SetRacerEscaped ()
+function Game.SetRacerEvaded ()
+function Game.SetRacerGoal (number, instance)
+function Game.SetRacerHitPoints (number, number)
+function Game.SetRacerLapsLeft (racer: number, laps: number)  # Sets the laps left of racer n (1-based).
+function Game.SetRacerTotalled ()
+function Game.SetStaging (number, boolean)
+function Game.SetThreatRange (number, number)
+function Game.SetTimer (name: string, seconds: number)  # Starts a named activity timer, in seconds.
+function Game.SetTriggerOnGround (instance)
+function Game.SetWantedEventTarget (number)
+function Game.SetWantedEventWin (boolean)
+function Game.SetupCrewDefectionTrigger (instance)  # Does nothing on Wii.
+function Game.SetupGetaway (instance, instance, number)
+function Game.ShouldDoSpecialDefectionFlow () -> boolean  # Always returns false on Wii.
+function Game.ShouldHideSpeedTrap (trap: instance) -> boolean  # True when a speed trap element's icon should be hidden after it is hit.
+function Game.ShowAcquisitionScreen ()
+function Game.ShowCoutdownToPlayersWhoHaveNotFinished (string, number, string)
+function Game.ShowGPS (on: boolean)  # Shows or hides the GPS route.
+function Game.ShowLosingPostRaceScreen ()  # Shows the post-race screen for a loss.
+function Game.ShowMessage (number, string, number, string)
+function Game.ShowMessageAll (string, number, string)
+function Game.ShowOverlay (number, string)
+function Game.ShowTriggerIcon (trigger: instance)  # Shows the map icon of a trigger element.
+function Game.ShowWERequirement (string, number)
+function Game.ShowWESpeedRequirement (string, number)
+function Game.ShowWETimeRequirement (string, number)
+function Game.SpawnCharacter (character: instance, spawnPoint: instance, element: instance, value: number)  # Spawns a character: character, spawn point, a third element, a number.
+function Game.SpawnCop (spawnPoint: instance, copType: string, flag1: boolean, flag2: boolean)  # Spawns a police car at a spawn point element: point, cop type, two flags.
+function Game.SpawnCopNearRacer (number, number, boolean)
+function Game.SpawnIcons ()  # Spawns the map icons.
+function Game.SpawnPatrolCar ()
+function Game.StartRace (activity: instance)  # Starts the race of this activity.
+function Game.StartRaceTimers ()
+function Game.SwapCheckpoints (instance, instance)
+function Game.TargetDestroyed (instance)
+function Game.TeleportCarForwards (number, number)
+function Game.TeleportCharacter (instance, instance)
+function Game.TeleportRacerTo (instance, number)
+function Game.TriggerCrewIndication (number, string, string)  # Does nothing on Wii.
+function Game.UnlockNikki ()  # Does nothing on Wii.
+function Game.UnspawnRacer (number)
+function Game.UpateBossState ()
+function Game.UpdateHideFlasher (number)
+function Game.UpdateKnockOutOverlays ()
+function Game.UseSectionsInDrift (on: boolean)  # Turns drift sections on or off. Does nothing on Wii.
+function Game.WarpPlayerAndWingmanToMarker (marker: instance, flag: boolean)  # Moves the player (and wingman) to a marker element.
+function Game.WarpPlayerToTrigger (trigger: instance)  # Moves the player to a trigger or marker element.
+function Game.WarpToNearestNavNode (simable, boolean)
+function Game.WhiteFlash ()
+function HUD.ShowMessage (textKey: string)  # Shows a HUD message by text key, e.g. "HUD_TOO_SLOW".
+function HUD.ShowTimeExtension (seconds: number)  # Shows a time extension of this many seconds.
+method ISimable:IsPlayer () -> boolean  # True when the simable is a player's car.
+function MiniMap.AddEngagedRace (trigger: instance)  # Adds a race trigger to the minimap.
+function Music.ForceLicensedMusic ()  # Forces the licensed music.
+function Music.ForcePursuitMusic ()  # Forces the pursuit music.
+function Music.RequestTransition ()  # Asks for a music transition.
+function Music.SetWaitState (waiting: boolean)  # Sets the music wait state.
+function NIS.FreezeCamera (frozen: boolean)  # Freezes or unfreezes the camera.
+function NIS.Play (marker: instance, scene: string, sceneType: string, cameraTrack: number, preMovie: string, postMovie: string)  # Plays an NIS: start marker element (or nil), scene name, scene type, camera track, movie before, movie after.
+function NIS.WaitForPIP () -> boolean  # True while waiting for a picture-in-picture NIS.
+function Racer.EndForceStop (racer: number)  # Ends the forced stop of racer n.
+function Racer.ForceCoast (racer: number)  # Makes racer n coast.
+function Racer.ForceStop (number)
+function Render.EnableCrashVisualTreatment (on: boolean)  # Turns the crash visual effect on or off.
+function Speech.AbandonRace ()  # Plays the abandon race speech. Does nothing on Wii.
+function Speech.RaceOver ()  # Plays the race over speech.
+function Table.Randomize (t: table)  # Shuffles the array part of a table in place.
+function ChangeState (state) -> nil  # Queues a switch of this activity to the state whose Name is state ("done"); the handler keeps running
+function E911Call ()  # Fires the E911Call event; needs exactly 0 arguments
+function EAccelerate (AccelerationX: number, AccelerationY: number, AccelerationZ: number, LocalToObject: number, LocalToTrigger: number)  # Fires the EAccelerate event; needs exactly 5 arguments
+function EAddSMS (Number: number)  # Fires the EAddSMS event; needs exactly 1 argument
+function EAutoSave ()  # Fires the EAutoSave event; needs exactly 0 arguments
+function EBailPursuit (PlayAudio: number, DisperseCops: number)  # Fires the EBailPursuit event; needs exactly 2 arguments
+function EBecomeAiCar (DisableObjectCollisions: number)  # Fires the EBecomeAiCar event; needs exactly 1 argument
+function EBecomePlayerCar ()  # Fires the EBecomePlayerCar event; needs exactly 0 arguments
+function EBecomePursuitCar ()  # Fires the EBecomePursuitCar event; needs exactly 0 arguments
+function EBreakerStopCops (EventRadius: number, Duration: number, Offset: number)  # Fires the EBreakerStopCops event; needs exactly 3 arguments
+function ECameraKillICE ()  # Fires the ECameraKillICE event; needs exactly 0 arguments
+function ECameraPhotoFinish ()  # Fires the ECameraPhotoFinish event; needs exactly 0 arguments
+function ECameraShake ()  # Fires the ECameraShake event; needs exactly 0 arguments
+function ECellCall (ID: number)  # Fires the ECellCall event; needs exactly 1 argument
+function ECinematicMoment (GenericGroupName: string, GenericTrackIndex: number)  # Fires the ECinematicMoment event; needs exactly 2 arguments
+function EDamageLights (Name: string)  # Fires the EDamageLights event; needs exactly 1 argument
+function EDebugPrint (DebugMsg: string)  # Fires the EDebugPrint event; needs exactly 1 argument
+function EDebugScreenMessage (DebugMsg: string, Duration: number, X: number, Y: number)  # Fires the EDebugScreenMessage event; needs exactly 4 arguments
+function EDestroyVehicle ()  # Fires the EDestroyVehicle event; needs exactly 0 arguments
+function EDisablePursuitVehicle ()  # Fires the EDisablePursuitVehicle event; needs exactly 0 arguments
+function EDismissAIFromRace (OffsetMeters: number)  # Fires the EDismissAIFromRace event; needs exactly 1 argument
+function EDynamicRegion (On: number)  # Fires the EDynamicRegion event; needs exactly 1 argument
+function EEnableCollisionGeometry (Name: string, Enable: number)  # Fires the EEnableCollisionGeometry event; needs exactly 2 arguments
+function EEnableModeling (Enable: number)  # Fires the EEnableModeling event; needs exactly 1 argument
+function EEndCarStop (DontRetestInput: number)  # Fires the EEndCarStop event; needs exactly 1 argument
+function EEnterBin (BinIndex: number)  # Fires the EEnterBin event; needs exactly 1 argument
+function EExampleEvent (String: string, Crc32: string, Float: number, Int: number, Unsigned: number, UpperCase: string, LowerCase: string, IntSlider: number, FloatSlider: number, Boolean: number, List: string, FixedList: string, Attributes: string)  # Fires the EExampleEvent event; needs exactly 13 arguments
+function EFireEventTag (Tag: string, Delayed: number, AllSystems: number)  # Fires the EFireEventTag event; needs exactly 3 arguments
+function EForceCarStop (StopInstantly: number)  # Fires the EForceCarStop event; needs exactly 1 argument
+function EHideObject ()  # Fires the EHideObject event; needs exactly 0 arguments
+function EHidePart (PartName: string)  # Fires the EHidePart event; needs exactly 1 argument
+function EHudFadeToBlackOff (PlayerIndex: number)  # Fires the EHudFadeToBlackOff event; needs exactly 1 argument
+function EHudFadeToBlackOn (PlayerIndex: number)  # Fires the EHudFadeToBlackOn event; needs exactly 1 argument
+function EICECarAttach ()  # Fires the EICECarAttach event; needs exactly 0 arguments
+function EJumpToStrategyFlow ()  # Fires the EJumpToStrategyFlow event; needs exactly 0 arguments
+function EKillJoint ()  # Fires the EKillJoint event; needs exactly 0 arguments
+function EKillObject ()  # Fires the EKillObject event; needs exactly 0 arguments
+function ELoadLost ()  # Fires the ELoadLost event; needs exactly 0 arguments
+function ELoadMinimapResources ()  # Fires the ELoadMinimapResources event; needs exactly 0 arguments
+function EMomentStrm (AttribStrm: string, AttribKey: string)  # Fires the EMomentStrm event; needs exactly 2 arguments
+function ENISAeroDynamics (Aerodynamics: number)  # Fires the ENISAeroDynamics event; needs exactly 1 argument
+function ENISBloomScale (BloomScale: number)  # Fires the ENISBloomScale event; needs exactly 1 argument
+function ENISBrakelock (Front: number, Rear: number)  # Fires the ENISBrakelock event; needs exactly 2 arguments
+function ENISBurnout (Speed: number)  # Fires the ENISBurnout event; needs exactly 1 argument
+function ENISCarDamage ()  # Fires the ENISCarDamage event; needs exactly 0 arguments
+function ENISCarDamageReset ()  # Fires the ENISCarDamageReset event; needs exactly 0 arguments
+function ENISCarFullyAnimated (ullControl: number)  # Fires the ENISCarFullyAnimated event; needs exactly 1 argument
+function ENISCarHidePart (carPartName: string, isHidden: number)  # Fires the ENISCarHidePart event; needs exactly 2 arguments
+function ENISCarPitch (Pitch: number, Time: number)  # Fires the ENISCarPitch event; needs exactly 2 arguments
+function ENISCarRoll (Roll: number, Time: number)  # Fires the ENISCarRoll event; needs exactly 2 arguments
+function ENISCarShake (Shake: number, Rate: number, Ramp: number, Time: number)  # Fires the ENISCarShake event; needs exactly 4 arguments
+function ENISConstraint (Degrees: number)  # Fires the ENISConstraint event; needs exactly 1 argument
+function ENISCopCarDoors (CarDoor: number, CarDoorPos: number, CarDoorAnimLength: number, CarDoorEndPos: number)  # Fires the ENISCopCarDoors event; needs exactly 4 arguments
+function ENISCopLights (Enable: number, LightIntensity: number, LightPosX: number, LightPosY: number, LightPosZ: number)  # Fires the ENISCopLights event; needs exactly 5 arguments
+function ENISDetach (Throttle: number, Brake: number)  # Fires the ENISDetach event; needs exactly 2 arguments
+function ENISDetail (SceneryDetail: number)  # Fires the ENISDetail event; needs exactly 1 argument
+function ENISFakeFar (FakeFar: number)  # Fires the ENISFakeFar event; needs exactly 1 argument
+function ENISFreeze (FreezeAnimation: number)  # Fires the ENISFreeze event; needs exactly 1 argument
+function ENISHideCharacter (AnimModelName: string, AnimShow: number)  # Fires the ENISHideCharacter event; needs exactly 2 arguments
+function ENISLightMaterial (Material: number, EyeScale: number, EyeR: number, EyeG: number, EyeB: number, TeethScale: number, TeethR: number, TeethG: number, TeethB: number)  # Fires the ENISLightMaterial event; needs exactly 9 arguments
+function ENISLightRigs (Rig: number, Light: number, Mode: number, Theta: number, Phi: number, Red: number, Green: number, Blue: number, Intensity: number)  # Fires the ENISLightRigs event; needs exactly 9 arguments
+function ENISLights (CopLights: number, HeadLights: number)  # Fires the ENISLights event; needs exactly 2 arguments
+function ENISMotionBlur (EnableMotionBlur: number)  # Fires the ENISMotionBlur event; needs exactly 1 argument
+function ENISNeutralRev (On: number, Throttle: number, Speed: number)  # Fires the ENISNeutralRev event; needs exactly 3 arguments
+function ENISNitro (On: number)  # Fires the ENISNitro event; needs exactly 1 argument
+function ENISNukeSmack (number, PositionX: number, PositionY: number, PositionZ: number, Radius: number)  # Fires the ENISNukeSmack event; needs exactly 5 arguments
+function ENISOverlayMessage (OverlayName: string, OverlayMessage: string)  # Fires the ENISOverlayMessage event; needs exactly 2 arguments
+function ENISPixelate (Enable: number, Width: number, Height: number)  # Fires the ENISPixelate event; needs exactly 3 arguments
+function ENISPlayEffect (Effect: string, PositionX: number, PositionY: number, PositionZ: number, MagnitudeX: number, MagnitudeY: number, MagnitudeZ: number, SceneSpace: number)  # Fires the ENISPlayEffect event; needs exactly 8 arguments
+function ENISRain (RainIntensity: number)  # Fires the ENISRain event; needs exactly 1 argument
+function ENISReattach (RepairDamage: number)  # Fires the ENISReattach event; needs exactly 1 argument
+function ENISReleaseCarControl ()  # Fires the ENISReleaseCarControl event; needs exactly 0 arguments
+function ENISRoadNoise (DisableRoadNoise: number)  # Fires the ENISRoadNoise event; needs exactly 1 argument
+function ENISScreenFlash (Length: number)  # Fires the ENISScreenFlash event; needs exactly 1 argument
+function ENISShowHud (Enable: number)  # Fires the ENISShowHud event; needs exactly 1 argument
+function ENISSpotLight (Radius: number, SpotColour: number)  # Fires the ENISSpotLight event; needs exactly 2 arguments
+function ENISStartCountdown (ShowClock: number)  # Fires the ENISStartCountdown event; needs exactly 1 argument
+function ENISSteering (Degrees: number, BlendWeight: number)  # Fires the ENISSteering event; needs exactly 2 arguments
+function ENISStopEffects ()  # Fires the ENISStopEffects event; needs exactly 0 arguments
+function ENISTimeOfDay (TimeOfDay: number, UpdateRate: number, SunAzimuth: number, TimeOfDayOvercast: number)  # Fires the ENISTimeOfDay event; needs exactly 4 arguments
+function ENISUCapBlend (FrameNum: number, BlendTime: number)  # Fires the ENISUCapBlend event; needs exactly 2 arguments
+function ENISUCapPause (FrameNum: number)  # Fires the ENISUCapPause event; needs exactly 1 argument
+function ENISUCapSelect (AnimID: number, FrameNum: number)  # Fires the ENISUCapSelect event; needs exactly 2 arguments
+function ENISVisualLook (Desaturation: number, ColourBloom: number, BleachFactor: number, UseHDR: number, FacingScale: number, GrazingScale: number)  # Fires the ENISVisualLook event; needs exactly 6 arguments
+function ENISWorldAnimTrigger (AnimTreeName: string, TimeSet: number, AnimPause: number, AnimHide: number)  # Fires the ENISWorldAnimTrigger event; needs exactly 4 arguments
+function ENISWorldGeometry (SceneryGroupName: string, Enable: number)  # Fires the ENISWorldGeometry event; needs exactly 2 arguments
+function EPlayEndNIS (SceneName: string)  # Fires the EPlayEndNIS event; needs exactly 1 argument
+function EPlayObjectEffect (Effect: string, Position: string, Intensity: number, ID: string, Tracking: number, AllowHiddenSpawn: number)  # Fires the EPlayObjectEffect event; needs exactly 6 arguments
+function EPlayRaceMovie (MovieName: string)  # Fires the EPlayRaceMovie event; needs exactly 1 argument
+function EPlayRaceNIS (StartMarker: string, SceneName: string, SceneType: string, PlayerIdx: number, CameraTrack: number, PreMovie: string, PostMovie: string)  # Fires the EPlayRaceNIS event; needs exactly 7 arguments
+function EProcessAreaStimulus (SystemName: string, Stimulus: string, QueueMode: string, Radius: number)  # Fires the EProcessAreaStimulus event; needs exactly 4 arguments
+function EProcessStimulus (SystemName: string, Stimulus: string, QueueMode: string)  # Fires the EProcessStimulus event; needs exactly 3 arguments
+function EPuddle (DynamicSurface: string, Count: number, CountVariance: number, Spread: number)  # Fires the EPuddle event; needs exactly 4 arguments
+function EPulseWingmanMeter (PulseOn: number)  # Fires the EPulseWingmanMeter event; needs exactly 1 argument
+function ERefreshHud ()  # Fires the ERefreshHud event; needs exactly 0 arguments
+function EReloadHud ()  # Fires the EReloadHud event; needs exactly 0 arguments
+function EResetPlayerCar ()  # Fires the EResetPlayerCar event; needs exactly 0 arguments
+function EResetProps ()  # Fires the EResetProps event; needs exactly 0 arguments
+function EResetSequencer ()  # Fires the EResetSequencer event; needs exactly 0 arguments
+function EResetSystem (SystemName: string)  # Fires the EResetSystem event; needs exactly 1 argument
+function ERollingCheck (ForceEnd: number)  # Fires the ERollingCheck event; needs exactly 1 argument
+function ESetAIAvoidable (Enable: number)  # Fires the ESetAIAvoidable event; needs exactly 1 argument
+function ESetAIPlayerOffset (OffsetMeters: number)  # Fires the ESetAIPlayerOffset event; needs exactly 1 argument
+function ESetCopAutoSpawnMode (AutoSpawn: number)  # Fires the ESetCopAutoSpawnMode event; needs exactly 1 argument
+function ESetPlayerCollisionCache ()  # Fires the ESetPlayerCollisionCache event; needs exactly 0 arguments
+function EShockObject (Amount: number)  # Fires the EShockObject event; needs exactly 1 argument
+function EShowCanyonInstructionFlashers ()  # Fires the EShowCanyonInstructionFlashers event; needs exactly 0 arguments
+function EShowMarketingScreen (ShowFor: number)  # Fires the EShowMarketingScreen event; needs exactly 1 argument
+function EShowMessageScreen (ID: number)  # Fires the EShowMessageScreen event; needs exactly 1 argument
+function EShowRaceCountdown (isHidden: number)  # Fires the EShowRaceCountdown event; needs exactly 1 argument
+function ESpawnExplosion (Position: string, Speed: number, Radius: number, StartRadius: number, EffectThis: number, DoesDamage: number, IncludePlayers: number, ExcludeVehicles: number, ExcludeSmackables: number)  # Fires the ESpawnExplosion event; needs exactly 9 arguments
+function ESpawnFragment (HeirarchyName: string, CName: string, AttributeName: string, JointName: string, AllowDupes: number, InheritVelocity: number, HideParent: number, HidePart: number, AllowHiddenSpawn: number, NoPhysics: number, SimplePhysics: number, DisableParentCollisionNode: number)  # Fires the ESpawnFragment event; needs exactly 12 arguments
+function ESpawnWorldExplosion (PositionX: number, PositionY: number, PositionZ: number, Speed: number, Radius: number, StartRadius: number, EffectThis: number, DoesDamage: number, IncludePlayers: number, ExcludeVehicles: number, ExcludeSmackables: number)  # Fires the ESpawnWorldExplosion event; needs exactly 11 arguments
+function EStopObjectEffect (ID: string)  # Fires the EStopObjectEffect event; needs exactly 1 argument
+function EStopObjectEffects ()  # Fires the EStopObjectEffects event; needs exactly 0 arguments
+function ETerminateMusic ()  # Fires the ETerminateMusic event; needs exactly 0 arguments
+function ETogglePushButtonOverlay (ButtonName: string, OnOff: number)  # Fires the ETogglePushButtonOverlay event; needs exactly 2 arguments
+function ETriggerMomentDynamicNIS ()  # Fires the ETriggerMomentDynamicNIS event; needs exactly 0 arguments
+function ETriggerMomentNIS (SceneName: string)  # Fires the ETriggerMomentNIS event; needs exactly 1 argument
+function EWakeObject ()  # Fires the EWakeObject event; needs exactly 0 arguments
+function EWorldMapOn ()  # Fires the EWorldMapOn event; needs exactly 0 arguments
+function EWorldMapOnAcquisition ()  # Fires the EWorldMapOnAcquisition event; needs exactly 0 arguments
+function EWorldMapOnEncounter ()  # Fires the EWorldMapOnEncounter event; needs exactly 0 arguments
+function EWorldMapOnInTrigger ()  # Fires the EWorldMapOnInTrigger event; needs exactly 0 arguments
+function MAIEngineRev (channel: string, CarID: number, CarState: ignored, PatterToPlay: number)  # Sends the MAIEngineRev message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 4 arguments
+function MAcceptEnterCareerEvent (channel: string)  # Sends the MAcceptEnterCareerEvent message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 1 argument
+function MAudioReflection (channel: string, PlayerNum: number, Dist: number, Covered: boolean)  # Sends the MAudioReflection message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 4 arguments
+function MBreakerStopCops (channel: string, hSimable: simable, InitialPos: ignored, Duration: number, Radius: number, Offset: number)  # Sends the MBreakerStopCops message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 6 arguments
+function MControlPathfinder (channel: string, Licenced: boolean, PathEvent: number, PathControl: number, PartID: number)  # Sends the MControlPathfinder message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 5 arguments
+function MCopJoinedPursuit (channel: string, Handle: simable, number)  # Sends the MCopJoinedPursuit message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 3 arguments
+function MCountdownDone (channel: string)  # Sends the MCountdownDone message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 1 argument
+function MDeclineEnterCareerEvent (channel: string)  # Sends the MDeclineEnterCareerEvent message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 1 argument
+function MDriverNISComplete (channel: string, NISName: ignored)  # Sends the MDriverNISComplete message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 2 arguments
+function MEnterFreeRoam (channel: string)  # Sends the MEnterFreeRoam message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 1 argument
+function MEnterPostCareerRaceFlow (channel: string, AreaName: ignored)  # Sends the MEnterPostCareerRaceFlow message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 2 arguments
+function MEnterPostRaceFlow (channel: string)  # Sends the MEnterPostRaceFlow message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 1 argument
+function MEnterRaceOverFlow (channel: string)  # Sends the MEnterRaceOverFlow message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 1 argument
+function MEnterRepeatRace (channel: string)  # Sends the MEnterRepeatRace message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 1 argument
+function MEnterSafeHouse (channel: string, ZoneType: ignored)  # Sends the MEnterSafeHouse message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 2 arguments
+function MEnteringGameplay (channel: string)  # Sends the MEnteringGameplay message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 1 argument
+function MFlowReadyForOutro (channel: string)  # Sends the MFlowReadyForOutro message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 1 argument
+function MForcePursuitStart (channel: string, number, number)  # Sends the MForcePursuitStart message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 3 arguments
+function MFreezeCamera (channel: string, IsFrozen: boolean)  # Sends the MFreezeCamera message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 2 arguments
+function MGenericCameraFinished (channel: string)  # Sends the MGenericCameraFinished message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 1 argument
+function MICECameraFinished (channel: string)  # Sends the MICECameraFinished message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 1 argument
+function MJackKnife (channel: string)  # Sends the MJackKnife message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 1 argument
+function MJumpCut (channel: string, AnchorWorldID: number)  # Sends the MJumpCut message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 2 arguments
+function MLaunchPIP (channel: string, TriggerID: number, Handle: simable)  # Sends the MLaunchPIP message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 3 arguments
+function MLoadingComplete (channel: string)  # Sends the MLoadingComplete message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 1 argument
+function MMiscSound (channel: string, SoundID: number)  # Sends the MMiscSound message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 2 arguments
+function MNISComplete (channel: string, NISName: ignored, SceneType: number)  # Sends the MNISComplete message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 3 arguments
+function MNISFlagGirlStart (channel: string)  # Sends the MNISFlagGirlStart message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 1 argument
+function MNISPlaying (channel: string)  # Sends the MNISPlaying message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 1 argument
+function MNotifyAudioTransitionDone (channel: string)  # Sends the MNotifyAudioTransitionDone message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 1 argument
+function MNotifyAudioTransitionStarted (channel: string)  # Sends the MNotifyAudioTransitionStarted message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 1 argument
+function MNotifyCellCallComplete (channel: string)  # Sends the MNotifyCellCallComplete message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 1 argument
+function MNotifyCellCallStarted (channel: string)  # Sends the MNotifyCellCallStarted message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 1 argument
+function MNotifyChallengePassed (channel: string, ChallengeName: ignored)  # Sends the MNotifyChallengePassed message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 2 arguments
+function MNotifyDamageRatio (channel: string, Racer: simable, Ratio: number)  # Sends the MNotifyDamageRatio message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 3 arguments
+function MNotifyEngageFailed (channel: string)  # Sends the MNotifyEngageFailed message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 1 argument
+function MNotifyEngineBlown (channel: string, Racer: simable)  # Sends the MNotifyEngineBlown message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 2 arguments
+function MNotifyFadeToBlackDone (channel: string)  # Sends the MNotifyFadeToBlackDone message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 1 argument
+function MNotifyFinished (channel: string, Sender: instance)  # Sends the MNotifyFinished message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 2 arguments
+function MNotifyFirstContact (channel: string, Racer: simable)  # Sends the MNotifyFirstContact message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 2 arguments
+function MNotifyGotMoneyBag (channel: string, Player: simable, number, boolean)  # Sends the MNotifyGotMoneyBag message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 4 arguments
+function MNotifyHitSmackable (channel: string, Simable: simable, Driver: simable, number)  # Sends the MNotifyHitSmackable message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 4 arguments
+function MNotifyKnockedOut (channel: string, Racer: simable)  # Sends the MNotifyKnockedOut message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 2 arguments
+function MNotifyMessageDone (channel: string)  # Sends the MNotifyMessageDone message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 1 argument
+function MNotifyMilestoneProgress (channel: string, MilestoneName: ignored, ValueReached: number)  # Sends the MNotifyMilestoneProgress message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 3 arguments
+function MNotifyMilestoneReached (channel: string, MilestoneName: ignored, ValueReached: number)  # Sends the MNotifyMilestoneReached message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 3 arguments
+function MNotifyMovieFinished (channel: string)  # Sends the MNotifyMovieFinished message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 1 argument
+function MNotifyMusicFlow (channel: string, Part: number, MusicType: number)  # Sends the MNotifyMusicFlow message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 3 arguments
+function MNotifyOnlineRaceOver (channel: string, ShowPostRace: boolean)  # Sends the MNotifyOnlineRaceOver message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 2 arguments
+function MNotifyPassingMove (channel: string, PassingRacer: simable, PassedRacer: simable)  # Sends the MNotifyPassingMove message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 3 arguments
+function MNotifyPlayerRep (channel: string, Racer: simable, RepPoints: number)  # Sends the MNotifyPlayerRep message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 3 arguments
+function MNotifyProximity (channel: string, Index: number)  # Sends the MNotifyProximity message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 2 arguments
+function MNotifyRaceAbandoned (channel: string)  # Sends the MNotifyRaceAbandoned message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 1 argument
+function MNotifyRacePlacement (channel: string, Activity: instance, Racer: simable, Placing: number)  # Sends the MNotifyRacePlacement message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 4 arguments
+function MNotifyRaceTime (channel: string, TimeElapsed: number, TimeIsLimited: boolean, TimeRemaining: number)  # Sends the MNotifyRaceTime message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 4 arguments
+function MNotifyRaceTimeExpired (channel: string)  # Sends the MNotifyRaceTimeExpired message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 1 argument
+function MNotifyRaceTimeSecTick (channel: string, TimeElapsed: number)  # Sends the MNotifyRaceTimeSecTick message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 2 arguments
+function MNotifyRacerBusted (channel: string, simable, Racer: simable, boolean)  # Sends the MNotifyRacerBusted message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 4 arguments
+function MNotifyRawButtonPress (channel: string, ButtonName: ignored)  # Sends the MNotifyRawButtonPress message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 2 arguments
+function MNotifyRoamStarted (channel: string)  # Sends the MNotifyRoamStarted message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 1 argument
+function MNotifyRobberBusted (channel: string, simable, simable)  # Sends the MNotifyRobberBusted message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 3 arguments
+function MNotifyRoundOver (channel: string)  # Sends the MNotifyRoundOver message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 1 argument
+function MNotifyRoundStatsDone (channel: string)  # Sends the MNotifyRoundStatsDone message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 1 argument
+function MNotifySimTick (channel: string, SimTime: number, TimeStep: number)  # Sends the MNotifySimTick message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 3 arguments
+function MNotifySpeechStatus (channel: string, Event: ignored)  # Sends the MNotifySpeechStatus message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 2 arguments
+function MNotifySpeedTrap (channel: string, TrapActivity: instance, Racer: simable, SpeedKmh: number)  # Sends the MNotifySpeedTrap message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 4 arguments
+function MNotifyTerritoryRaceOver (channel: string, Activity: instance, Racer: simable)  # Sends the MNotifyTerritoryRaceOver message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 3 arguments
+function MNotifyTimer (channel: string, Name: ignored)  # Sends the MNotifyTimer message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 2 arguments
+function MNotifyTotalledBy (channel: string, simable, simable)  # Sends the MNotifyTotalledBy message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 3 arguments
+function MNotifyTurnOver (channel: string, TurnNumber: number)  # Sends the MNotifyTurnOver message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 2 arguments
+function MNotifyTurnStart (channel: string, TurnNumber: number)  # Sends the MNotifyTurnStart message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 2 arguments
+function MNotifyVehicleDestroyed (channel: string, Racer: simable)  # Sends the MNotifyVehicleDestroyed message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 2 arguments
+function MNotifyWantedEventProgress (channel: string, Activity: ignored, Success: boolean)  # Sends the MNotifyWantedEventProgress message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 3 arguments
+function MPIPWindowReady (channel: string)  # Sends the MPIPWindowReady message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 1 argument
+function MPerpBusted (channel: string, Perpetrator: simable)  # Sends the MPerpBusted message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 2 arguments
+function MPerpCooldown (channel: string)  # Sends the MPerpCooldown message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 1 argument
+function MPerpEscaped (channel: string, Perpetrator: simable)  # Sends the MPerpEscaped message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 2 arguments
+function MPlayMidNIS (channel: string)  # Sends the MPlayMidNIS message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 1 argument
+function MPlayerEnterPursuit (channel: string)  # Sends the MPlayerEnterPursuit message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 1 argument
+function MPostBossFlowCameraFinished (channel: string)  # Sends the MPostBossFlowCameraFinished message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 1 argument
+function MPursuitBreaker (channel: string, StartBreaker: boolean)  # Sends the MPursuitBreaker message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 2 arguments
+function MPursuitOver (channel: string, Perpetrator: simable)  # Sends the MPursuitOver message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 2 arguments
+function MPursuitStart (channel: string, Perpetrator: simable)  # Sends the MPursuitStart message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 2 arguments
+function MQuitToFrontEnd (channel: string)  # Sends the MQuitToFrontEnd message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 1 argument
+function MReqBackup (channel: string, BackupType: number)  # Sends the MReqBackup message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 2 arguments
+function MReqRoadBlock (channel: string, Data: number)  # Sends the MReqRoadBlock message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 2 arguments
+function MRestartRace (channel: string)  # Sends the MRestartRace message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 1 argument
+function MRivalCameraFinished (channel: string)  # Sends the MRivalCameraFinished message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 1 argument
+function MScriptGotMoneyBag (channel: string, ignored, Player: number, number, boolean)  # Sends the MScriptGotMoneyBag message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 5 arguments
+function MScriptMadeDropOff (channel: string, ignored, Player: number, number)  # Sends the MScriptMadeDropOff message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 4 arguments
+function MSetCopAutoSpawnMode (channel: string, AutoSpawnMode: boolean)  # Sends the MSetCopAutoSpawnMode message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 2 arguments
+function MSetCopsEnabled (channel: string, CopsEnabled: boolean)  # Sends the MSetCopsEnabled message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 2 arguments
+function MSetTrafficSpeed (channel: string, SpeedDefault: number, SpeedHighway: number, FixSpeed: number)  # Sends the MSetTrafficSpeed message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 4 arguments
+function MSpawnCop (channel: string, InitialPos: ignored, InitialVec: ignored, VehicleName: ignored, InPursuit: boolean, RoadBlock: boolean)  # Sends the MSpawnCop message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 6 arguments
+function MSpawnTraffic (channel: string, InitialPos: ignored, InitialVec: ignored, VehicleName: ignored)  # Sends the MSpawnTraffic message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 4 arguments
+function MStateEnter (channel: string)  # Sends the MStateEnter message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 1 argument
+function MStateExit (channel: string)  # Sends the MStateExit message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 1 argument
+function MTerminateEncounter (channel: string)  # Sends the MTerminateEncounter message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 1 argument
+function MTriggerEnter (channel: string, Sender: instance, Element: simable)  # Sends the MTriggerEnter message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 3 arguments
+function MTriggerExit (channel: string, Sender: instance, Element: simable)  # Sends the MTriggerExit message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 3 arguments
+function MTriggerInside (channel: string, Sender: instance, Element: simable)  # Sends the MTriggerInside message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 3 arguments
+function MUnspawnCop (channel: string, CopHandle: simable, Param: number)  # Sends the MUnspawnCop message on a channel ("Gameplay", "Camera", "CameraMessagePort", "AICopManager"); needs exactly 3 arguments
+stdlib print  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib type  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib tostring  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib tonumber  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib pairs  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib ipairs  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib next  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib unpack  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib assert  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib error  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib pcall  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib xpcall  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib setmetatable  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib getmetatable  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib rawget  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib rawset  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib rawequal  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib loadstring  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib loadfile  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib dofile  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib require  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib collectgarbage  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib gcinfo  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib getfenv  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib setfenv  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib newproxy  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib _G  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib _VERSION  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib LUA_PATH  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib string  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib table  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib math  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib io  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib os  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib coroutine  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib debug  # NOT available: the game opens no Lua standard library, so this global is nil

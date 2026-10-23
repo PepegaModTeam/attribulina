@@ -1,0 +1,188 @@
+# Parameter names, <key><TAB>name, name, ... Chosen from how retail scripts call the function
+# and from its name; the game's binaries carry no parameter names.
+Activity.Run	activity
+Activity.Suspend	activity
+Audio.SetFlag	flag, on
+Bin.GetNumChallengesPassed	bin
+Bin.GetNumRacesWon	bin
+Camera.SetGenericCamera	camera, index
+Camera.SetSmoothExit	on
+Debug.Assert	condition, text
+Debug.ExecuteDebugScript	vars
+Debug.Print	text
+Debug.PrintInstance	instance
+Debug.ScreenPrint	line, text
+Debug.ShowScreenMessage	text, seconds
+GHub:OnExitHubSelect	startingEvent
+GHub:SetPracticeMode	on
+GHub:SetSelectedEventIndex	eventIndex
+GHub:SetupPlayerCar	carHandle, playerIndex
+GHub:StartEventFromIndex	eventIndex
+GHub:StartEventFromKey	eventKey
+GHub:StartRace	heatIndex
+GHub:Unlock	showUnlocks
+GMoviePlayer:Play	movie
+GMoviePlayer:Queue	movie
+GProStreetGame:GetTrackRecordCount	raceMode
+GProStreetGame:UnlockEliteOrgTier	raceMode, tier
+GRaceStatus:AddCheckpoint	trigger
+GRaceStatus:AwardBonusTime	seconds
+GRaceStatus:EnableDamage	on
+GRaceStatus:Finish	finishType
+GRaceStatus:GetRacerInfo	simable
+GRaceStatus:GetRacerInfoByIndex	index
+GRaceStatus:GetRacerInfoByOpponentId	opponentId
+GRaceStatus:HideTurnIndicator	racerIndex
+GRaceStatus:PlaceGrid	start
+GRaceStatus:SetActivelyRacing	on
+GRaceStatus:SetHandicap	handicap
+GRaceStatus:SetHasBeenWon	won
+GRaceStatus:SetIsLoading	loading
+GRaceStatus:SetIsRestartAllowed	allowed
+GRaceStatus:SetNextCheckpointPos	trigger
+GRaceStatus:SetNumSectors	count
+GRaceStatus:SetSectorBestPoints	sector, points
+GRaceStatus:SetSectorOwner	sector, racer
+GRaceStatus:SetSectorTime	sector, seconds
+GRaceStatus:SetTaskTime	seconds
+GRaceStatus:ShowTurnIndicator	racerIndex, cornerTrigger
+GRaceStatus:StateCatchupAll	fromState, toState
+GRaceStatus:StateCheck	state, state2
+GRaceStatus:StateCheckAll	state
+GRaceStatus:StateCheckAny	state, state2
+GRaceStatus:StateCheckFirst	state, state2
+GRaceStatus:StateOverrideAll	state
+GRacerInfo:CheckpointReached	checkpoint
+GRacerInfo:EnableAiControl	on
+GRacerInfo:EnableDamage	on
+GRacerInfo:FinishRace	reason
+GRacerInfo:GetSectorDynamicTargetTimeBaseOne	sector
+GRacerInfo:HitRouteTrigger	trigger, goal
+GRacerInfo:KillTimer	name
+GRacerInfo:SetCountdownDisabled	disabled
+GRacerInfo:SetDistDriven	distance
+GRacerInfo:SetForBestSector	points
+GRacerInfo:SetHandicap	seconds
+GRacerInfo:SetNextGoal	trigger
+GRacerInfo:SetSectorPoints	points
+GRacerInfo:SetStaging	on
+GRacerInfo:SetState	state
+GRacerInfo:SetTimer	name, seconds
+Game.ActivateDefaultCameraOverride	pov
+Game.AwardCash	simable, amount
+Game.AwardPlayerBounty	bounty
+Game.AwardPoints	simable, points
+Game.BlowEngine	simable
+Game.CalculateSectorPoints	simable, secondsUnderTarget, pointsPerSecond
+Game.ChallengeComplete	simable
+Game.ClearAIControl	player
+Game.DetachCameraFromRacer	simable
+Game.DoSpecialFinalization	activity
+Game.DoSpecialSetup	activity
+Game.DoZoneMenuAction	zone
+Game.DriftFeedbackTriggerEntered	simable, section, targetPercent
+Game.DriftFinalizeScore	simable
+Game.DriftSectionEntered	simable, section, bonusMultiplier
+Game.DriftSectionExited	simable, section
+Game.EnableTrigger	trigger, on
+Game.EnterEngagableTrigger	trigger
+Game.EnterGateZone	zone, zoneType, areaName
+Game.ExitEngagableTrigger	trigger
+Game.ExitGateZone	zone, zoneType, areaName
+Game.ForceAIControl	player
+Game.ForcePursuitStart	heatLevel
+Game.GetPlayerElement	player
+Game.GetRacerCharacter	racer
+Game.GetRacerElement	racer
+Game.GetRacerIndex	simable
+Game.GetRacerPctComplete	racer
+Game.GetSimableSpeedKmh	simable
+Game.HideLoadingScreen	id
+Game.HideTriggerIcon	trigger
+Game.IsActiveMenuGate	zone
+Game.IsActiveSpeedTrap	trap
+Game.IsRaceCompleted	race
+Game.IsRaceUnlocked	race
+Game.IsTargetRaceUnlocked	trigger
+Game.JackKnife	truck
+Game.KillTimer	name
+Game.KnockoutRacer	simable
+Game.NavigatePlayerTo	target, mapItem, value, flag
+Game.NotifyActivityFinsihed	activity
+Game.NotifyFailedToPostSectorRecord	simable, sector, points, recordPoints
+Game.NotifyLapFinished	simable, lap
+Game.NotifyRaceFinished	simable
+Game.NotifyRacerFinished	simable
+Game.NotifySectorCompleted	simable, sector
+Game.NotifySectorDomination	racer
+Game.NotifySectorOwnershipChanged	sector, newOwner, oldOwner
+Game.NotifySectorRecordBroken	sector, racer, oldOwner
+Game.NotifySectorRecordPosted	sector, racer, oldOwner
+Game.NotifySectorTriggerEnter	racer, sector, raceTime, targetTime
+Game.NotifySpeedTrapTriggered	activity, trap, simable, speedKmh
+Game.PlayFinishCamera	winNIS, loseNIS
+Game.PlayerBrake	amount
+Game.PlayerGas	amount
+Game.PlayerHandBrake	amount
+Game.PlayerIsLocal	simable
+Game.PlayerNOS	amount
+Game.PlayerSteer	amount
+Game.RacerIsHuman	racer
+Game.ReloadWorld	marker
+Game.ResetPlayerTriggerEntered	start, simable
+Game.ResetTrigger	trigger
+Game.ResetTriggerEntered	simable
+Game.SabotageEngine	simable, amount
+Game.SendCharacterStimulus	character, stimulus
+Game.SetAIGoal	simable, goal
+Game.SetAllStaging	on
+Game.SetChanceOfRain	chance
+Game.SetCopsEnabled	on
+Game.SetFreeRoamStartMarker	marker
+Game.SetMaxScoreForSection	section, score
+Game.SetPlayerStartPosition	marker
+Game.SetPursuitOffset	simable, x, y
+Game.SetPursuitTarget	pursuer, target
+Game.SetRaceActivity	activity
+Game.SetRacerLapsLeft	racer, laps
+Game.SetTimer	name, seconds
+Game.SetTrafficSpeed	traffic, speed, speed2
+Game.SetVehicleOnGround	simable, x, y, z, a, b, c
+Game.SetWorldHeat	heat
+Game.ShouldHideSpeedTrap	trap
+Game.ShowGPS	on
+Game.ShowLoadingScreen	id
+Game.ShowTriggerIcon	trigger
+Game.SimableAngle	simable, element
+Game.SimableDistance	simable, element
+Game.SimableIsWingman	simable
+Game.SpawnCharacter	character, spawnPoint, element, value
+Game.SpawnCop	spawnPoint, copType, flag1, flag2
+Game.StartRace	activity
+Game.StartRaceFromInGame	race
+Game.StoreCheckpointSpeed	checkpoint, simable
+Game.TotalRacer	simable
+Game.UnlockRace	race
+Game.UnspawnCharacter	character
+Game.UseSectionsInDrift	on
+Game.WarpPlayerAndWingmanToMarker	marker, flag
+Game.WarpPlayerToTrigger	trigger
+Game.WarpToMarkerWhenRoaming	marker
+Game.WindTriggerEntered	section, simable, minMph, maxMph, rotation
+HUD.ShowLoopingMessage	textKey, seconds
+HUD.ShowMessage	textKey
+HUD.ShowTimeExtension	seconds
+LuaDebug.ExecuteLine	line
+Math.RandomInt	n
+MiniMap.AddEngagedRace	trigger
+Movie.RefreshTrackAfterPlaying	on
+Music.SetWaitState	waiting
+NIS.FreezeCamera	frozen
+NIS.IsNISReplacedByMovie	nis
+NIS.LaunchPIP	nis
+NIS.Play	marker, scene, sceneType, cameraTrack, preMovie, postMovie
+Racer.EndForceStop	racer
+Racer.ForceCoast	racer
+Render.EnableCrashVisualTreatment	on
+Table.Randomize	t
+Track.EnableZoneSwitching	on

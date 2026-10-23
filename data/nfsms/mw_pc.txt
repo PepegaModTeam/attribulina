@@ -1,0 +1,542 @@
+# NFS-VltEd 4.6's names for the parts of Most Wanted (PC) values: the words nfsms
+# scripts write after the field (update_field tires x GRIP_SCALE Front 1.1).
+# doc/nfsms.md. Written by scripts/nfsms/gen_words.py; rerun it rather than editing
+# by hand.
+#
+# Read from the NFS-VltEd decompilation (NFS-VltEd/). A/_0007_0014.cs registers one
+# C# class per AttribSys type and game, keyed by StringHash32 of the type name; each
+# class names its properties with an attribute and reads them in order, which gives
+# each name its offset in the PC files NFS-VltEd reads. The path after the offset
+# names the member of our schema (data/schema/mw_pc.txt) at those bytes, so a word
+# finds its member by name on a platform whose layout differs (4-byte bools move
+# later members). A Most Wanted type not listed here gets NFS-VltEd's raw class: its
+# one property is Data, the value's bytes in hex ("00 00 80 3F").
+#
+# Most Wanted's StringKey is 16 bytes (a 64-bit hash, the 32-bit one, the string):
+# NFS-VltEd's classes for it skip both hashes, and a MODEL field has a third word,
+# Collision64.
+#
+# game <code>
+# type <AttribSys type name>      Attrib::StringKey(MODEL): a StringKey field named MODEL
+#   single                        one property: NFS-VltEd ignores the word after the field
+#   <word> <offset> [<path>] [list <element words>]
+# end
+#
+# <path>: member names joined with ".", [i] for an element of an inline array, down
+# to the member the word sets (Reaction.mClassKey, ValueMin[1]). A word over several
+# members has the deepest member holding them all (X for X.mArray and X.mLength). A
+# path ending in +N: the word's bytes start N bytes into that member. No path: the
+# word's members have nothing in common but the value itself, or the type has no
+# struct in our schema (enums, vectors, simple values), where the offset is the same
+# on every platform.
+#
+# The comments give where each class was read and how sure the game assignment is:
+# "read" means registered for Most Wanted or for every game, or in a compiled array
+# whose bytes other code shows; "inferred" and "uncertain" mean the game list is a
+# compiled array the decompilation lacks, so it was worked out (see the comment and
+# scripts/nfsms/registry.py). After a word, "# x" lists our schema's members at its
+# bytes where the path doesn't name them all. "# not on <platform>" marks a word
+# that can't be found that way in that platform's schema, or a type its files lack;
+# "# on <platform>" a type laid out otherwise there whose words all find their
+# members.
+
+game MW
+
+type AICollisionReactionRecord
+  # A/_001D_0019.cs
+  # read (registered for ALL; registry line 184)
+  Goal 0 Goal
+  ClassKey 4 Reaction.mClassKey
+  DefinitionKey 8 Reaction.mCollectionKey
+end
+
+type AirSupport
+  # A/_000E_0019.cs
+  # inferred (game list is a static array (_001D/5); MW,C,UC,W,WB: only these games have Csis::Type_car_type; fits the SHA-1 order; registry line 829)
+  HeliStrategy 0 HeliStrategy
+  Chance 4 Chance
+  Duration 8 Duration
+end
+
+type Attrib::Blob
+  # A/_0012_0012.cs
+  # inferred (game list is a static array (_001A/4); MW,C,PS,UC: its field and _000D/4 after it sort between _000D/3 (UC,W,WB) and _001D/3 (MW,C,PS), where only MW,C,PS,UC and C,UC,W,WB do; registry line 753)
+  single
+  Blob 0  # mSize,mData
+end
+
+type Attrib::RefSpec
+  # A/_0010_0012.cs
+  # read (registered for ALL; registry line 169)
+  Class 0 mClassKey
+  Collection 4 mCollectionKey
+end
+
+type Attrib::StringKey
+  # A/_0019_0015.cs
+  # read (registered for MW; registry line 90)
+  single
+  StringKey 12 mString
+end
+
+type Attrib::Types::Matrix
+  # A/_000F_0012.cs
+  # no struct of this name in our schema (database kind: matrix)
+  # read (registered for ALL; registry line 172)
+  M[1,1] 0
+  M[1,2] 4
+  M[1,3] 8
+  M[1,4] 12
+  M[2,1] 16
+  M[2,2] 20
+  M[2,3] 24
+  M[2,4] 28
+  M[3,1] 32
+  M[3,2] 36
+  M[3,3] 40
+  M[3,4] 44
+  M[4,1] 48
+  M[4,2] 52
+  M[4,3] 56
+  M[4,4] 60
+end
+
+type Attrib::Types::Vector2
+  # A/_0009_001B.cs
+  # no struct of this name in our schema (database kind: vector2)
+  # read (registered for ALL; registry line 175)
+  X 0
+  Y 4
+end
+
+type Attrib::Types::Vector3
+  # A/_001A_001B.cs
+  # no struct of this name in our schema (database kind: vector3)
+  # read (registered for ALL; registry line 178)
+  X 0
+  Y 4
+  Z 8
+end
+
+type Attrib::Types::Vector4
+  # A/_000D_001B.cs
+  # no struct of this name in our schema (database kind: vector4)
+  # read (registered for ALL; registry line 181)
+  X 0
+  Y 4
+  Z 8
+  W 12
+end
+
+type AxlePair
+  # A/_0017_0012.cs
+  # read (registered for ALL; registry line 187)
+  Front 0 Front
+  Rear 4 Rear
+end
+
+type CarBodyMotion
+  # A/_001B_0012.cs
+  # read (registered for ALL; registry line 190)
+  DegPerG 0 DegPerG
+  DegPerSec 4 MaxGs
+  MaxG 8 DegPerSec
+  # note: the game's order is DegPerG, MaxGs, DegPerSec (PS, UC, MW and Carbon headers alike). NFS-VltEd declares DegPerG, DegPerSec, MaxG and its setters are proxies, so the decompilation can't show whether DegPerSec lands at 4 or 8. Taken in declaration order here; may be swapped.
+end
+
+type CollisionReactionRecord
+  # A/_0012_0019.cs
+  # inferred (game list is a static array (_0009/5); MW,C,PS,W,WB: the complement of the UC-only CollisionReactionRecord class; fits the SHA-1 order; registry line 43)
+  Elasticity 0 Elasticity
+  RollHeight 4 RollHeight
+  WeightBias 8 WeightBias
+  MassScale 12 MassScale
+  StunSpeed 16 StunSpeed
+  StunTime 20 StunTime
+end
+
+type CollisionStream
+  # A/_001C_0006.cs
+  # read (game list is a static array (_001D/3); MW,C,PS: the same 12 bytes are the message box's Abort, Retry, Ignore buttons (DialogResult 3, 4, 5; A/_0008.cs:96); registry line 861)
+  1 0 StreamMoment.mClassKey
+  2 4 StreamMoment.mCollectionKey
+  3 8 StreamMoment.mCollectionPtr
+  4 12 Threshold
+end
+
+type ControllerDataRecord
+  # A/_001F_0015.cs
+  # read (registered for MW; registry line 53)
+  DeviceName 12 mDeviceID.mString
+  UpdateType 16 mUpdateType
+  LowerDZ 20 mLowerDZ
+  UpperDZ 24 mUpperDZ
+  Unk 28  # no member of our schema at these bytes
+end
+
+type CopCountRecord
+  # A/_0002_0015.cs
+  # read (registered for MW; registry line 75)
+  CopType 12 CopType.mString
+  Count 16 Count
+  Chance 20 Chance
+end
+
+type CopFormationRecord
+  # A/_0008_0019.cs
+  # inferred (game list is a static array (_001D/5); MW,C,UC,W,WB: only these games have Csis::Type_car_type; fits the SHA-1 order; registry line 865)
+  Formation 0 Formation
+  Duration 4 Duration
+  Frequency 8 Frequency
+end
+
+type Csis::Type_car_type
+  # A/_001E_0008.cs
+  # inferred (game list is a static array (_001D/5); MW,C,UC,W,WB: only these games have Csis::Type_car_type; fits the SHA-1 order; registry line 869)
+  single
+  Value 0
+end
+
+type Csis::Type_SoundFX_Param
+  # A/_0004_000C.cs
+  # inferred (game list is a static array (_001D/4); MW,C,W,WB: only these games have Csis::Type_SoundFX_*, and it is the complement of the PS,UC TireEffectRecord class; fits the SHA-1 order; registry line 809)
+  single
+  Value 0
+end
+
+type Csis::Type_SoundFX_Type
+  # A/_0015_000C.cs
+  # inferred (game list is a static array (_001D/4); MW,C,W,WB: only these games have Csis::Type_SoundFX_*, and it is the complement of the PS,UC TireEffectRecord class; fits the SHA-1 order; registry line 813)
+  single
+  Value 0
+end
+
+type Csis::Type_subject_battalion
+  # A/_0006_000C.cs
+  # read (registered for MW,C; registry line 877)
+  single
+  Value 0
+end
+
+type DamageScaleRecord
+  # A/_0001_0019.cs
+  # read (registered for ALL; registry line 199)
+  VisualScale 0 VisualScale
+  HitPointScale 4 HitPointScale
+end
+
+type EA::Reflection::Bool
+  # A/_000F_0010.cs
+  # no struct of this name in our schema (database kind: bool)
+  # read (registered for ALL; registry line 136)
+  single
+  Value 0
+end
+
+type EA::Reflection::Double
+  # A/_0010_0010.cs
+  # no struct of this name in our schema (database kind: double)
+  # read (registered for ALL; registry line 163)
+  single
+  Value 0
+end
+
+type EA::Reflection::Float
+  # A/_0001_0010.cs
+  # no struct of this name in our schema (database kind: float)
+  # read (registered for ALL; registry line 139)
+  single
+  Value 0
+end
+
+type EA::Reflection::Int16
+  # A/_000A_0010.cs
+  # no struct of this name in our schema (database kind: int16)
+  # read (registered for ALL; registry line 142)
+  single
+  Value 0
+end
+
+type EA::Reflection::Int32
+  # A/_0020_0010.cs
+  # no struct of this name in our schema (database kind: int32)
+  # read (registered for ALL; registry line 145)
+  single
+  Value 0
+end
+
+type EA::Reflection::Int64
+  # A/_0011_0001.cs
+  # no struct of this name in our schema (database kind: int64)
+  # read (registered for ALL; registry line 166)
+  single
+  Value 0
+end
+
+type EA::Reflection::Int8
+  # A/_0009_0001.cs
+  # no struct of this name in our schema (database kind: int8)
+  # read (registered for ALL; registry line 148)
+  single
+  Value 0
+end
+
+type EA::Reflection::Text
+  # A/_000A_0012.cs
+  # no struct of this name in our schema (database kind: text)
+  # read (registered for ALL; registry line 151)
+  single
+  Value 0
+end
+
+type EA::Reflection::UInt16
+  # A/_000D_0001.cs
+  # no struct of this name in our schema (database kind: uint16)
+  # read (registered for ALL; registry line 154)
+  single
+  Value 0
+end
+
+type EA::Reflection::UInt32
+  # A/_001D_0001.cs
+  # no struct of this name in our schema (database kind: uint32)
+  # read (registered for ALL; registry line 157)
+  single
+  Value 0
+end
+
+type EA::Reflection::UInt8
+  # A/_000E_0001.cs
+  # no struct of this name in our schema (database kind: uint8)
+  # read (registered for ALL; registry line 160)
+  single
+  Value 0
+end
+
+type eDRIVE_BY_TYPE
+  # A/_001A_000F.cs
+  # read (registered for ALL; registry line 202)
+  single
+  Value 0
+end
+
+type eENGINE_GROUP
+  # A/_000D_000F.cs
+  # inferred (game list is a static array (_0009/5); MW,C,PS,W,WB: the complement of the UC-only CollisionReactionRecord class; fits the SHA-1 order; registry line 897)
+  single
+  Value 0
+end
+
+type EffectLinkageRecord
+  # A/_0018_0015.cs
+  # read (game list is a static array (_001D/3); MW,C,PS: the same 12 bytes are the message box's Abort, Retry, Ignore buttons (DialogResult 3, 4, 5; A/_0008.cs:96); registry line 83)
+  SurfaceClassKey 0 mSurface.mClassKey
+  SurfaceCollectionKey 4 mSurface.mCollectionKey
+  EffectClassKey 12 mEffect.mClassKey
+  EffectCollectionKey 16 mEffect.mCollectionKey
+  MinSpeed 24 mMinSpeed
+  MaxSpeed 28 mMaxSpeed
+end
+
+type EffectParticleConstraint
+  # A/_0010_000F.cs
+  # read (registered for ALL; registry line 205)
+  single
+  Value 0
+end
+
+type eUnlockableEntity
+  # A/_0017_000C.cs
+  # inferred (game list is a static array (_000E/4); MW,C,PS,WB: the only 4-game list whose SHA-1 sorts between _000D/5 (C,PS,UC,W,WB) and _001D/5 (MW,C,UC,W,WB), as its field does; registry line 925)
+  single
+  Value 0
+end
+
+type eVOL_MOMENT
+  # A/_0004_000F.cs
+  # inferred (game list is a static array (_0009/5); MW,C,PS,W,WB: the complement of the UC-only CollisionReactionRecord class; fits the SHA-1 order; registry line 929)
+  single
+  Value 0
+end
+
+type FECarPartInfo
+  # A/_001E_0015.cs
+  # read (registered for MW; registry line 115)
+  Level 0 Level
+  Unk 4 Rep
+  Cost 8 Cost
+end
+
+type FFBWaveRecord
+  # A/_0005_0017.cs
+  # read (registered for ALL; registry line 208)
+  FrequencyA 0 Frequency_A
+  AmplitudeA 4 Amplitude_A
+  OffsetA 8 Offset_A
+  ThresholdA 12 Threshold_A
+  FrequencyB 16 Frequency_B
+  AmplitudeB 20 Amplitude_B
+  OffsetB 24 Offset_B
+  ThresholdB 28 Threshold_B
+end
+
+type FXROADNOISE_LOOP
+  # A/_0012_000C.cs
+  # read (registered for MW,C; registry line 945)
+  single
+  Value 0
+end
+
+type FXROADNOISE_TRANSITION
+  # A/_001B_000C.cs
+  # inferred (game list is a static array (_0002/3); MW,C,W: its field and _001F/3 before it sort between _001D/5 (MW,C,UC,W,WB) and _0005/4 (C,PS,W,WB), where only C,PS,WB and MW,C,W do; registry line 949)
+  single
+  Value 0
+end
+
+type GCollectionKey
+  # A/_0007_0010.cs
+  # inferred (game list is a static array (_001A/4); MW,C,PS,UC: its field and _000D/4 after it sort between _000D/3 (UC,W,WB) and _001D/3 (MW,C,PS), where only MW,C,PS,UC and C,UC,W,WB do; registry line 749)
+  single
+  Value 0 mCollectionKey
+end
+
+type HeavySupport
+  # A/_000B_0017.cs
+  # inferred (game list is a static array (_001D/5); MW,C,UC,W,WB: only these games have Csis::Type_car_type; fits the SHA-1 order; registry line 969)
+  HeavyStrategy 0 HeavyStrategy
+  Chance 4 Chance
+  Duration 8 Duration
+  ChanceBigSUV 12 ChanceBigSUV
+end
+
+type JunkmanMod
+  # A/_001C_0015.cs
+  # read (registered for MW; registry line 68)
+  Class 0 ClassKey
+  Definition 4 DefinitionKey
+  Factor 8 Scale
+end
+
+type LeaderSupport
+  # A/_0002_0017.cs
+  # inferred (game list is a static array (_001D/5); MW,C,UC,W,WB: only these games have Csis::Type_car_type; fits the SHA-1 order; registry line 977)
+  LeaderStrategy 0 LeaderStrategy
+  Chance 4 Chance
+  Duration 8 Duration
+  PriorityChance 12 PriorityChance
+  PriorityTime 16 PriorityTime
+end
+
+type ParticleAnimationInfo
+  # A/_0004_0017.cs
+  # read (registered for ALL; registry line 193)
+  AnimType 0 AnimType
+  FPS 4 FPS
+  RandomStartFrame 5 RandomStartFrame
+end
+
+type ParticleTextureRecord
+  # A/_0015_0017.cs
+  # read (registered for ALL; registry line 196)
+  TextureType 0 mEnum
+  Index 4 mIndex
+end
+
+type PathEventEnum
+  # A/_001F_0010.cs
+  # no struct of this name in our schema (database kind: bytes)
+  # inferred (game list is a static array (_0011/5); MW,C,PS,UC,WB: the only 5-game list whose SHA-1 sorts before _000D/3 (UC,W,WB), as its field does; registry line 1001)
+  single
+  Value 0
+end
+
+type RoadNoiseRecord
+  # A/_001A_0012.cs
+  # read (registered for ALL; registry line 211)
+  Frequency 0 Frequency
+  Amplitude 4 Amplitude
+  MinSpeed 8 MinSpeed
+  MaxSpeed 12 MaxSpeed
+end
+
+type SPCHType_1_EventID
+  # A/_001C_0010.cs
+  # read (registered for ALL; registry line 217)
+  single
+  Value 0
+end
+
+type STICH_COLLISION_TYPE
+  # A/_001B_0010.cs
+  # inferred (game list is a static array (_0009/5); MW,C,PS,W,WB: the complement of the UC-only CollisionReactionRecord class; fits the SHA-1 order; registry line 1077)
+  single
+  Value 0
+end
+
+type StitchCollisionVol
+  # A/_0001_0006.cs
+  # read (game list is a static array (_001D/3); MW,C,PS: the same 12 bytes are the message box's Abort, Retry, Ignore buttons (DialogResult 3, 4, 5; A/_0008.cs:96); registry line 1081)
+  1 0 Vol1
+  2 2 Vol2
+  3 4 Vol3
+  4 6 Vol4
+end
+
+type stShiftPair
+  # A/_0007_000C.cs
+  # uncertain (game list is a static array (_001A/3); its field sorts between _0011/5 (MW,C,PS,UC,WB) and _0009/4, where the lists are C,UC,W / MW,C,WB / MW,UC,W; two of them with MW; registry line 1085)
+  single
+  Value 0  # RPM,Time
+end
+
+type SurfaceEffectType
+  # A/_000C_0010.cs
+  # read (registered for ALL; registry line 220)
+  single
+  Value 0
+end
+
+type TireEffectRecord
+  # A/_001E_0012.cs
+  # inferred (game list is a static array (_001D/4); MW,C,W,WB: only these games have Csis::Type_SoundFX_*, and it is the complement of the PS,UC TireEffectRecord class; fits the SHA-1 order; registry line 57)
+  TireCondition 0 mEmitter.mClassKey
+  EmitterClass 4 mEmitter.mCollectionKey
+  EmitterCollection 8 mEmitter.mCollectionPtr
+  MinSpeed 12 mMinSpeed
+  MaxSpeed 16 mMaxSpeed
+  # note: these games' TireEffectRecord has no tire condition: it starts with the emitter's RefSpec. Taken in declaration order, TireCondition reads its class key, EmitterClass its collection key and EmitterCollection the runtime pointer after them.
+end
+
+type TrafficPatternRecord
+  # A/_0003_0012.cs
+  # inferred (game list is a static array (_001D/5); MW,C,UC,W,WB: only these games have Csis::Type_car_type; fits the SHA-1 order; registry line 1097)
+  Group 0 Vehicle.mClassKey
+  Name 4 Vehicle.mCollectionKey
+  Density 12 Rate
+  5 16 MaxInstances
+  6 20 Percent
+end
+
+type type_bStringHash
+  # A/_0014_000F.cs
+  # read (registered for ALL; registry line 214)
+  single
+  Value 0 hash
+end
+
+type UpgradeSpecs
+  # A/_0011_001B.cs
+  # inferred (game list is a static array (_001D/5); MW,C,UC,W,WB: only these games have Csis::Type_car_type; fits the SHA-1 order; registry line 1101)
+  Class 0 Item.mClassKey
+  Collection 4 Item.mCollectionKey
+  Level 12 Level
+end
+
+type Attrib::StringKey(MODEL)
+  # A/_0017_0015.cs
+  # read (A/_0007_0014.cs:1286)
+  Collision64 0 mHash64
+  Collision 8 mHash32
+  Visual 12 mString
+end

@@ -1,0 +1,178 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{54D168D7-4089-AA24-A990-838095674515}</ProjectGuid>
+    <IgnoreWarnCompileDuplicatedFilename>true</IgnoreWarnCompileDuplicatedFilename>
+    <Keyword>Win32Proj</Keyword>
+    <RootNamespace>attribcore</RootNamespace>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <CharacterSet>Unicode</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <CharacterSet>Unicode</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <OutDir>$(ProjectDir)..\bin\Debug\</OutDir>
+    <IntDir>$(ProjectDir)obj\Debug\attribcore\</IntDir>
+    <TargetName>attribcore</TargetName>
+    <TargetExt>.lib</TargetExt>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <OutDir>$(ProjectDir)..\bin\Release\</OutDir>
+    <IntDir>$(ProjectDir)obj\Release\attribcore\</IntDir>
+    <TargetName>attribcore</TargetName>
+    <TargetExt>.lib</TargetExt>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <WarningLevel>Level4</WarningLevel>
+      <PreprocessorDefinitions>_DEBUG;_CRT_SECURE_NO_WARNINGS;NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\src;..\include;..\external\lua50;..\external\lua51;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
+      <Optimization>Disabled</Optimization>
+      <MinimalRebuild>false</MinimalRebuild>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <AdditionalOptions>/utf-8 /permissive- /Zc:__cplusplus %(AdditionalOptions)</AdditionalOptions>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <ExternalWarningLevel>Level3</ExternalWarningLevel>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+    <ProjectReference>
+    </ProjectReference>
+    <PreBuildEvent>
+      <Command>@echo off
+cd $(ProjectDir)..
+python generate_build_number.py</Command>
+    </PreBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <WarningLevel>Level4</WarningLevel>
+      <PreprocessorDefinitions>NDEBUG;_CRT_SECURE_NO_WARNINGS;NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\src;..\include;..\external\lua50;..\external\lua51;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <MinimalRebuild>false</MinimalRebuild>
+      <StringPooling>true</StringPooling>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <AdditionalOptions>/utf-8 /permissive- /Zc:__cplusplus %(AdditionalOptions)</AdditionalOptions>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <ExternalWarningLevel>Level3</ExternalWarningLevel>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+    </Link>
+    <ProjectReference>
+    </ProjectReference>
+    <PreBuildEvent>
+      <Command>@echo off
+cd $(ProjectDir)..
+python generate_build_number.py</Command>
+    </PreBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClInclude Include="..\src\core\Bytes.h" />
+    <ClInclude Include="..\src\core\Clip.h" />
+    <ClInclude Include="..\src\core\Compression.h" />
+    <ClInclude Include="..\src\core\Curve.h" />
+    <ClInclude Include="..\src\core\Database.h" />
+    <ClInclude Include="..\src\core\Edit.h" />
+    <ClInclude Include="..\src\core\Folder.h" />
+    <ClInclude Include="..\src\core\Game.h" />
+    <ClInclude Include="..\src\core\Gameplay.h" />
+    <ClInclude Include="..\src\core\Hash.h" />
+    <ClInclude Include="..\src\core\KeyNames.h" />
+    <ClInclude Include="..\src\core\Nfsms.h" />
+    <ClInclude Include="..\src\core\Pack.h" />
+    <ClInclude Include="..\src\core\Paint.h" />
+    <ClInclude Include="..\src\core\RawVault.h" />
+    <ClInclude Include="..\src\core\Schema.h" />
+    <ClInclude Include="..\src\core\Script.h" />
+    <ClInclude Include="..\src\core\TypeLayouts.h" />
+    <ClInclude Include="..\src\core\Values.h" />
+    <ClInclude Include="..\src\core\Version.h" />
+    <ClInclude Include="..\src\core\Writer.h" />
+    <ClInclude Include="..\src\core\lua\Chunk.h" />
+    <ClInclude Include="..\src\core\lua\Lua.h" />
+    <ClInclude Include="..\src\core\lua\Lua50.h" />
+    <ClInclude Include="..\src\core\lua\Lua51.h" />
+    <ClInclude Include="..\src\core\lua\Opcodes50.h" />
+    <ClInclude Include="..\src\core\lua\Opcodes51.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\src\core\Bytes.cpp" />
+    <ClCompile Include="..\src\core\Clip.cpp" />
+    <ClCompile Include="..\src\core\Compression.cpp" />
+    <ClCompile Include="..\src\core\Curve.cpp" />
+    <ClCompile Include="..\src\core\Database.cpp" />
+    <ClCompile Include="..\src\core\Edit.cpp" />
+    <ClCompile Include="..\src\core\Folder.cpp" />
+    <ClCompile Include="..\src\core\Game.cpp" />
+    <ClCompile Include="..\src\core\Gameplay.cpp" />
+    <ClCompile Include="..\src\core\Hash.cpp" />
+    <ClCompile Include="..\src\core\KeyNames.cpp" />
+    <ClCompile Include="..\src\core\Nfsms.cpp" />
+    <ClCompile Include="..\src\core\Pack.cpp" />
+    <ClCompile Include="..\src\core\Paint.cpp" />
+    <ClCompile Include="..\src\core\RawVault.cpp" />
+    <ClCompile Include="..\src\core\Schema.cpp" />
+    <ClCompile Include="..\src\core\ScriptApply.cpp" />
+    <ClCompile Include="..\src\core\ScriptGen.cpp" />
+    <ClCompile Include="..\src\core\ScriptParse.cpp" />
+    <ClCompile Include="..\src\core\TypeLayouts.cpp" />
+    <ClCompile Include="..\src\core\Values.cpp" />
+    <ClCompile Include="..\src\core\Version.cpp" />
+    <ClCompile Include="..\src\core\Writer.cpp" />
+    <ClCompile Include="..\src\core\lua\Chunk.cpp" />
+    <ClCompile Include="..\src\core\lua\Compile50.cpp" />
+    <ClCompile Include="..\src\core\lua\Compile51.cpp" />
+    <ClCompile Include="..\src\core\lua\Decompile50.cpp" />
+    <ClCompile Include="..\src\core\lua\Decompile51.cpp" />
+    <ClCompile Include="..\src\core\lua\Lua.cpp" />
+    <ClCompile Include="..\src\core\lua\Opcodes50.cpp" />
+    <ClCompile Include="..\src\core\lua\Opcodes51.cpp" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

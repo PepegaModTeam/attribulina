@@ -1,0 +1,1321 @@
+# Pro Street PC gameplay Lua API. <kind> <name> <signature>  # description
+# Types: number, string, boolean, table, instance (GRuntimeInstance userdata), simable (ISimable userdata),
+# racerinfo (GRacerInfo userdata), handle (GWrapper userdata). See lua-api.md.
+table Activity  # start and suspend activities
+table Audio  # audio game-flow flags
+table Bin  # career bin queries; stubs on PC
+table Camera  # camera control
+table Debug  # debug output; everything but ShowScreenMessage is a stub on PC
+table Game  # most game functions: races, racers, triggers, cops, drift, UI flow
+table HUD  # HUD messages
+table Lua  # Lua runtime control
+table LuaDebug  # debug console; a stub on PC
+table Math  # RandomInt
+table MiniMap  # minimap; a stub on PC
+table Movie  # movie playback settings
+table Music  # music control
+table NIS  # in-game cinematics (NIS)
+table Platform  # platform queries
+table Racer  # per-racer control by index
+table Render  # render effects
+table Speech  # race speech
+table Table  # Randomize
+table Track  # track zone switching
+table Career  # the career (GCareer userdata), set at startup; no methods are bound on PC
+table GEvent  # the current race day event (GEvent userdata), set at startup
+table GHub  # the current hub (GHub userdata), looked up on every read; nil outside a hub
+table GMoviePlayer  # the movie player (GMoviePlayer userdata), set at startup
+table GRaceParameters  # the current race's parameters (GRaceParameters userdata), looked up on every read; nil when there is none
+table GTier  # the current tier (GTier userdata), looked up on every read; nil when there is none
+table ProStreetGame  # the game (GProStreetGame userdata), set at startup
+table RaceStatus  # the current race (GRaceStatus userdata), set at startup
+function Activity.Run (activity: instance)  # Starts an activity element: a race, a post-race activity, a restart activity.
+function Activity.Suspend (activity: instance)  # Suspends a running activity.
+function Audio.IsCopSpeechPlaying () -> boolean  # True while police radio speech is playing.
+function Audio.SetFlag (flag: string, on: boolean)  # Turns an audio game-flow state on or off. Names: eSYS_Error, eFMV_Active, eNIS_Start, eNIS_321GO, eNIS_Busted, eNIS_EndofRace, eFE_PostRaceScreen, eFE_CameraScreen, eFE_PauseMenu, eLOAD_GeneralLoading, eLOAD_BustedLoading, eFE_DemoCongrats, eFE_SMSMessaging, eFE_RaceOver, ePreRaceScreen.
+function Bin.GetNumChallengesPassed (bin: number) -> number  # Number of challenges passed in a bin. Always 0 on PC. (always returns 0 on PC)
+function Bin.GetNumRacesWon (bin: number) -> number  # Number of races won in a bin. Always 0 on PC. (always returns 0 on PC)
+function Camera.SetGenericCamera (camera: string, index: number)  # Switches to a named generic camera ("Challenge" in retail).
+function Camera.SetSmoothExit (on: boolean)  # Makes the next camera change blend out instead of cutting. Used before rolling starts.
+function Debug.Assert (condition: boolean, text: string)  # Debug check. Does nothing in the retail build.
+function Debug.ExecuteDebugScript (vars: table)  # Runs the debug script. Does nothing on PC. (always returns 0 on PC)
+function Debug.IsDebugScriptActive () -> boolean  # True when a debug script is loaded. Always false on PC. (always returns false on PC)
+function Debug.Print (text: string)  # Debug log line. Does nothing in the retail build.
+function Debug.PrintInstance (instance: instance)  # Logs an instance. Does nothing in the retail build.
+function Debug.ScreenPrint (line: number, text: string)  # Debug text on screen. Does nothing in the retail build.
+function Debug.ShowScreenMessage (text: string, seconds: number)  # Fires a debug on-screen message event for the given number of seconds when a player car exists.
+method GEvent:BestowRewards ()  # Gives out the rewards of the race day event that just ended.
+method GEvent:Cleanup ()  # Cleans up the race day event after it ends.
+method GEvent:IsFirstHeat () -> boolean  # True during the first heat of the current event.
+method GEvent:IsLastHeat () -> boolean  # True during the last heat of the current event.
+method GEvent:IsMultiHeat () -> boolean  # True when the current event has more than one heat.
+method GEvent:Prepare ()  # Sets up the current race day event before its first heat.
+method GEvent:Reset ()  # Resets the event's heat progress. Used when a race is restarted.
+method GEvent:Tally ()  # Adds up the heat results after arbitration.
+method GHub:DoTutorial ()  # Starts the hub's tutorial, if it has one.
+method GHub:GetEventCount () -> number  # Number of events finished in this hub visit.
+method GHub:HasDoneDelayedNIS () -> boolean  # True once the hub's delayed NIS has played.
+method GHub:HasDoneIntroNIS () -> boolean  # True once the hub's intro NIS has played.
+method GHub:HasDoneUnlockNIS () -> boolean  # True once the hub's unlock NIS has played.
+method GHub:IncrementEventCount ()  # Adds one to the hub's finished event count.
+method GHub:IsCareer () -> boolean  # True when the hub is part of the career.
+method GHub:IsDominated () -> boolean  # True when the player has dominated the hub.
+method GHub:IsWon () -> boolean  # True when the player has won the hub.
+method GHub:OnExitHubSelect (startingEvent: boolean)  # Called when leaving the hub event selection. Does nothing on PC.
+method GHub:Reset ()  # Resets the hub's per-visit state.
+method GHub:SetDoneDelayedNIS ()  # Marks the delayed NIS as played.
+method GHub:SetDoneIntroNIS ()  # Marks the intro NIS as played.
+method GHub:SetDoneUnlockNIS ()  # Marks the unlock NIS as played.
+method GHub:SetPracticeMode (on: boolean)  # Turns the hub's practice mode on or off.
+method GHub:SetSelectedEventIndex (eventIndex: number)  # Selects the event at this index on the hub screen.
+method GHub:SetupPlayerCar (carHandle: handle, playerIndex: number)  # Sets a player's car. Takes the CarHandle userdata from MHubCarChanged and a player index.
+method GHub:StartCurrentEvent ()  # Starts the selected event.
+method GHub:StartEventFromIndex (eventIndex: number)  # Starts the event at this index.
+method GHub:StartEventFromKey (eventKey: handle)  # Starts the event given as a handle userdata.
+method GHub:StartRace (heatIndex: number)  # Starts the race (heat) at this index of the current event.
+method GHub:Unlock (showUnlocks: boolean) -> boolean  # Unlocks what the hub unlocks. Returns true if something was unlocked.
+method GHub:UpdateCars ()  # Refreshes the cars available in the hub.
+method GHub:UpdatePostEventStats ()  # Updates the hub statistics after an event.
+method GMoviePlayer:Play (movie: string)  # Plays a movie by name.
+method GMoviePlayer:PlayAll ()  # Plays the queued movies.
+method GMoviePlayer:Queue (movie: string)  # Queues a movie by name to play later.
+method GMoviePlayer:ShouldPlayCareerMovie () -> boolean  # True when career movies should play now.
+method ProStreetGame:GetTrackRecordCount (raceMode: number) -> number  # Number of track records the player holds in a race mode (1 grip, 2 speed challenge, 3 drag, 4 drift, as the scripts define them).
+method ProStreetGame:RepairAllLocalAIs ()  # Repairs the cars of all local AI racers.
+method ProStreetGame:RepairAllLocalPlayers ()  # Repairs the cars of all local players.
+method ProStreetGame:ShowFireworks ()  # Shows the fireworks effect.
+method ProStreetGame:UnlockEliteOrgTier (raceMode: number, tier: instance)  # Unlocks the elite organisation tier for a race mode. Takes the mode number and the tier element.
+method GRaceParameters:GetKnockoutsPerLap () -> number  # Number of racers knocked out per lap in the current race.
+method RaceStatus:AddCheckpoint (trigger: instance)  # Adds a checkpoint trigger to the race's checkpoint list.
+method RaceStatus:AwardBonusTime (seconds: number)  # Adds bonus time to the race clock.
+method RaceStatus:CalculateRankings ()  # Works out the final rankings.
+method RaceStatus:CalculateStatistics ()  # Works out the race statistics.
+method RaceStatus:ChangeToCinematicView ()  # Switches the race to the cinematic camera.
+method RaceStatus:ChangeToPlayerView ()  # Switches the race back to the player camera.
+method RaceStatus:Cleanup ()  # Cleans up race state when the race is done.
+method RaceStatus:ClearCheckpoints ()  # Empties the race's checkpoint list.
+method RaceStatus:ClearRacers ()  # Removes all racers from the race status.
+method RaceStatus:DoDDayReset ()  # Resets race day state at the start of racing. Retail calls it with a dot (RaceStatus.DoDDayReset()), which works only because this function ignores self.
+method RaceStatus:EnableDamage (on: boolean)  # Turns car damage on or off for all racers.
+method RaceStatus:EndStopAll ()  # Ends the forced stop of all racers.
+method RaceStatus:EnterSuddenDeath ()  # Puts the race into sudden death.
+method RaceStatus:FinalizeStatistics ()  # Finishes the statistics before rankings.
+method RaceStatus:Finish (finishType: number)  # Finishes the race with a finish type (MNotifyRaceFinished.FinishType).
+method RaceStatus:FinishDisconnected ()  # Finishes the racers that disconnected.
+method RaceStatus:GetNumRacers () -> number  # Number of racers in the race.
+method RaceStatus:GetRaceBehaviour () -> number  # The race behaviour: 1 single race, 2 dual race, as the scripts define them.
+method RaceStatus:GetRacerInfo (simable: simable) -> racerinfo  # The racer info of a simable, or nil if it is not a racer.
+method RaceStatus:GetRacerInfoByIndex (index: number) -> racerinfo  # The racer info at a 0-based index, or nil.
+method RaceStatus:GetRacerInfoByOpponentId (opponentId: number) -> racerinfo  # The racer info with this opponent id, or nil.
+method RaceStatus:HideTurnIndicator (racerIndex: number)  # Hides the turn indicator of a racer (0-based index).
+method RaceStatus:NotifyScriptWhenLoaded ()  # Asks to be told when the race has loaded. The prerace state then waits for MLoadingComplete.
+method RaceStatus:PickBestShadowCarRecording ()  # Chooses the best shadow car recording to keep.
+method RaceStatus:PlaceGrid (start: instance)  # Places the racers on the starting grid at this start element.
+method RaceStatus:Prepare ()  # Sets up the racers before the race.
+method RaceStatus:ResetRaceData ()  # Clears the per-race data.
+method RaceStatus:SetActivelyRacing (on: boolean)  # Marks the race as actively racing or not.
+method RaceStatus:SetHandicap (handicap: number)  # Sets the race handicap (MNotifyLoadHeat.Handicap).
+method RaceStatus:SetHasBeenWon (won: boolean)  # Sets whether the race has been won.
+method RaceStatus:SetIsLoading (loading: boolean)  # Marks the race as loading or not.
+method RaceStatus:SetIsRestartAllowed (allowed: boolean)  # Allows or forbids restarting the race.
+method RaceStatus:SetNextCheckpointPos (trigger: instance)  # Sets the position of the next checkpoint from a trigger.
+method RaceStatus:SetNumSectors (count: number)  # Sets the number of sectors (sector shootout).
+method RaceStatus:SetRoaming ()  # Leaves race mode and goes back to free roam.
+method RaceStatus:SetSectorBestPoints (sector: number, points: number)  # Sets the best points of a sector (1-based sector, points).
+method RaceStatus:SetSectorDistances ()  # Measures the sector distances from the sector triggers.
+method RaceStatus:SetSectorOwner (sector: number, racer: number)  # Sets the owner of a sector (1-based sector, 1-based racer, 0 for none).
+method RaceStatus:SetSectorTime (sector: number, seconds: number)  # Sets the best time of a sector (1-based sector, seconds).
+method RaceStatus:SetTaskTime (seconds: number)  # Sets the time shown for a timed task, in seconds.
+method RaceStatus:SetWaitForMusicTransition ()  # Makes the race wait for the music transition before starting.
+method RaceStatus:SetupAIRaceLine ()  # Sets up the AI racing line.
+method RaceStatus:ShowTurnIndicator (racerIndex: number, cornerTrigger: instance)  # Shows the turn indicator of a racer (0-based index) for a corner trigger.
+method RaceStatus:StartMasterTimer ()  # Starts the race clock.
+method RaceStatus:StateCatchupAll (fromState: number, toState: number)  # Moves every racer that is in state A on to state B (racer state numbers, see vars.State).
+method RaceStatus:StateCheck (state: number, state2: number) -> boolean  # Checks the racer states (two state numbers). Exact meaning not known.
+method RaceStatus:StateCheckAll (state: number) -> boolean  # True when every racer is in this racer state.
+method RaceStatus:StateCheckAny (state: number, state2: number) -> boolean  # True when any racer is in one of the given racer states (meaning of the second number not known).
+method RaceStatus:StateCheckFirst (state: number, state2: number) -> boolean  # Checks the first racer's state (meaning of the two numbers not known).
+method RaceStatus:StateOverrideAll (state: number)  # Puts every racer into this racer state.
+method RaceStatus:StopMasterTimer ()  # Stops the race clock.
+method RaceStatus:StoreStatistics ()  # Stores the race statistics.
+method RaceStatus:UpdatePostRaceStats ()  # Updates the statistics shown after the race.
+method GRacerInfo:CheckpointReached (checkpoint: number)  # Tells the racer it reached this checkpoint number.
+method GRacerInfo:DisableCollisions ()  # Turns collisions off for this racer.
+method GRacerInfo:EnableAiControl (on: boolean)  # Hands the racer's car to the AI, or takes it back.
+method GRacerInfo:EnableCollisions ()  # Turns collisions on for this racer.
+method GRacerInfo:EnableDamage (on: boolean)  # Turns damage on or off for this racer.
+method GRacerInfo:EnterStaging ()  # Puts the racer into staging (drag start).
+method GRacerInfo:ExitStaging ()  # Takes the racer out of staging.
+method GRacerInfo:ExtrapolateFinish ()  # Estimates the racer's finish when it did not cross the line.
+method GRacerInfo:FinishRace (reason: number)  # Finishes the racer with a reason (MNotifyRacerFinished.Reason).
+method GRacerInfo:ForceStop ()  # Forces the racer's car to stop.
+method GRacerInfo:GetDidDisconnect () -> boolean  # True when this racer disconnected.
+method GRacerInfo:GetFinishReason () -> number  # The racer's finish reason number.
+method GRacerInfo:GetHandicap () -> number  # The racer's handicap delay in seconds.
+method GRacerInfo:GetIndex () -> number  # The racer's 0-based index. Scripts add 1 for their own tables.
+method GRacerInfo:GetIsKnockedOut () -> boolean  # True when the racer has been knocked out.
+method GRacerInfo:GetIsLocalPlayer () -> boolean  # True when this racer is a local player.
+method GRacerInfo:GetIsLocalRacer () -> boolean  # True when this racer is simulated on this machine.
+method GRacerInfo:GetLapsCompleted () -> number  # Number of laps the racer has completed.
+method GRacerInfo:GetName () -> string  # The racer's name.
+method GRacerInfo:GetRaceTime () -> number  # The racer's race time in seconds.
+method GRacerInfo:GetSectorDynamicTargetTimeBaseOne (sector: number) -> number  # The racer's target time for a 1-based sector.
+method GRacerInfo:GetSimable () -> simable  # The racer's simable (car), or nil.
+method GRacerInfo:GetState () -> number  # The racer's state number (see vars.State).
+method GRacerInfo:HasFinishReason () -> boolean  # True once the racer has a finish reason.
+method GRacerInfo:HitRouteTrigger (trigger: number, goal: number)  # Reports a route trigger hit. Does nothing on PC.
+method GRacerInfo:IsCountdownDisabled () -> boolean  # True when the countdown is turned off for this racer.
+method GRacerInfo:IsFinishedRacing () -> boolean  # True when the racer has finished.
+method GRacerInfo:KillTimer (name: string)  # Stops a named timer of this racer.
+method GRacerInfo:Launch ()  # Launches the racer's car off the line.
+method GRacerInfo:PrePassStatistics ()  # Prepares the racer's statistics before the finish pass.
+method GRacerInfo:RaceOver ()  # Ends the race for this racer.
+method GRacerInfo:ResetRaceTimer ()  # Resets the racer's race time.
+method GRacerInfo:SaveStartPosition ()  # Remembers the racer's current position as its start position.
+method GRacerInfo:SetCountdownDisabled (disabled: boolean)  # Turns the countdown off or on for this racer.
+method GRacerInfo:SetDistDriven (distance: number)  # Sets the distance the racer has driven.
+method GRacerInfo:SetForBestSector (points: number)  # Records points for the racer's best sector.
+method GRacerInfo:SetHandicap (seconds: number)  # Sets the racer's handicap delay in seconds.
+method GRacerInfo:SetNextGoal (trigger: instance)  # Sets the trigger the racer drives to next.
+method GRacerInfo:SetSectorPoints (points: number)  # Sets the racer's sector points.
+method GRacerInfo:SetStaging (on: boolean)  # Marks the racer as staging or not.
+method GRacerInfo:SetState (state: number)  # Puts the racer into a state number (see vars.State). Scripts handle the change in MPlayerStateExit and MPlayerStateEnter.
+method GRacerInfo:SetTimer (name: string, seconds: number) -> boolean  # Starts a named timer for this racer, in seconds. Scripts expect MNotifyRacerTimer with that Name when it runs out.
+method GRacerInfo:StartCountdown ()  # Starts the racer's countdown.
+method GRacerInfo:StartExtrapolation ()  # Starts estimating the racer's progress.
+method GRacerInfo:StartRace ()  # Starts the race for this racer.
+method GRacerInfo:StartingLineCrossed ()  # Reports that the racer crossed the start line. Does nothing on PC.
+method GRacerInfo:StopExtrapolation ()  # Stops estimating the racer's progress.
+method GTier:GetHubDominatedCount () -> number  # Number of hubs dominated in this tier.
+method GTier:GetHubDominatedThreshold () -> number  # Hubs to dominate to finish this tier.
+method GTier:GetHubRecordCount () -> number  # Number of hub records in this tier.
+method GTier:GetHubRecordThreshold () -> number  # Hub records needed in this tier.
+method GTier:GetHubWonCount () -> number  # Number of hubs won in this tier.
+method GTier:GetHubWonThreshold () -> number  # Hubs to win to finish this tier.
+method GTier:IncrementConsecutiveRacesLost ()  # Adds one to the run of races lost.
+method GTier:IncrementConsecutiveRacesWon ()  # Adds one to the run of races won.
+method GTier:IncrementHubDominated ()  # Adds one to the hubs dominated.
+method GTier:IncrementHubRecordReached ()  # Adds one to the hub records reached.
+method GTier:IncrementHubWon ()  # Adds one to the hubs won.
+method GTier:Initialize ()  # Sets up the tier.
+method GTier:Unlock ()  # Unlocks the tier.
+function Game.AbandonRace ()  # Abandons the current race.
+function Game.ActivateDefaultCameraOverride (pov: string)  # Forces a default camera view. The function references the names POV_OUTSIDE_TUNING, POV_BUMPER, POV_HOOD, POV_OUTSIDE_CLOSE, POV_OUTSIDE_FAR.
+function Game.ActivateDriftCamera ()  # Switches to the drift camera.
+function Game.ActivateDriftMode ()  # Turns on drift scoring.
+function Game.AllHumanPlayersDone () -> boolean  # True when every human player has finished.
+function Game.AllRacersDone () -> boolean  # True when every racer has finished.
+function Game.AllowEngageEvents () -> boolean  # True when the player may start an event from a trigger now.
+function Game.AllowEngageSafehouse () -> boolean  # True when the player may enter the safehouse now.
+function Game.AllowMenuGates () -> boolean  # True when menu gate zones may open now.
+function Game.AwardCash (simable: simable, amount: number)  # Gives (or with a negative amount takes) cash to the racer driving this simable.
+function Game.AwardPlayerBounty (bounty: number)  # Gives the player this much bounty.
+function Game.AwardPoints (simable: simable, points: number)  # Gives points to the racer driving this simable.
+function Game.BlowEngine (simable: simable)  # Blows the engine of this simable.
+function Game.CalculateSectorPoints (simable: simable, secondsUnderTarget: number, pointsPerSecond: number) -> number  # Points for a sector: simable, seconds under the target time, points per second.
+function Game.CareerPostRaceFlow ()  # Runs the career post-race flow. Does nothing on PC.
+function Game.ChallengeComplete (simable: simable)  # Marks the challenge complete for this simable.
+function Game.ChallengeCompleted ()  # Marks the current milestone challenge as completed.
+function Game.CheckKingHubDominated () -> boolean  # True when the king's hub is dominated.
+function Game.ClearAIControl (player: number)  # Gives control of player n's car back to the player (0-based).
+function Game.DeactivateDefaultCameraOverride ()  # Ends the forced default camera view.
+function Game.DeactivateDriftMode ()  # Turns off drift scoring.
+function Game.DetachCameraFromRacer (simable: simable)  # Detaches the camera from this simable.
+function Game.DoSpecialFinalization (activity: instance)  # Runs activity-specific finishing work for this activity.
+function Game.DoSpecialSetup (activity: instance) -> boolean  # Runs activity-specific setup for this activity. Returns true if it did something.
+function Game.DoZoneMenuAction (zone: instance)  # Opens the menu of a menu gate zone element.
+function Game.DriftFeedbackTriggerEntered (simable: simable, section: number, targetPercent: number)  # Drift feedback trigger: simable, section index, target score percent.
+function Game.DriftFinalizeScore (simable: simable)  # Finalises the drift score of this simable.
+function Game.DriftResetScore ()  # Resets the drift scores.
+function Game.DriftSectionEntered (simable: simable, section: number, bonusMultiplier: number)  # Starts scoring a drift section: simable, section index, entry bonus multiplier.
+function Game.DriftSectionExited (simable: simable, section: number)  # Ends scoring a drift section: simable, section index.
+function Game.DumpLapTime ()  # Logs a lap time. Does nothing on PC.
+function Game.EnableTrigger (trigger: instance, on: boolean)  # Turns a trigger element on or off.
+function Game.EnterEngagableTrigger (trigger: instance)  # Shows the "start event" prompt for a trigger or activity element.
+function Game.EnterGateZone (zone: instance, zoneType: string, areaName: string)  # Enters a menu gate zone: zone element, zone type, area name.
+function Game.EnterPostRaceFlow ()  # Starts the post-race screens.
+function Game.EnterRaceActivity ()  # Enters race activity mode. Does nothing on PC.
+function Game.ExitEngagableTrigger (trigger: instance)  # Removes the "start event" prompt of a trigger or activity element.
+function Game.ExitGateZone (zone: instance, zoneType: string, areaName: string)  # Leaves a menu gate zone: zone element, zone type, area name.
+function Game.ExitRaceActivity ()  # Leaves race activity mode. Does nothing on PC.
+function Game.Fade ()  # Fades the screen. Does nothing on PC.
+function Game.ForceAIControl (player: number)  # Hands player n's car to the AI (0-based).
+function Game.ForceGridPlacement ()  # Places the cars on the grid now.
+function Game.ForcePursuitStart (heatLevel: number)  # Starts a police pursuit at a heat level. Does nothing on PC.
+function Game.GetCurrentHubDifficultyLevel () -> number  # Difficulty level of the current hub, 0-based.
+function Game.GetPlayerBounty () -> number  # The player's bounty.
+function Game.GetPlayerClass () -> number  # The player's car class. Always 0 on PC. (always returns 0 on PC)
+function Game.GetPlayerElement (player: number) -> simable  # The simable of player n, or nil.
+function Game.GetRacerCharacter (racer: number) -> instance  # The character element of racer n (1-based), or nil.
+function Game.GetRacerElement (racer: number) -> simable  # The simable of racer n (1-based), or nil.
+function Game.GetRacerIndex (simable: simable) -> number  # The 1-based racer index of a simable. Scripts treat values below 1 as "not a racer".
+function Game.GetRacerPctComplete (racer: number) -> number  # How much of the race racer n has completed.
+function Game.GetSimTime () -> number  # Simulation time in seconds.
+function Game.GetSimableSpeedKmh (simable: simable) -> number  # Speed of a simable in km/h.
+function Game.HideLoadingScreen (id: number)  # Hides the loading screen. The number is a reason or id (0 to 6 in retail).
+function Game.HideRaceOverSummary ()  # Hides the race over summary. Does nothing on PC.
+function Game.HideTriggerIcon (trigger: instance)  # Hides the map icon of a trigger element.
+function Game.InfiniteLaps () -> boolean  # True when laps are infinite. Always false on PC. (always returns false on PC)
+function Game.IsActiveMenuGate (zone: instance) -> boolean  # True when this menu gate element is active.
+function Game.IsActiveSpeedTrap (trap: instance) -> boolean  # True when this speed trap element is active. Always false on PC. (always returns false on PC)
+function Game.IsCareerMode () -> boolean  # True in career mode.
+function Game.IsLANGame () -> boolean  # True in a LAN game. Always false on PC. (always returns false on PC)
+function Game.IsOnlineGame () -> boolean  # True in an online game.
+function Game.IsPracticeMode () -> boolean  # True in practice mode.
+function Game.IsRaceCompleted (race: instance) -> boolean  # True when this race element has been completed.
+function Game.IsRaceUnlocked (race: instance) -> boolean  # True when this race element is unlocked.
+function Game.IsSlotcarRace () -> boolean  # True in a slot car race.
+function Game.IsSplitScreen () -> boolean  # True in split screen.
+function Game.IsTargetRaceUnlocked (trigger: instance) -> boolean  # True when the race a trigger element leads to is unlocked.
+function Game.JackKnife (truck: instance)  # Jack-knifes a traffic truck element.
+function Game.JumpToCarLot ()  # Takes the player to the car lot.
+function Game.JumpToSafeHouse ()  # Takes the player to the safehouse.
+function Game.KillTimer (name: string)  # Stops a named activity timer started with Game.SetTimer.
+function Game.KnockoutRacer (simable: simable)  # Knocks a racer out of the race.
+function Game.NavigatePlayerTo (target: instance, mapItem: instance, value: number, flag: boolean)  # Sets a GPS route: target element, map item element, a number, and a flag (retail passes 0, true).
+function Game.NoNewPursuitsOrCops ()  # Stops new pursuits and cops. Does nothing on PC.
+function Game.NotifyActivityFinsihed (activity: instance)  # Tells the game this activity has finished. The typo is in the game.
+function Game.NotifyFailedToPostSectorRecord (simable: simable, sector: number, points: number, recordPoints: number)  # Sector shootout: a racer's points did not beat the record (simable, sector, points, record points).
+function Game.NotifyLapFinished (simable: simable, lap: number)  # Reports that a racer finished a lap: simable, lap number.
+function Game.NotifyRaceFinished (simable: simable)  # Reports that a racer finished the race.
+function Game.NotifyRacerFinished (simable: simable)  # Reports that a racer crossed the finish line for the last time.
+function Game.NotifySectorCompleted (simable: simable, sector: number)  # Sector shootout: a racer completed a sector (simable, sector).
+function Game.NotifySectorDomination (racer: number)  # Sector shootout: a racer owns every sector (1-based racer).
+function Game.NotifySectorOwnershipChanged (sector: number, newOwner: number, oldOwner: number)  # Sector shootout: sector, new owner, old owner.
+function Game.NotifySectorRecordBroken (sector: number, racer: number, oldOwner: number)  # Sector shootout: sector, racer, previous record holder.
+function Game.NotifySectorRecordPosted (sector: number, racer: number, oldOwner: number)  # Sector shootout: sector, racer, previous owner.
+function Game.NotifySectorTriggerEnter (racer: number, sector: number, raceTime: number, targetTime: number)  # Sector shootout: racer index, sector, race time, target time. The sector shootout script then handles MNotifySectorTriggerEnter.
+function Game.NotifySpeedTrapTriggered (activity: instance, trap: instance, simable: simable, speedKmh: number)  # Reports a speed trap hit: activity, trap element, simable, speed in km/h.
+function Game.NotifyTurnFinished ()  # Reports a finished turn. Does nothing on PC.
+function Game.PlayFinishCamera (winNIS: string, loseNIS: string)  # Plays the finish camera: NIS for a win, NIS for a loss. "(Automatic)" picks one.
+function Game.PlayTutorial ()  # Plays the activity's tutorial. The tutorial state then waits for MNotifyMovieFinished.
+function Game.PlayerBrake (amount: number)  # Applies the player's brake (0 to 1).
+function Game.PlayerGas (amount: number)  # Applies the player's throttle (0 to 1).
+function Game.PlayerGetSpeed () -> number  # The player's speed.
+function Game.PlayerHandBrake (amount: number)  # Applies the player's handbrake (0 to 1).
+function Game.PlayerIsLocal (simable: simable) -> boolean  # True when this simable is a local player's car.
+function Game.PlayerNOS (amount: number)  # Applies the player's nitrous (0 to 1).
+function Game.PlayerSteer (amount: number)  # Steers the player's car (-1 to 1).
+function Game.PlayerWasTooSlowInDriftRace () -> boolean  # True when the player was too slow in a drift race. Always false on PC. (always returns false on PC)
+function Game.PlayerWon () -> boolean  # True when the player won the race.
+function Game.PrecalculateDriftOpponentScores ()  # Precomputes the drift scores of opponents. Does nothing on PC.
+function Game.PreventPlayerBeingBusted ()  # Stops the player from being busted. Does nothing on PC.
+function Game.RacerIsHuman (racer: number) -> boolean  # True when racer n is a human player.
+function Game.ReloadWorld (marker: instance)  # Reloads the world around a marker element.
+function Game.ResetCopsForRestart ()  # Resets the police for a restart. Does nothing on PC.
+function Game.ResetPlayerTriggerEntered (start: instance, simable: simable)  # A reset trigger was entered: start element, simable.
+function Game.ResetTrigger (trigger: instance)  # Re-arms a trigger element so it fires again.
+function Game.ResetTriggerEntered (simable: simable)  # A reset trigger was entered by this simable.
+function Game.RestoreStartPositions ()  # Puts the racers back on their saved start positions.
+function Game.SabotageEngine (simable: simable, amount: number)  # Damages the engine of a simable by an amount.
+function Game.SaveStartPositions ()  # Saves the racers' start positions.
+function Game.SendCharacterStimulus (character: instance, stimulus: string)  # Sends a named stimulus to a character element.
+function Game.SetAIGoal (simable: simable, goal: string)  # Sets a named AI goal for a simable.
+function Game.SetAllStaging (on: boolean)  # Turns staging on or off for all racers.
+function Game.SetChanceOfRain (chance: number)  # Sets the chance of rain (the activity's ChanceOfRain field).
+function Game.SetCopsEnabled (on: boolean)  # Turns the police on or off.
+function Game.SetFreeRoamStartMarker (marker: instance)  # Sets the marker where free roam starts.
+function Game.SetMaxScoreForSection (section: number, score: number)  # Sets the maximum drift score of a section: section index, score.
+function Game.SetPlayerStartPosition (marker: instance)  # Moves the player's start position to a marker element.
+function Game.SetPursuitOffset (simable: simable, x: number, y: number)  # Sets a pursuit offset for a simable (two numbers).
+function Game.SetPursuitTarget (pursuer: simable, target: simable)  # Makes one simable pursue another.
+function Game.SetRaceActivity (activity: instance)  # Tells the game which activity is the current race.
+function Game.SetRaceExpired ()  # Marks the race as expired (time ran out).
+function Game.SetRacerLapsLeft (racer: number, laps: number)  # Sets the laps left of racer n (1-based).
+function Game.SetTimer (name: string, seconds: number)  # Starts a named activity timer, in seconds. Scripts expect MNotifyTimer with that Name when it runs out.
+function Game.SetTrafficSpeed (traffic: instance, speed: number, speed2: number)  # Sets traffic speed for a traffic element (two numbers).
+function Game.SetVehicleOnGround (simable: simable, x: number, y: number, z: number, a: number, b: number, c: number)  # Puts a simable's car on the ground at a position and orientation (six numbers).
+function Game.SetWorldHeat (heat: number)  # Sets the world heat level.
+function Game.ShouldHideSpeedTrap (trap: instance) -> boolean  # True when a speed trap element's icon should be hidden after it is hit.
+function Game.ShouldSkipMatchupScreen () -> boolean  # True when the pre-race matchup screen should be skipped.
+function Game.ShowGPS (on: boolean)  # Shows or hides the GPS route.
+function Game.ShowLoadingScreen (id: number)  # Shows the loading screen. The number is a reason or id (0 to 6 in retail).
+function Game.ShowLosingPostRaceScreen ()  # Shows the post-race screen for a loss.
+function Game.ShowOnlinePostRaceScreen () -> boolean  # Shows the online post-race screen.
+function Game.ShowPauseMenu ()  # Opens the pause menu.
+function Game.ShowRaceOverSummary ()  # Shows the race over summary.
+function Game.ShowTriggerIcon (trigger: instance)  # Shows the map icon of a trigger element.
+function Game.ShowWinningPostRaceScreen ()  # Shows the post-race screen for a win.
+function Game.SimableAngle (simable: simable, element: instance) -> number  # Angle between a simable and an element.
+function Game.SimableDistance (simable: simable, element: instance) -> number  # Distance between a simable and an element.
+function Game.SimableIsWingman (simable: simable) -> boolean  # True when this simable is the wingman. Always false on PC. (always returns false on PC)
+function Game.SkipCareerIntro () -> boolean  # True when the career intro should be skipped.
+function Game.SpawnCharacter (character: instance, spawnPoint: instance, element: instance, value: number)  # Spawns a character: character, spawn point, a third element, a number.
+function Game.SpawnCop (spawnPoint: instance, copType: string, flag1: boolean, flag2: boolean)  # Spawns a police car at a spawn point element: point, cop type, two flags (retail passes true, false).
+function Game.SpawnIcons ()  # Spawns the map icons.
+function Game.StartRace (activity: instance)  # Starts the race of this activity.
+function Game.StartRaceFromInGame (race: string)  # Starts a race by name from in-game.
+function Game.StoreCheckpointSpeed (checkpoint: instance, simable: simable)  # Stores the speed of a simable at a checkpoint element (top speed challenge).
+function Game.TimePlayerFacingWrongWay () -> number  # How long the player has been facing the wrong way, in seconds.
+function Game.TotalRacer (simable: simable)  # Wrecks a racer. Bound to the same function as Game.KnockoutRacer on PC.
+function Game.UnlockRace (race: instance)  # Unlocks a race element.
+function Game.UnspawnCharacter (character: instance)  # Removes a spawned character element.
+function Game.UpdateEventScores ()  # Updates the race day event scores.
+function Game.UpdateScores ()  # Updates the race scores.
+function Game.UseSectionsInDrift (on: boolean)  # Turns drift sections on or off.
+function Game.WarpPlayerAndWingmanToMarker (marker: instance, flag: boolean)  # Moves the player (and wingman) to a marker element. The flag is passed as true in retail.
+function Game.WarpPlayerToTrigger (trigger: instance)  # Moves the player to a trigger or marker element.
+function Game.WarpToMarkerWhenRoaming (marker: instance)  # Moves the player to a marker element when back in free roam.
+function Game.WindTriggerEntered (section: number, simable: simable, minMph: number, maxMph: number, rotation: number)  # Wind trigger: section index, simable, min and max wind speed in mph, rotation.
+function Game.YouWon ()  # Win notification. Does nothing on PC.
+function HUD.HideLoopingMessage ()  # Hides the looping HUD message.
+function HUD.ShowLoopingMessage (textKey: string, seconds: number)  # Shows a HUD message by text key, repeating, with a time in seconds.
+function HUD.ShowMessage (textKey: string)  # Shows a HUD message by text key, e.g. "HUD_TOO_SLOW".
+function HUD.ShowTimeExtension (seconds: number)  # Shows a time extension of this many seconds.
+method ISimable:IsPlayer () -> boolean  # True when the simable is a player's car.
+function Lua.ResetHeap ()  # Asks for the Lua heap to be reset to its snapshot. Inside a handler the reset waits until the delivery ends.
+function LuaDebug.ExecuteLine (line: string)  # Runs a line of Lua. Does nothing on PC. (always returns 0 on PC)
+function Math.RandomInt (n: number) -> number  # Random whole number from 1 to n.
+function MiniMap.AddEngagedRace (trigger: instance)  # Adds a race trigger to the minimap. Does nothing on PC.
+function Movie.RefreshTrackAfterPlaying (on: number)  # Sets whether the track is refreshed after a movie (0 or 1).
+function Music.ForceCanyonMusic ()  # Forces the canyon music.
+function Music.ForceCrewMusic ()  # Forces the crew music.
+function Music.ForceKillMusic ()  # Stops the music.
+function Music.ForceLicensedMusic ()  # Forces the licensed music.
+function Music.ForcePursuitMusic ()  # Forces the pursuit music.
+function Music.RequestTransition ()  # Asks for a music transition. The init_audio state then waits for MNotifyAudioTransitionStarted and MNotifyAudioTransitionDone.
+function Music.SetWaitState (waiting: boolean)  # Sets the music wait state.
+function NIS.DisablePIP ()  # Turns off the picture-in-picture NIS. Does nothing on PC.
+function NIS.End ()  # Ends the playing NIS.
+function NIS.FreezeCamera (frozen: boolean)  # Freezes or unfreezes the camera.
+function NIS.IsNISReplacedByMovie (nis: string) -> boolean  # True when this NIS is replaced by a movie. Always false on PC. (always returns false on PC)
+function NIS.IsPIPLoaded () -> boolean  # True when the picture-in-picture NIS is loaded.
+function NIS.LaunchPIP (nis: string)  # Starts a picture-in-picture NIS by name.
+function NIS.Play (marker: instance, scene: string, sceneType: string, cameraTrack: number, preMovie: string, postMovie: string)  # Plays an NIS: start marker element (or nil), scene name, scene type ("Intro", "Outro", "Career", "HUB" in retail), camera track, movie before, movie after. Scripts then wait for MNISComplete or MNISFailed.
+function NIS.WaitForPIP () -> boolean  # True while waiting for a picture-in-picture NIS. Always false on PC. (always returns false on PC)
+function Platform.IsNextGen () -> boolean  # True on next-gen platforms. Always true on PC. (always returns true on PC)
+function Racer.EndForceStop (racer: number)  # Ends the forced stop of racer n.
+function Racer.ForceCoast (racer: number)  # Makes racer n coast.
+function Render.EnableCrashVisualTreatment (on: boolean)  # Turns the crash visual effect on or off.
+function Render.KillSmoke ()  # Removes tyre smoke.
+function Speech.AbandonRace ()  # Plays the abandon race speech. Does nothing on PC.
+function Speech.RaceOver ()  # Plays the race over speech.
+function Table.Randomize (t: table)  # Shuffles the array part of a table in place.
+function Track.EnableZoneSwitching (on: number)  # Turns track zone switching on (1) or off (0).
+function ChangeState (state) -> nil  # Queues a switch of this activity to the state whose Name is state ("done"); the handler keeps running
+function E911Call ()  # Fires the E911Call event; needs exactly 0 arguments
+function EAccelerate (AccelerationX: number, AccelerationY: number, AccelerationZ: number, LocalToObject: number, LocalToTrigger: number)  # Fires the EAccelerate event; needs exactly 5 arguments
+function EAddSMS (Number: number)  # Fires the EAddSMS event; needs exactly 1 argument
+function EAutoSave ()  # Fires the EAutoSave event; needs exactly 0 arguments
+function EBecomePursuitCar ()  # Fires the EBecomePursuitCar event; needs exactly 0 arguments
+function ECameraKillICE ()  # Fires the ECameraKillICE event; needs exactly 0 arguments
+function ECameraPhotoFinish ()  # Fires the ECameraPhotoFinish event; needs exactly 0 arguments
+function ECameraShake ()  # Fires the ECameraShake event; needs exactly 0 arguments
+function ECellCall (ID: number)  # Fires the ECellCall event; needs exactly 1 argument
+function ECinematicMoment (GenericGroupName: string, GenericTrackIndex: number, GenericContextID: number)  # Fires the ECinematicMoment event; needs exactly 3 arguments
+function EDDayFlowDone ()  # Fires the EDDayFlowDone event; needs exactly 0 arguments
+function EDamageLights (Name: string)  # Fires the EDamageLights event; needs exactly 1 argument
+function EDebugPrint (DebugMsg: string)  # Fires the EDebugPrint event; needs exactly 1 argument
+function EDebugScreenMessage (DebugMsg: string, Duration: number, X: number, Y: number)  # Fires the EDebugScreenMessage event; needs exactly 4 arguments
+function EDestroyVehicle ()  # Fires the EDestroyVehicle event; needs exactly 0 arguments
+function EDisablePursuitVehicle ()  # Fires the EDisablePursuitVehicle event; needs exactly 0 arguments
+function EDismissAIFromRace (OffsetMeters: number)  # Fires the EDismissAIFromRace event; needs exactly 1 argument
+function EDynamicRegion (On: number)  # Fires the EDynamicRegion event; needs exactly 1 argument
+function EEnableModeling (Enable: number)  # Fires the EEnableModeling event; needs exactly 1 argument
+function EEndCarStop (DontRetestInput: number)  # Fires the EEndCarStop event; needs exactly 1 argument
+function EEnterBin (BinIndex: number)  # Fires the EEnterBin event; needs exactly 1 argument
+function EEnterHubSelect ()  # Fires the EEnterHubSelect event; needs exactly 0 arguments
+function EEnterPreRaceMatchup ()  # Fires the EEnterPreRaceMatchup event; needs exactly 0 arguments
+function EEnterStagingWait (WaitStateID: number)  # Fires the EEnterStagingWait event; needs exactly 1 argument
+function EExampleEvent (String: string, Crc32: string, Float: number, Int: number, Unsigned: number, UpperCase: string, LowerCase: string, IntSlider: number, FloatSlider: number, Boolean: number, List: string, FixedList: string, Attributes: string)  # Fires the EExampleEvent event; needs exactly 13 arguments
+function EExitStagingWait (WaitStateID: number)  # Fires the EExitStagingWait event; needs exactly 1 argument
+function EFireEventTag (Tag: string, Delayed: number, AllSystems: number)  # Fires the EFireEventTag event; needs exactly 3 arguments
+function EForceCarStop (StopInstantly: number)  # Fires the EForceCarStop event; needs exactly 1 argument
+function EHideObject ()  # Fires the EHideObject event; needs exactly 0 arguments
+function EHidePart (PartName: string)  # Fires the EHidePart event; needs exactly 1 argument
+function EHudFadeToBlackOff (PlayerIndex: number)  # Fires the EHudFadeToBlackOff event; needs exactly 1 argument
+function EHudFadeToBlackOn (PlayerIndex: number)  # Fires the EHudFadeToBlackOn event; needs exactly 1 argument
+function EICECameraPause ()  # Fires the EICECameraPause event; needs exactly 0 arguments
+function EICECameraUnPause ()  # Fires the EICECameraUnPause event; needs exactly 0 arguments
+function EICECarAttach ()  # Fires the EICECarAttach event; needs exactly 0 arguments
+function EJumpToStrategyFlow ()  # Fires the EJumpToStrategyFlow event; needs exactly 0 arguments
+function EKillJoint ()  # Fires the EKillJoint event; needs exactly 0 arguments
+function EKillObject ()  # Fires the EKillObject event; needs exactly 0 arguments
+function ELoadMinimapResources ()  # Fires the ELoadMinimapResources event; needs exactly 0 arguments
+function EMomentStrm (AttribStrm: string, AttribKey: string)  # Fires the EMomentStrm event; needs exactly 2 arguments
+function ENISAeroDynamics (Aerodynamics: number)  # Fires the ENISAeroDynamics event; needs exactly 1 argument
+function ENISBloomScale (BloomScale: number)  # Fires the ENISBloomScale event; needs exactly 1 argument
+function ENISBrakelock (Front: number, Rear: number)  # Fires the ENISBrakelock event; needs exactly 2 arguments
+function ENISBurnout (Speed: number)  # Fires the ENISBurnout event; needs exactly 1 argument
+function ENISCarDamage ()  # Fires the ENISCarDamage event; needs exactly 0 arguments
+function ENISCarDamageReset ()  # Fires the ENISCarDamageReset event; needs exactly 0 arguments
+function ENISCarFullyAnimated (ullControl: number)  # Fires the ENISCarFullyAnimated event; needs exactly 1 argument
+function ENISCarHidePart (carPartName: string, isHidden: number)  # Fires the ENISCarHidePart event; needs exactly 2 arguments
+function ENISCarPitch (Pitch: number, Time: number)  # Fires the ENISCarPitch event; needs exactly 2 arguments
+function ENISCarRoll (Roll: number, Time: number)  # Fires the ENISCarRoll event; needs exactly 2 arguments
+function ENISCarShake (Shake: number, Rate: number, Ramp: number, Time: number)  # Fires the ENISCarShake event; needs exactly 4 arguments
+function ENISCarSmokeOverride (frontTireSmoke: number, backTireSmoke: number, overrideSmoke: number)  # Fires the ENISCarSmokeOverride event; needs exactly 3 arguments
+function ENISConstraint (Degrees: number)  # Fires the ENISConstraint event; needs exactly 1 argument
+function ENISCopCarDoors (CarDoor: number, CarDoorPos: number, CarDoorAnimLength: number, CarDoorEndPos: number)  # Fires the ENISCopCarDoors event; needs exactly 4 arguments
+function ENISCopLights (Enable: number, LightIntensity: number, LightPosX: number, LightPosY: number, LightPosZ: number)  # Fires the ENISCopLights event; needs exactly 5 arguments
+function ENISDetach (Speed: number)  # Fires the ENISDetach event; needs exactly 1 argument
+function ENISDetail (SceneryDetail: number)  # Fires the ENISDetail event; needs exactly 1 argument
+function ENISFakeFar (FakeFar: number)  # Fires the ENISFakeFar event; needs exactly 1 argument
+function ENISFreeze (FreezeAnimation: number)  # Fires the ENISFreeze event; needs exactly 1 argument
+function ENISHideCharacter (AnimModelName: string, AnimShow: number)  # Fires the ENISHideCharacter event; needs exactly 2 arguments
+function ENISLightMaterial (Material: number, EyeScale: number, EyeR: number, EyeG: number, EyeB: number, TeethScale: number, TeethR: number, TeethG: number, TeethB: number)  # Fires the ENISLightMaterial event; needs exactly 9 arguments
+function ENISLightRigs (Rig: number, Light: number, Mode: number, Theta: number, Phi: number, Red: number, Green: number, Blue: number, Intensity: number)  # Fires the ENISLightRigs event; needs exactly 9 arguments
+function ENISLights (CopLights: number, HeadLights: number)  # Fires the ENISLights event; needs exactly 2 arguments
+function ENISMotionBlur (EnableMotionBlur: number)  # Fires the ENISMotionBlur event; needs exactly 1 argument
+function ENISNeutralRev (On: number, Throttle: number, Speed: number)  # Fires the ENISNeutralRev event; needs exactly 3 arguments
+function ENISNitro (On: number)  # Fires the ENISNitro event; needs exactly 1 argument
+function ENISNukeSmack (PositionX: number, PositionY: number, PositionZ: number, Radius: number)  # Fires the ENISNukeSmack event; needs exactly 4 arguments
+function ENISOverlayMessage (OverlayName: string, OverlayMessage: string)  # Fires the ENISOverlayMessage event; needs exactly 2 arguments
+function ENISPixelate (Enable: number, Width: number, Height: number)  # Fires the ENISPixelate event; needs exactly 3 arguments
+function ENISPlayEffect (Effect: string, PositionX: number, PositionY: number, PositionZ: number, MagnitudeX: number, MagnitudeY: number, MagnitudeZ: number, SceneSpace: number)  # Fires the ENISPlayEffect event; needs exactly 8 arguments
+function ENISRain (RainIntensity: number)  # Fires the ENISRain event; needs exactly 1 argument
+function ENISReattach (RepairDamage: number)  # Fires the ENISReattach event; needs exactly 1 argument
+function ENISReleaseCarControl ()  # Fires the ENISReleaseCarControl event; needs exactly 0 arguments
+function ENISRoadNoise (DisableRoadNoise: number)  # Fires the ENISRoadNoise event; needs exactly 1 argument
+function ENISScreenFlash (Length: number)  # Fires the ENISScreenFlash event; needs exactly 1 argument
+function ENISShowHud (Enable: number)  # Fires the ENISShowHud event; needs exactly 1 argument
+function ENISSoundEvent (SpeechEventID: number)  # Fires the ENISSoundEvent event; needs exactly 1 argument
+function ENISSpotLight (Radius: number, SpotColour: number)  # Fires the ENISSpotLight event; needs exactly 2 arguments
+function ENISStartCountdown (ShowClock: number)  # Fires the ENISStartCountdown event; needs exactly 1 argument
+function ENISSteering (Degrees: number, BlendWeight: number)  # Fires the ENISSteering event; needs exactly 2 arguments
+function ENISStopEffects ()  # Fires the ENISStopEffects event; needs exactly 0 arguments
+function ENISStopMotion (Freeze: number)  # Fires the ENISStopMotion event; needs exactly 1 argument
+function ENISTimeOfDay (TimeOfDay: number, UpdateRate: number, SunAzimuth: number, TimeOfDayOvercast: number)  # Fires the ENISTimeOfDay event; needs exactly 4 arguments
+function ENISUCapBlend (FrameNum: number, BlendTime: number)  # Fires the ENISUCapBlend event; needs exactly 2 arguments
+function ENISUCapPause (FrameNum: number)  # Fires the ENISUCapPause event; needs exactly 1 argument
+function ENISUCapSelect (AnimID: number, FrameNum: number)  # Fires the ENISUCapSelect event; needs exactly 2 arguments
+function ENISVisualLook (Desaturation: number, ColourBloom: number, BleachFactor: number, UseHDR: number, FacingScale: number, GrazingScale: number)  # Fires the ENISVisualLook event; needs exactly 6 arguments
+function ENISWorldAnimTrigger (AnimTreeName: string, TimeSet: number, AnimPause: number, AnimHide: number)  # Fires the ENISWorldAnimTrigger event; needs exactly 4 arguments
+function ENISWorldGeometry (SceneryGroupName: string, Enable: number)  # Fires the ENISWorldGeometry event; needs exactly 2 arguments
+function EPlayEndNIS (SceneName: string)  # Fires the EPlayEndNIS event; needs exactly 1 argument
+function EPlayObjectEffect (Effect: string, Position: string, Intensity: number, ID: string, Tracking: number, AllowHiddenSpawn: number)  # Fires the EPlayObjectEffect event; needs exactly 6 arguments
+function EPlayRaceMovie (MovieName: string)  # Fires the EPlayRaceMovie event; needs exactly 1 argument
+function EPlayRaceNIS (StartMarker: string, SceneName: string, SceneType: string, PlayerIdx: number, CameraTrack: number, PreMovie: string, PostMovie: string)  # Fires the EPlayRaceNIS event; needs exactly 7 arguments
+function EPlayRecordedNIS (SceneName: string, SceneType: string, PlayerIdx: number, CameraTrack: number)  # Fires the EPlayRecordedNIS event; needs exactly 4 arguments
+function EProcessAreaStimulus (SystemName: string, Stimulus: string, QueueMode: string, Radius: number)  # Fires the EProcessAreaStimulus event; needs exactly 4 arguments
+function EProcessStimulus (SystemName: string, Stimulus: string, QueueMode: string)  # Fires the EProcessStimulus event; needs exactly 3 arguments
+function EPuddle (DynamicSurface: string, Count: number, CountVariance: number, Spread: number)  # Fires the EPuddle event; needs exactly 4 arguments
+function EPulseWingmanMeter (PulseOn: number)  # Fires the EPulseWingmanMeter event; needs exactly 1 argument
+function ERefreshHud ()  # Fires the ERefreshHud event; needs exactly 0 arguments
+function EReloadHud ()  # Fires the EReloadHud event; needs exactly 0 arguments
+function EResetPlayerCar ()  # Fires the EResetPlayerCar event; needs exactly 0 arguments
+function EResetProps ()  # Fires the EResetProps event; needs exactly 0 arguments
+function EResetSequencer ()  # Fires the EResetSequencer event; needs exactly 0 arguments
+function EResetSystem (SystemName: string)  # Fires the EResetSystem event; needs exactly 1 argument
+function ESetAIAvoidable (Enable: number)  # Fires the ESetAIAvoidable event; needs exactly 1 argument
+function ESetAIPlayerOffset (OffsetMeters: number)  # Fires the ESetAIPlayerOffset event; needs exactly 1 argument
+function EShowCanyonInstructionFlashers ()  # Fires the EShowCanyonInstructionFlashers event; needs exactly 0 arguments
+function EShowCrashFlow ()  # Fires the EShowCrashFlow event; needs exactly 0 arguments
+function EShowHubScreen ()  # Fires the EShowHubScreen event; needs exactly 0 arguments
+function EShowMarketingScreen (ShowFor: number)  # Fires the EShowMarketingScreen event; needs exactly 1 argument
+function EShowMessageScreen (ID: number)  # Fires the EShowMessageScreen event; needs exactly 1 argument
+function EShowRaceCountdown (isHidden: number)  # Fires the EShowRaceCountdown event; needs exactly 1 argument
+function EShowResults (PostMenu: number)  # Fires the EShowResults event; needs exactly 1 argument
+function EShowTotalledAnim ()  # Fires the EShowTotalledAnim event; needs exactly 0 arguments
+function ESpawnExplosion (Position: string, Speed: number, Radius: number, StartRadius: number, EffectThis: number, DoesDamage: number, IncludePlayers: number, ExcludeVehicles: number, ExcludeSmackables: number)  # Fires the ESpawnExplosion event; needs exactly 9 arguments
+function ESpawnFragment (HeirarchyName: string, CName: string, AttributeName: string, JointName: string, AllowDupes: number, InheritVelocity: number, HideParent: number, HidePart: number, AllowHiddenSpawn: number, NoPhysics: number, SimplePhysics: number, DisableParentCollisionNode: number)  # Fires the ESpawnFragment event; needs exactly 12 arguments
+function ESpawnWorldExplosion (PositionX: number, PositionY: number, PositionZ: number, Speed: number, Radius: number, StartRadius: number, EffectThis: number, DoesDamage: number, IncludePlayers: number, ExcludeVehicles: number, ExcludeSmackables: number)  # Fires the ESpawnWorldExplosion event; needs exactly 11 arguments
+function EStopObjectEffect (ID: string)  # Fires the EStopObjectEffect event; needs exactly 1 argument
+function EStopObjectEffects ()  # Fires the EStopObjectEffects event; needs exactly 0 arguments
+function ESurfaceEffect (TypeName: string)  # Fires the ESurfaceEffect event; needs exactly 1 argument
+function ETeardownResults ()  # Fires the ETeardownResults event; needs exactly 0 arguments
+function ETogglePushButtonOverlay (ButtonName: string, OnOff: number)  # Fires the ETogglePushButtonOverlay event; needs exactly 2 arguments
+function ETriggerMomentDynamicNIS ()  # Fires the ETriggerMomentDynamicNIS event; needs exactly 0 arguments
+function ETriggerMomentNIS (SceneName: string)  # Fires the ETriggerMomentNIS event; needs exactly 1 argument
+function ETurnIndicatorOff (PlayerIndex: number)  # Fires the ETurnIndicatorOff event; needs exactly 1 argument
+function EUpdateAchievments (PostRace: number)  # Fires the EUpdateAchievments event; needs exactly 1 argument
+function EUpdateSelectionSets (InRace: number)  # Fires the EUpdateSelectionSets event; needs exactly 1 argument
+function EUpdateSunAndSky ()  # Fires the EUpdateSunAndSky event; needs exactly 0 arguments
+function EWakeObject ()  # Fires the EWakeObject event; needs exactly 0 arguments
+function EWorldMapOnInTrigger ()  # Fires the EWorldMapOnInTrigger event; needs exactly 0 arguments
+function MAIEngineRev (channel: string, CarID: number, CarState: any, PatterToPlay: number)  # Sends the MAIEngineRev message on a channel ("Gameplay", "Adapter"); needs exactly 4 arguments
+function MAcceptEnterCareerEvent (channel: string)  # Sends the MAcceptEnterCareerEvent message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MAudioReflection (channel: string, PlayerNum: number, Dist: number, Covered: boolean)  # Sends the MAudioReflection message on a channel ("Gameplay", "Adapter"); needs exactly 4 arguments
+function MBreakerStopCops (channel: string, hSimable: simable, InitialPos: ignored, Duration: number, Radius: number, Offset: number)  # Sends the MBreakerStopCops message on a channel ("Gameplay", "Adapter"); needs exactly 6 arguments
+function MChatMessageReceived (channel: string)  # Sends the MChatMessageReceived message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MCommandRacerStart (channel: string, Racer: simable, Delay: number)  # Sends the MCommandRacerStart message on a channel ("Gameplay", "Adapter"); needs exactly 3 arguments
+function MControlPathfinder (channel: string, Licenced: boolean, PathEvent: number, PathControl: number, PartID: number)  # Sends the MControlPathfinder message on a channel ("Gameplay", "Adapter"); needs exactly 5 arguments
+function MCountdownDone (channel: string)  # Sends the MCountdownDone message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MDebugResetSectorScores (channel: string)  # Sends the MDebugResetSectorScores message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MDeclineEnterCareerEvent (channel: string)  # Sends the MDeclineEnterCareerEvent message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MDragLaunch (channel: string)  # Sends the MDragLaunch message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MDriverNISComplete (channel: string, NISName: string)  # Sends the MDriverNISComplete message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MDynoResults (channel: string, TopSpeed: number, Time0To60: number, Time0To100: number, Distance60To0: number, Time100To0: number, Time70To150: number, Time60Ft: number, TimeQuarterMile: number, SpeedQuarterMile: number)  # Sends the MDynoResults message on a channel ("Gameplay", "Adapter"); needs exactly 10 arguments
+function MEnterPostRaceFlow (channel: string)  # Sends the MEnterPostRaceFlow message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MEnterRaceOverFlow (channel: string)  # Sends the MEnterRaceOverFlow message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MEnterRepeatRace (channel: string)  # Sends the MEnterRepeatRace message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MEnterSafeHouse (channel: string, ZoneType: string)  # Sends the MEnterSafeHouse message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MEnteringGameplay (channel: string)  # Sends the MEnteringGameplay message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MFlowReadyForOutro (channel: string)  # Sends the MFlowReadyForOutro message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MForcePursuitStart (channel: string, MinHeatLevel: number)  # Sends the MForcePursuitStart message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MFreezeCamera (channel: string, IsFrozen: boolean)  # Sends the MFreezeCamera message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MGenericCameraFinished (channel: string)  # Sends the MGenericCameraFinished message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MHideHUD (channel: string, ShowFlashers: boolean, SettingsIndex: number)  # Sends the MHideHUD message on a channel ("Gameplay", "Adapter"); needs exactly 3 arguments
+function MHubActivityStateChanged (channel: string, IsActive: boolean)  # Sends the MHubActivityStateChanged message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MHubCarChanged (channel: string, CarHandle: any, PlayerIndex: number)  # Sends the MHubCarChanged message on a channel ("Gameplay", "Adapter"); needs exactly 3 arguments
+function MHubCarChangedAcknowledge (channel: string, IsSuccessful: boolean, PlayerIndex: number)  # Sends the MHubCarChangedAcknowledge message on a channel ("Gameplay", "Adapter"); needs exactly 3 arguments
+function MHubEntered (channel: string)  # Sends the MHubEntered message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MHubEventChanged (channel: string, EventIndex: number, MinPlayers: number, Collisions: boolean, Handicapping: boolean, NOS: boolean, Public: boolean, AIOpponents: boolean, GameRanked: boolean)  # Sends the MHubEventChanged message on a channel ("Gameplay", "Adapter"); needs exactly 9 arguments
+function MHubEventChangedAcknowledge (channel: string)  # Sends the MHubEventChangedAcknowledge message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MHubEventFinished (channel: string)  # Sends the MHubEventFinished message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MHubEventLoad (channel: string)  # Sends the MHubEventLoad message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MHubEventStart (channel: string, EventIndex: number)  # Sends the MHubEventStart message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MHubEventStarted (channel: string)  # Sends the MHubEventStarted message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MHubLeaderChanged (channel: string)  # Sends the MHubLeaderChanged message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MHubNotifyProgress (channel: string)  # Sends the MHubNotifyProgress message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MHubPlayersChanged (channel: string)  # Sends the MHubPlayersChanged message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MHubRoomStateChanged (channel: string, NewState: number)  # Sends the MHubRoomStateChanged message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MHubTimerChanged (channel: string)  # Sends the MHubTimerChanged message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MICECameraFinished (channel: string)  # Sends the MICECameraFinished message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MJackKnife (channel: string)  # Sends the MJackKnife message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MJumpCut (channel: string, AnchorWorldID: number)  # Sends the MJumpCut message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MLaunchPIP (channel: string, TriggerID: number, Handle: simable)  # Sends the MLaunchPIP message on a channel ("Gameplay", "Adapter"); needs exactly 3 arguments
+function MLoadingComplete (channel: string)  # Sends the MLoadingComplete message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MMiscSound (channel: string, SoundID: number)  # Sends the MMiscSound message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MNISComplete (channel: string, NISName: string, SceneType: number)  # Sends the MNISComplete message on a channel ("Gameplay", "Adapter"); needs exactly 3 arguments
+function MNISFailed (channel: string, SceneType: number)  # Sends the MNISFailed message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MNISFlagGirlStart (channel: string)  # Sends the MNISFlagGirlStart message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MNISLoaded (channel: string)  # Sends the MNISLoaded message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MNotifyAbandoned (channel: string, Reason: number)  # Sends the MNotifyAbandoned message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MNotifyAchievmentsUpdated (channel: string)  # Sends the MNotifyAchievmentsUpdated message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MNotifyArbitrationEntered (channel: string)  # Sends the MNotifyArbitrationEntered message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MNotifyArbitrationExited (channel: string)  # Sends the MNotifyArbitrationExited message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MNotifyAudioTransitionDone (channel: string)  # Sends the MNotifyAudioTransitionDone message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MNotifyAudioTransitionStarted (channel: string)  # Sends the MNotifyAudioTransitionStarted message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MNotifyCellCallComplete (channel: string)  # Sends the MNotifyCellCallComplete message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MNotifyCellCallStarted (channel: string)  # Sends the MNotifyCellCallStarted message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MNotifyChallengePassed (channel: string, ChallengeName: string)  # Sends the MNotifyChallengePassed message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MNotifyCrowdInit (channel: string)  # Sends the MNotifyCrowdInit message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MNotifyEngineBlown (channel: string, Racer: simable)  # Sends the MNotifyEngineBlown message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MNotifyEscapeSafe (channel: string, IsSafe: boolean)  # Sends the MNotifyEscapeSafe message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MNotifyEscaped (channel: string, Reason: number)  # Sends the MNotifyEscaped message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MNotifyEventReady (channel: string, VehicleDestroyed: boolean)  # Sends the MNotifyEventReady message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MNotifyExitArbitration (channel: string)  # Sends the MNotifyExitArbitration message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MNotifyExitEvent (channel: string)  # Sends the MNotifyExitEvent message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MNotifyExitHeat (channel: string)  # Sends the MNotifyExitHeat message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MNotifyExitMatchup (channel: string)  # Sends the MNotifyExitMatchup message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MNotifyExitStaging (channel: string)  # Sends the MNotifyExitStaging message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MNotifyFadeToBlackDone (channel: string)  # Sends the MNotifyFadeToBlackDone message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MNotifyFinished (channel: string, Sender: ignored)  # Sends the MNotifyFinished message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MNotifyHandicapEntered (channel: string, Racer: simable)  # Sends the MNotifyHandicapEntered message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MNotifyHudLoaded (channel: string)  # Sends the MNotifyHudLoaded message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MNotifyInitiateHandicap (channel: string, Racer: simable)  # Sends the MNotifyInitiateHandicap message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MNotifyKnockedOut (channel: string, Racer: simable)  # Sends the MNotifyKnockedOut message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MNotifyLapFinished (channel: string, Racer: simable, Lap: number, LapTime: number)  # Sends the MNotifyLapFinished message on a channel ("Gameplay", "Adapter"); needs exactly 4 arguments
+function MNotifyLoadHeat (channel: string, HeatIndex: number, Handicap: number)  # Sends the MNotifyLoadHeat message on a channel ("Gameplay", "Adapter"); needs exactly 3 arguments
+function MNotifyMatchupEntered (channel: string)  # Sends the MNotifyMatchupEntered message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MNotifyMessageDone (channel: string)  # Sends the MNotifyMessageDone message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MNotifyMilestoneProgress (channel: string, MilestoneName: string, ValueReached: number)  # Sends the MNotifyMilestoneProgress message on a channel ("Gameplay", "Adapter"); needs exactly 3 arguments
+function MNotifyMilestoneReached (channel: string, MilestoneName: string, ValueReached: number)  # Sends the MNotifyMilestoneReached message on a channel ("Gameplay", "Adapter"); needs exactly 3 arguments
+function MNotifyMovieFinished (channel: string)  # Sends the MNotifyMovieFinished message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MNotifyMusicFlow (channel: string, Part: number, MusicType: number)  # Sends the MNotifyMusicFlow message on a channel ("Gameplay", "Adapter"); needs exactly 3 arguments
+function MNotifyPassingMove (channel: string, PassingRacer: simable, PassedRacer: simable)  # Sends the MNotifyPassingMove message on a channel ("Gameplay", "Adapter"); needs exactly 3 arguments
+function MNotifyPinkSlipOutcome (channel: string, Won: boolean)  # Sends the MNotifyPinkSlipOutcome message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MNotifyPlayerFinished (channel: string, Activity: ignored, Element: simable)  # Sends the MNotifyPlayerFinished message on a channel ("Gameplay", "Adapter"); needs exactly 3 arguments
+function MNotifyPlayerRanking (channel: string, PlayerIndex: number, Placement: number)  # Sends the MNotifyPlayerRanking message on a channel ("Gameplay", "Adapter"); needs exactly 3 arguments
+function MNotifyPlayerRep (channel: string, Racer: simable, RepPoints: number)  # Sends the MNotifyPlayerRep message on a channel ("Gameplay", "Adapter"); needs exactly 3 arguments
+function MNotifyRaceFinished (channel: string, FinishType: number)  # Sends the MNotifyRaceFinished message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MNotifyRacePlacement (channel: string, Activity: ignored, Racer: simable, Placing: number)  # Sends the MNotifyRacePlacement message on a channel ("Gameplay", "Adapter"); needs exactly 4 arguments
+function MNotifyRaceStarted (channel: string)  # Sends the MNotifyRaceStarted message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MNotifyRaceTime (channel: string, TimeElapsed: number, TimeIsLimited: boolean, TimeRemaining: number)  # Sends the MNotifyRaceTime message on a channel ("Gameplay", "Adapter"); needs exactly 4 arguments
+function MNotifyRaceTimeExpired (channel: string)  # Sends the MNotifyRaceTimeExpired message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MNotifyRaceTimeSecTick (channel: string, TimeElapsed: number)  # Sends the MNotifyRaceTimeSecTick message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MNotifyRacerFinished (channel: string, Racer: simable, Reason: number)  # Sends the MNotifyRacerFinished message on a channel ("Gameplay", "Adapter"); needs exactly 3 arguments
+function MNotifyRacerReady (channel: string, Racer: simable)  # Sends the MNotifyRacerReady message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MNotifyRacerStarted (channel: string, Racer: simable)  # Sends the MNotifyRacerStarted message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MNotifyRacerTimer (channel: string, Name: string, Racer: simable)  # Sends the MNotifyRacerTimer message on a channel ("Gameplay", "Adapter"); needs exactly 3 arguments
+function MNotifyRawButtonPress (channel: string, ButtonName: string)  # Sends the MNotifyRawButtonPress message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MNotifyRoamStarted (channel: string)  # Sends the MNotifyRoamStarted message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MNotifySectorRecordBroken (channel: string, Racer: simable)  # Sends the MNotifySectorRecordBroken message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MNotifySectorTriggerEnter (channel: string, SectorTriggerIndex: number, OpponentId: number, RacerTime: number, RacerTargetTime: number)  # Sends the MNotifySectorTriggerEnter message on a channel ("Gameplay", "Adapter"); needs exactly 5 arguments
+function MNotifySimTick (channel: string, SimTime: number, TimeStep: number)  # Sends the MNotifySimTick message on a channel ("Gameplay", "Adapter"); needs exactly 3 arguments
+function MNotifySpeechStatus (channel: string, Event: any)  # Sends the MNotifySpeechStatus message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MNotifySpeedTrap (channel: string, TrapActivity: ignored, Racer: simable, SpeedKmh: number)  # Sends the MNotifySpeedTrap message on a channel ("Gameplay", "Adapter"); needs exactly 4 arguments
+function MNotifyStagingEntered (channel: string, Racer: simable, StagingDuration: number)  # Sends the MNotifyStagingEntered message on a channel ("Gameplay", "Adapter"); needs exactly 3 arguments
+function MNotifyStatsUpdated (channel: string)  # Sends the MNotifyStatsUpdated message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MNotifySurfaceFX (channel: string, Key: any)  # Sends the MNotifySurfaceFX message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MNotifyTimer (channel: string, Name: string)  # Sends the MNotifyTimer message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MNotifyTrackRecordBroken (channel: string, RaceMode: number)  # Sends the MNotifyTrackRecordBroken message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MNotifyVehicleDestroyed (channel: string, Racer: simable)  # Sends the MNotifyVehicleDestroyed message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MOnlinePunkbusterKicked (channel: string)  # Sends the MOnlinePunkbusterKicked message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MOnlinePunkbusterUpdate (channel: string, Start: boolean)  # Sends the MOnlinePunkbusterUpdate message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MPIPWindowReady (channel: string)  # Sends the MPIPWindowReady message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MPerpBusted (channel: string, Perpetrator: simable)  # Sends the MPerpBusted message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MPerpEscaped (channel: string, Perpetrator: simable)  # Sends the MPerpEscaped message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MPlayJukeboxSong (channel: string, AttribKey: any)  # Sends the MPlayJukeboxSong message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MPlayerEnterPursuit (channel: string)  # Sends the MPlayerEnterPursuit message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MPlayerStateEnter (channel: string, Racer: simable, State: number)  # Sends the MPlayerStateEnter message on a channel ("Gameplay", "Adapter"); needs exactly 3 arguments
+function MPlayerStateExit (channel: string, Racer: simable, State: number)  # Sends the MPlayerStateExit message on a channel ("Gameplay", "Adapter"); needs exactly 3 arguments
+function MPostBossFlowCameraFinished (channel: string)  # Sends the MPostBossFlowCameraFinished message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MPursuitBreaker (channel: string, StartBreaker: boolean)  # Sends the MPursuitBreaker message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MPursuitOver (channel: string, Perpetrator: simable)  # Sends the MPursuitOver message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MQuitToFrontEnd (channel: string)  # Sends the MQuitToFrontEnd message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MRaceDone (channel: string)  # Sends the MRaceDone message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MRaceStateEnter (channel: string, State: number)  # Sends the MRaceStateEnter message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MRaceStateExit (channel: string, State: number)  # Sends the MRaceStateExit message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MReqBackup (channel: string, BackupType: number)  # Sends the MReqBackup message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MReqRoadBlock (channel: string, Data: number)  # Sends the MReqRoadBlock message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MRestartRace (channel: string)  # Sends the MRestartRace message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MReturnToHub (channel: string)  # Sends the MReturnToHub message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MReturnToHubSelect (channel: string)  # Sends the MReturnToHubSelect message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MRoundDone (channel: string)  # Sends the MRoundDone message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MSceneryUpdated (channel: string, SectionNumber: number)  # Sends the MSceneryUpdated message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MSetCopAutoSpawnMode (channel: string, AutoSpawnMode: boolean)  # Sends the MSetCopAutoSpawnMode message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MSetCopsEnabled (channel: string, CopsEnabled: boolean)  # Sends the MSetCopsEnabled message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MSetTrafficSpeed (channel: string, SpeedDefault: number, SpeedHighway: number, FixSpeed: number)  # Sends the MSetTrafficSpeed message on a channel ("Gameplay", "Adapter"); needs exactly 4 arguments
+function MShiftedUp (channel: string, Racer: simable)  # Sends the MShiftedUp message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MShowHUD (channel: string)  # Sends the MShowHUD message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MSpawnCop (channel: string, InitialPos: ignored, InitialVec: ignored, VehicleName: string, InPursuit: boolean, RoadBlock: boolean)  # Sends the MSpawnCop message on a channel ("Gameplay", "Adapter"); needs exactly 6 arguments
+function MSpawnTraffic (channel: string, InitialPos: ignored, InitialVec: ignored, VehicleName: string)  # Sends the MSpawnTraffic message on a channel ("Gameplay", "Adapter"); needs exactly 4 arguments
+function MStartHurryUpTimer (channel: string, CountdownTime: number)  # Sends the MStartHurryUpTimer message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MStateEnter (channel: string)  # Sends the MStateEnter message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MStateExit (channel: string)  # Sends the MStateExit message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MStopHurryUpTimer (channel: string)  # Sends the MStopHurryUpTimer message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MTerminateEncounter (channel: string)  # Sends the MTerminateEncounter message on a channel ("Gameplay", "Adapter"); needs exactly 1 argument
+function MTriggerEnter (channel: string, Sender: ignored, Element: simable)  # Sends the MTriggerEnter message on a channel ("Gameplay", "Adapter"); needs exactly 3 arguments
+function MTriggerExit (channel: string, Sender: ignored, Element: simable)  # Sends the MTriggerExit message on a channel ("Gameplay", "Adapter"); needs exactly 3 arguments
+function MTriggerInside (channel: string, Sender: ignored, Element: simable)  # Sends the MTriggerInside message on a channel ("Gameplay", "Adapter"); needs exactly 3 arguments
+function MUnspawnCop (channel: string, CopHandle: simable, Param: number)  # Sends the MUnspawnCop message on a channel ("Gameplay", "Adapter"); needs exactly 3 arguments
+function MWheelieEnd (channel: string, Element: simable)  # Sends the MWheelieEnd message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+function MWheelieStart (channel: string, Element: simable)  # Sends the MWheelieStart message on a channel ("Gameplay", "Adapter"); needs exactly 2 arguments
+constant vars.State.kState_Initial = 1  # GRacerInfo::State; a table the retail scripts define themselves, not the game
+constant vars.State.kState_NIS = 2  # GRacerInfo::State; a table the retail scripts define themselves, not the game
+constant vars.State.kState_PreStaging = 3  # GRacerInfo::State; a table the retail scripts define themselves, not the game
+constant vars.State.kState_Staging = 4  # GRacerInfo::State; a table the retail scripts define themselves, not the game
+constant vars.State.kState_PostStaging = 5  # GRacerInfo::State; a table the retail scripts define themselves, not the game
+constant vars.State.kState_Handicap = 6  # GRacerInfo::State; a table the retail scripts define themselves, not the game
+constant vars.State.kState_Countdown = 7  # GRacerInfo::State; a table the retail scripts define themselves, not the game
+constant vars.State.kState_Racing = 8  # GRacerInfo::State; a table the retail scripts define themselves, not the game
+constant vars.State.kState_RaceOver = 9  # GRacerInfo::State; a table the retail scripts define themselves, not the game
+constant vars.State.kState_Spectate = 10  # GRacerInfo::State; a table the retail scripts define themselves, not the game
+constant vars.State.kState_Done = 11  # GRacerInfo::State; a table the retail scripts define themselves, not the game
+constant vars.RacerType.kType_Human = 1  # GRacerInfo::Type; a table the retail scripts define themselves, not the game
+constant vars.RacerType.kType_Artifical = 2  # GRacerInfo::Type; a table the retail scripts define themselves, not the game
+constant vars.NisType.Unknown = 0  # NIS::eNIS_TYPE; a table the retail scripts define themselves, not the game
+constant vars.NisType.Intro = 1  # NIS::eNIS_TYPE; a table the retail scripts define themselves, not the game
+constant vars.NisType.Arrest = 2  # NIS::eNIS_TYPE; a table the retail scripts define themselves, not the game
+constant vars.NisType.Ending = 3  # NIS::eNIS_TYPE; a table the retail scripts define themselves, not the game
+constant vars.NisType.World = 4  # NIS::eNIS_TYPE; a table the retail scripts define themselves, not the game
+constant vars.NisType.Moment = 5  # NIS::eNIS_TYPE; a table the retail scripts define themselves, not the game
+constant vars.NisType.PIP = 6  # NIS::eNIS_TYPE; a table the retail scripts define themselves, not the game
+constant vars.NisType.UcapPIP = 7  # NIS::eNIS_TYPE; a table the retail scripts define themselves, not the game
+constant vars.NisType.Ucap = 8  # NIS::eNIS_TYPE; a table the retail scripts define themselves, not the game
+constant vars.NisType.Countdown = 9  # NIS::eNIS_TYPE; a table the retail scripts define themselves, not the game
+constant vars.NisType.Career = 10  # NIS::eNIS_TYPE; a table the retail scripts define themselves, not the game
+constant vars.NisType.MomentDynamic = 11  # NIS::eNIS_TYPE; a table the retail scripts define themselves, not the game
+constant vars.NisType.FinishCam = 12  # NIS::eNIS_TYPE; a table the retail scripts define themselves, not the game
+constant vars.NisType.HUB = 13  # NIS::eNIS_TYPE; a table the retail scripts define themselves, not the game
+constant vars.NisType.Replay = 14  # NIS::eNIS_TYPE; a table the retail scripts define themselves, not the game
+constant vars.NisType.HUB_Challenge = 15  # NIS::eNIS_TYPE; a table the retail scripts define themselves, not the game
+constant vars.NisType.HUB_Pinkslip = 16  # NIS::eNIS_TYPE; a table the retail scripts define themselves, not the game
+constant vars.NisType.Crowd = 17  # NIS::eNIS_TYPE; a table the retail scripts define themselves, not the game
+constant vars.Behaviour.kRaceBehaviour_Single = 1  # GRace::Behaviour; a table the retail scripts define themselves, not the game
+constant vars.Behaviour.kRaceBehaviour_Dual = 2  # GRace::Behaviour; a table the retail scripts define themselves, not the game
+constant vars.Mode.kRaceMode_Grip = 1  # GRace::Mode; a table the retail scripts define themselves, not the game
+constant vars.Mode.kRaceMode_HighSpeedChallenge = 2  # GRace::Mode; a table the retail scripts define themselves, not the game
+constant vars.Mode.kRaceMode_Drag = 3  # GRace::Mode; a table the retail scripts define themselves, not the game
+constant vars.Mode.kRaceMode_Drift = 4  # GRace::Mode; a table the retail scripts define themselves, not the game
+constant self.GoalAddPrevBest -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.TargetBronze -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.ActivationTrigger -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.Hubs -> array of instance  # gameplay field (GCollectionKey array), readable on any instance; read-only
+constant self.PursuitLevel -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.TemplateBinding -> number  # gameplay field (EA::Reflection::UInt8), readable on any instance; read-only
+constant self.PostRaceScreenTexture -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.SelectionSet -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.MiniMapItem -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.CashRewards -> array of instance  # gameplay field (GCollectionKey array), readable on any instance; read-only
+constant self.ForcePlayerAtGridPosition -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.RewardMarkerType -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.BarriersExtra -> array of string  # gameplay field (EA::Reflection::Text array), readable on any instance; read-only
+constant self.MilestoneBiggerIsBetter -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.CarClass -> nil  # gameplay field (GRace::RaceCarClass), readable on any instance; read-only; this type has no accessor, so it reads as nil
+constant self.TutorialRace -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.IsCornerExit -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.DriftTier -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.InitialSpeed -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.HubOnlySelectionSet -> array of string  # gameplay field (EA::Reflection::Text array), readable on any instance; read-only
+constant self.TutorialMovie -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.FilterModePassAll -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.InternalRaceIndex -> array of number  # gameplay field (EA::Reflection::Float array), readable on any instance; read-only
+constant self.UpgradeType -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.OutroNISMarker -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.SharedCheckpoints -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.ScriptedCopsInRace -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.MapCurveRef -> array of nil  # gameplay field (GMapCurveRef array), readable on any instance; read-only; this type has no accessor, so it reads as nil
+constant self.rewards_tuner -> array of instance  # gameplay field (GCollectionKey array), readable on any instance; read-only
+constant self.NumLaps -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.FirstBossTrack -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.TargetActivities -> array of instance  # gameplay field (GCollectionKey array), readable on any instance; read-only
+constant self.HubDominateThreshold -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.EventIconType -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.WorldEngageTrigger -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.disengagetrigger -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.CatchUp -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.setting_exotic -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.WheelsAllowedOffTrack -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.RoadList -> array of string  # gameplay field (EA::Reflection::Text array), readable on any instance; read-only
+constant self.ZoneMultiplier4 -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.RaceBehaviour -> nil  # gameplay field (GRace::Behaviour), readable on any instance; read-only; this type has no accessor, so it reads as nil
+constant self.ShortcutMaxChance -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.KnockoutsPerLap -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.ScaleOpenWorldHeat -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.TurnIndicatorType -> nil  # gameplay field (eTURN_INDICATORS), readable on any instance; read-only; this type has no accessor, so it reads as nil
+constant self.target -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.OpenWorldSpeedTrap -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.UnlockNIS -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.CountdownNIS -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.ChallengeSeriesRace -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.RaceWarsRace -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.BossReputation -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.setting_tuner -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.RespawnMarker -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.PostRaceWarpPoint -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.FinalModeKingRace -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.transitionlist -> array of instance  # gameplay field (GCollectionKey array), readable on any instance; read-only
+constant self.OvertimePenaltyPerSec -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.TargetActivity -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.StagingTime -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.CareerLayoutPos -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.AutoActivateGPS -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.TrackPosition -> nil  # gameplay field (Attrib::Types::Vector2), readable on any instance; read-only; this type has no accessor, so it reads as nil
+constant self.CheckpointsVisible -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.SpeedTier -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.PursuitRace -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.DelayedNIS -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.ResetTime -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.DominateCash -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.UsesDriftSections -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.PerformanceMatchOverrideMinPercent -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.Checkpoint -> array of instance  # gameplay field (GCollectionKey array), readable on any instance; read-only
+constant self.ZoneMultiplier1 -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.IntroCameraTrack -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.BossDefeatedActivity -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.DifficultyFilter -> nil  # gameplay field (GRace::Difficulty), readable on any instance; read-only; this type has no accessor, so it reads as nil
+constant self.CopsInRace -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.TargetMaxScorePercent -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.FlareSpacing -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.AvailableOnline -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.Radius -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.InitialPlayerSpeed -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.SkillLevel -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.GoalHard -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.DominateLevel1RewardProbability -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.UpgradePartID -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.Name -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.DoCountdown -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.Template -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.IconModelFloatHeight -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.layoutpos -> nil  # gameplay field (Attrib::Types::Vector2), readable on any instance; read-only; this type has no accessor, so it reads as nil
+constant self.BBFECarHandle -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.SectionTargetScore -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.NoPostRaceScreen -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.PresetRide -> array of string  # gameplay field (EA::Reflection::Text array), readable on any instance; read-only
+constant self.Camo -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.Race -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.IsEpicPursuitRace -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.Organization -> nil  # gameplay field (Hub::OrgBody), readable on any instance; read-only; this type has no accessor, so it reads as nil
+constant self.setting_muscle -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.CatchUpIntegral -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.BossDefeatedMovie -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.UseWorldHeat -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.IndicationType -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.EntryBonusMultiplier -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.Reputation -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.pvehicle -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.parentstate -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.NISShell -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.IndependentTrack -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.HurryUpSMSID2 -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.ThreshholdValue -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.ShortcutMinChance -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.UnlockHubs -> array of instance  # gameplay field (GCollectionKey array), readable on any instance; read-only
+constant self.RewardsForWinner -> array of instance  # gameplay field (GCollectionKey array), readable on any instance; read-only
+constant self.HurryUpTimeLimit -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.AI_MistakeLevel -> nil  # gameplay field (GRace::AI_MistakeLevel), readable on any instance; read-only; this type has no accessor, so it reads as nil
+constant self.races -> array of instance  # gameplay field (GCollectionKey array), readable on any instance; read-only
+constant self.CatchUpDerivative -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.DominateThreshold -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.TargetSilver -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.IsPracticeMode -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.IntimidationNIS1 -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.MaxScore -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.CanyonDropZone -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.CameraModelMarker -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.TrackType -> nil  # gameplay field (Hub::LocationType), readable on any instance; read-only; this type has no accessor, so it reads as nil
+constant self.IntroMessageID -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.ChanceOfRain -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.OutroNIS -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.KingHUB -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.RaceOverNISWin -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.FilterBlocks -> array of nil  # gameplay field (Attrib::Blob array), readable on any instance; read-only; this type has no accessor, so it reads as nil
+constant self.Width -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.Opponents -> array of instance  # gameplay field (GCollectionKey array), readable on any instance; read-only
+constant self.WingmanShortcutTriggerHint -> nil  # gameplay field (GRace::WingmanShortcutTriggerHint), readable on any instance; read-only; this type has no accessor, so it reads as nil
+constant self.RaceTriggers -> array of instance  # gameplay field (GCollectionKey array), readable on any instance; read-only
+constant self.QuickRaceNIS -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.Rotation -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.WalkBackDistance -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.EventStyle -> nil  # gameplay field (GRace::EventStyle), readable on any instance; read-only; this type has no accessor, so it reads as nil
+constant self.HiringCost -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.ForceTrafficDensity -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.InitialCarTier2 -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.WinLevel2RewardProbability -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.DriftRaceType -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.RankPlayersByPoints -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.ParticleEffect -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.SpeedTrapTrigger -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.MapCurvePoint -> array of nil  # gameplay field (GMapCurvePoint array), readable on any instance; read-only; this type has no accessor, so it reads as nil
+constant self.MasterCheckpoint -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.UnlockMovie -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.RivalAppearanceChance -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.SpeedCar -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.MapArea -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.FinishCamera -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.TrafficPattern -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.HeatLevel -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.CollectorsEditionRace -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.PostRaceActivity -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.CashRewardForRepeatRace -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.ZoneList -> array of instance  # gameplay field (GCollectionKey array), readable on any instance; read-only
+constant self.ExitWhenDominated -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.rewards_muscle -> array of instance  # gameplay field (GCollectionKey array), readable on any instance; read-only
+constant self.CareerMapLocation -> nil  # gameplay field (Hub::HubLocation), readable on any instance; read-only; this type has no accessor, so it reads as nil
+constant self.BackupCar -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.DifficultyFilterTo -> nil  # gameplay field (GRace::Difficulty), readable on any instance; read-only; this type has no accessor, so it reads as nil
+constant self.SectorSelectionSet -> array of string  # gameplay field (EA::Reflection::Text array), readable on any instance; read-only
+constant self.Races -> array of instance  # gameplay field (GCollectionKey array), readable on any instance; read-only
+constant self.IconModelSpinRate -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.ShowDownHub -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.SMSCellChallenge -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.Variant -> nil  # gameplay field (GRace::Variant), readable on any instance; read-only; this type has no accessor, so it reads as nil
+constant self.IsLoopingRace -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.DebugName -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.Directional -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.RecordThreshold -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.UnlockOnlyOnDominate -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.ResetsPlayer -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.BinIndex -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.DelayedMovie -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.SpeedTrapsRequired -> array of instance  # gameplay field (GCollectionKey array), readable on any instance; read-only
+constant self.IsCornerEntry -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.Dimensions -> nil  # gameplay field (Attrib::Types::Vector3), readable on any instance; read-only; this type has no accessor, so it reads as nil
+constant self.RequiredChallenges -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.ZoneMultiplier3 -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.IsFireworksTrigger -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.Age -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.Areas -> array of instance  # gameplay field (GCollectionKey array), readable on any instance; read-only
+constant self.MilestoneName -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.OutroCameraTrack -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.ParentZone -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.scriptname -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.TargetGold -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.TestOnlyHub -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.ProgressionLevel -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.TimeLimit -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.ZoneDistance6 -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.TrackLayout -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.ZoneDistance5 -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.ZoneMultiplierAhead -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.KnockoutTime -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.DragCar -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.TrafficCharacter -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.CareerDrawType -> nil  # gameplay field (GRace::CareerElementDrawStyle), readable on any instance; read-only; this type has no accessor, so it reads as nil
+constant self.IsBoss -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.RaceActivity -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.TestOnly -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.Shortcuts -> array of instance  # gameplay field (GCollectionKey array), readable on any instance; read-only
+constant self.AI_AggressionLevel -> nil  # gameplay field (GRace::AI_AggressionLevel), readable on any instance; read-only; this type has no accessor, so it reads as nil
+constant self.RaceLength -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.racefinishReverse -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.MaxWindSpeedMPH -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.MapCurve -> array of nil  # gameplay field (GMapCurve array), readable on any instance; read-only; this type has no accessor, so it reads as nil
+constant self.InitialZoneHeat -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.CatchUpSkill -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.AudioCornerType -> nil  # gameplay field (Audio::CornerType), readable on any instance; read-only; this type has no accessor, so it reads as nil
+constant self.TrackLength -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.HubEnterRepairMarkersRegular -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.SpeedTrapList -> array of instance  # gameplay field (GCollectionKey array), readable on any instance; read-only
+constant self.OpponentGender -> nil  # gameplay field (GRace::OpponentGender), readable on any instance; read-only; this type has no accessor, so it reads as nil
+constant self.DefaultCamera -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.StartTime -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.GoalEasy -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.Corners -> array of instance  # gameplay field (GCollectionKey array), readable on any instance; read-only
+constant self.AvailableInQuickRace -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.ZoneMultiplierBehind -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.HeadsupStart -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.handler_owner -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.InitialCarTier3 -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.AutoStart -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.DifficultyLevel -> nil  # gameplay field (GRace::Difficulty), readable on any instance; read-only; this type has no accessor, so it reads as nil
+constant self.WinThreshold -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.TrackRecord -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.DragTier -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.IsStartLine -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.DDayRace -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.AudioState -> nil  # gameplay field (Audio::State), readable on any instance; read-only; this type has no accessor, so it reads as nil
+constant self.WaitForLoadedMessage -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.Bounty -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.BaseOpenWorldHeat -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.ChallengeCamera -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.SpeedThreshold -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.TargetMarker -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.NumRacesRequired -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.Children -> array of instance  # gameplay field (GCollectionKey array), readable on any instance; read-only
+constant self.stateref -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.gameplayvault -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.CopHitPointsOverride -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.DisableSelectionSet -> array of string  # gameplay field (EA::Reflection::Text array), readable on any instance; read-only
+constant self.UsePresetRide -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.WinCash -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.ForcePreload -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.IntimidationNIS2 -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.Weight -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.DifficultyFilterFrom -> nil  # gameplay field (GRace::Difficulty), readable on any instance; read-only; this type has no accessor, so it reads as nil
+constant self.ShowdownSequenceHub -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.ZoneMultiplier2 -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.ZoneTracks -> array of instance  # gameplay field (GCollectionKey array), readable on any instance; read-only
+constant self.DriftSectionTriggers -> array of instance  # gameplay field (GCollectionKey array), readable on any instance; read-only
+constant self.ZoneCappedScore -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.AreaName -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.ContainsActivityTriggers -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.HurryUpSMSID -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.bytecode -> nil  # gameplay field (Attrib::Blob), readable on any instance; read-only; this type has no accessor, so it reads as nil
+constant self.ChallengeHub -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.CannedPath -> array of instance  # gameplay field (GCollectionKey array), readable on any instance; read-only
+constant self.CollectionName -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.TrackRecordHolder -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.RankPlayersByDistance -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.message_id -> number  # gameplay field (EA::Reflection::UInt32), readable on any instance; read-only
+constant self.CatchUpOverride -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.Position -> nil  # gameplay field (Attrib::Types::Vector3), readable on any instance; read-only; this type has no accessor, so it reads as nil
+constant self.RaceList -> array of instance  # gameplay field (GCollectionKey array), readable on any instance; read-only
+constant self.templateref -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.MaxPursuitRep -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.HubRecordThreshold -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.AllowInvisibleSpawn -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.CatchUpSpread -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.TargetRole -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.AutoStartRace -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.ForcePostRaceActivity -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.SectionIndex -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.IsDLC -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.NeverInQuickRace -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.sender -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.ExcludedCharacters -> array of instance  # gameplay field (GCollectionKey array), readable on any instance; read-only
+constant self.Boss -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.CountdownCameraTrack -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.IconModelName -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.racers -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.RecordHolder -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.EventID -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.DebugJumpPoint -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.WorldRaces -> array of instance  # gameplay field (GCollectionKey array), readable on any instance; read-only
+constant self.DominationPoints -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.DelayedNISThreshold -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.FreeRoamOnly -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.TokenValue -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.RandomPartRules -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.CashReward -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.ZoneDistanceAhead -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.GripCar -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.DominateLevel3RewardProbability -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.PresetSkin -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.racefinish -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.MinimumAIPerformance -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.FireOnExit -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.DriftCar -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.HandicapMode -> nil  # gameplay field (GRace::HandicapMode), readable on any instance; read-only; this type has no accessor, so it reads as nil
+constant self.AvailableQR -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.IconModelBounceRate -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.Events -> array of instance  # gameplay field (GCollectionKey array), readable on any instance; read-only
+constant self.MaxHandicapTime -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.JumpRaces -> array of instance  # gameplay field (GCollectionKey array), readable on any instance; read-only
+constant self.PostRaceWarpTarget -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.ZoneMultiplier6 -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.HubWonThreshold -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.Drafts -> array of instance  # gameplay field (GCollectionKey array), readable on any instance; read-only
+constant self.OutroMovie -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.RollingStart -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.GripTier -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.OnlinePlatformOnly -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.OrgBody -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.PartID -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.Height -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.BaselineUnlocks -> array of instance  # gameplay field (GCollectionKey array), readable on any instance; read-only
+constant self.FreeCarMarkerProbability -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.SMSRivalChallenge -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.GripWeightingFactor -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.WinLevel1RewardProbability -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.MilestoneChallenge -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.RacerName -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.StartMarkers -> array of instance  # gameplay field (GCollectionKey array), readable on any instance; read-only
+constant self.QuickRaceNIS2 -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.DebugActivity -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.PlayerCarType -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.IsLoadedTrack -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.OwnershipPoints -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.EntryActivity -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.OpponentType -> nil  # gameplay field (GRace::OpponentType), readable on any instance; read-only; this type has no accessor, so it reads as nil
+constant self.OutroMessageID -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.ThreshholdSpeed -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.ResetTrigger -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.ScoringBandSelectionSet -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.QuickRaceUnlocked -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.distance -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.TrafficLevel -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.WindTrigger -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.CellChallengeRace -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.DragThreshold -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.MaxScore3 -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.HubNIS -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.Region -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.SpeedTrapCamera -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.NumHeats -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.IconModelScale -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.PerformanceMatchOverrideMaxPercent -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.OneShot -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.WinLevel4RewardProbability -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.TutorialTag -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.SectorTriggers -> array of instance  # gameplay field (GCollectionKey array), readable on any instance; read-only
+constant self.CEOnly -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.DominateLevel4RewardProbability -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.RaceOverNISLose -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.DriftThreshold -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.UpgradeLevel -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.HubType -> nil  # gameplay field (Hub::HubType), readable on any instance; read-only; this type has no accessor, so it reads as nil
+constant self.InitialCarTier1 -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.RequiredBounty -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.FreeTotalRepairMarkerProbability -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.Logo -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.nitrouslevel -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.BossRaces -> array of instance  # gameplay field (GCollectionKey array), readable on any instance; read-only
+constant self.AutoSpawnTriggerType -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.ZoneTrigger -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.IconModelBounceAmp -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.Track -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.RequiredRacesWon -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.MapRegion -> array of nil  # gameplay field (GMapRegionInfo array), readable on any instance; read-only; this type has no accessor, so it reads as nil
+constant self.CopSpawnType -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.DominateLevel2RewardProbability -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.ZoneDistanceBehind -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.FireworksSelectionSet -> array of string  # gameplay field (EA::Reflection::Text array), readable on any instance; read-only
+constant self.CashValue -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.UnlocksTier -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.rewards_exotic -> array of instance  # gameplay field (GCollectionKey array), readable on any instance; read-only
+constant self.ZoneDistance3 -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.HomeArea -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.LocalizationTag -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.CopDensity -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.ZoneDistance4 -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.RestartActivity -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.MinWindSpeedMPH -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.SpawnPoint -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.SecondSkill -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.IntroNIS -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.OpponentTeam -> nil  # gameplay field (GRace::OpponentTeam), readable on any instance; read-only; this type has no accessor, so it reads as nil
+constant self.StartPercent -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.RegionName -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.MaxCarRep -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.Barriers -> array of nil  # gameplay field (IndexedBarrierName array), readable on any instance; read-only; this type has no accessor, so it reads as nil
+constant self.EntryCellCallID -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.UpgradePartNameHash -> nil  # gameplay field (GStringHash), readable on any instance; read-only; this type has no accessor, so it reads as nil
+constant self.ForceHeatLevel -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.racestart -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.Persistent -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.MapTriangle -> array of nil  # gameplay field (GMapTriangle array), readable on any instance; read-only; this type has no accessor, so it reads as nil
+constant self.actionscript -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.HDonly -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.MaxOpenWorldHeat -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.PrimaryMode -> nil  # gameplay field (GRace::Mode), readable on any instance; read-only; this type has no accessor, so it reads as nil
+constant self.DriftTriggerType -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.InitiallyUnlocked -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.ZoneBenchmarkTime -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.hub_id -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.ShortcutType -> nil  # gameplay field (GRace::ShortcutType), readable on any instance; read-only; this type has no accessor, so it reads as nil
+constant self.MaxScore4 -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.DoPhotofinish -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.HubEnterRepairMarkersTotaled -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.TargetTime -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.Lighting -> nil  # gameplay field (GRace::RaceLigthingMode), readable on any instance; read-only; this type has no accessor, so it reads as nil
+constant self.engagetrigger -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.SunAndSky -> array of instance  # gameplay field (GCollectionKey array), readable on any instance; read-only
+constant self.MaxRacersInHeat -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.CopSpawnPoints -> array of instance  # gameplay field (GCollectionKey array), readable on any instance; read-only
+constant self.IsSlotcarRace -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.IsMarkerRace -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.BarrierExemptions -> array of instance  # gameplay field (GCollectionKey array), readable on any instance; read-only
+constant self.ZoneType -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.EnableSelectionSet -> array of string  # gameplay field (EA::Reflection::Text array), readable on any instance; read-only
+constant self.AtTargetActivity -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.TimeBonus -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.IntroMovie -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.MaxHeatLevel -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.ZoneMultiplier5 -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.TrackRegion -> nil  # gameplay field (Gameplay::Region), readable on any instance; read-only; this type has no accessor, so it reads as nil
+constant self.CarType -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.RivalBestTime -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.MaxScore2 -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.UpgradeTier -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.ZoneDistance1 -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.IsPinkSlipRace -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.IntroNIS2 -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.HubPlayType -> nil  # gameplay field (Hub::PlayType), readable on any instance; read-only; this type has no accessor, so it reads as nil
+constant self.ChallengeCar -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.ZoneDistance2 -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.PlayerCarPerformance -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.GripThreshold -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.ForceStartPosition -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.TurnIndicatorDirection -> nil  # gameplay field (eTURN_DIRECTION), readable on any instance; read-only; this type has no accessor, so it reads as nil
+constant self.UnlockRaces -> array of instance  # gameplay field (GCollectionKey array), readable on any instance; read-only
+constant self.TrackRecordThreshold -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.FirstSkill -> string  # gameplay field (EA::Reflection::Text), readable on any instance; read-only
+constant self.racestartReverse -> instance  # gameplay field (GCollectionKey), readable on any instance; read-only
+constant self.RandomSpawnTriggers -> array of instance  # gameplay field (GCollectionKey array), readable on any instance; read-only
+constant self.WinLevel3RewardProbability -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant self.PointsPerSecond -> number  # gameplay field (EA::Reflection::Float), readable on any instance; read-only
+constant self.BossRace -> boolean  # gameplay field (EA::Reflection::Bool), readable on any instance; read-only
+constant self.ReputationRequired -> number  # gameplay field (EA::Reflection::Int32), readable on any instance; read-only
+constant message.AIOpponents -> boolean  # field of MHubEventChanged
+constant message.Activity -> instance or nil  # field of MNotifyPlayerFinished, MNotifyRacePlacement
+constant message.AnchorWorldID -> number  # field of MJumpCut
+constant message.AttribKey -> handle or nil  # field of MPlayJukeboxSong
+constant message.AutoSpawnMode -> boolean  # field of MSetCopAutoSpawnMode
+constant message.BackupType -> number  # field of MReqBackup
+constant message.ButtonName -> string  # field of MNotifyRawButtonPress
+constant message.CarHandle -> handle or nil  # field of MHubCarChanged
+constant message.CarID -> number  # field of MAIEngineRev
+constant message.CarState -> EAX_CarState or nil  # field of MAIEngineRev
+constant message.ChallengeName -> string  # field of MNotifyChallengePassed
+constant message.Collisions -> boolean  # field of MHubEventChanged
+constant message.CopHandle -> simable or nil  # field of MUnspawnCop
+constant message.CopsEnabled -> boolean  # field of MSetCopsEnabled
+constant message.CountdownTime -> number  # field of MStartHurryUpTimer
+constant message.Covered -> boolean  # field of MAudioReflection
+constant message.Data -> number  # field of MReqRoadBlock
+constant message.Delay -> number  # field of MCommandRacerStart
+constant message.Dist -> number  # field of MAudioReflection
+constant message.Distance60To0 -> number  # field of MDynoResults
+constant message.Duration -> number  # field of MBreakerStopCops
+constant message.Element -> simable or nil  # field of MNotifyPlayerFinished, MTriggerEnter, MTriggerExit, MTriggerInside, MWheelieEnd, MWheelieStart
+constant message.Event -> Speech::ScheduledSpeechEvent or nil  # field of MNotifySpeechStatus
+constant message.EventIndex -> number  # field of MHubEventChanged, MHubEventStart
+constant message.FinishType -> number  # field of MNotifyRaceFinished
+constant message.FixSpeed -> number  # field of MSetTrafficSpeed
+constant message.GameRanked -> boolean  # field of MHubEventChanged
+constant message.Handicap -> number  # field of MNotifyLoadHeat
+constant message.Handicapping -> boolean  # field of MHubEventChanged
+constant message.Handle -> simable or nil  # field of MLaunchPIP
+constant message.HeatIndex -> number  # field of MNotifyLoadHeat
+constant message.InPursuit -> boolean  # field of MSpawnCop
+constant message.InitialPos -> nil  # field of MBreakerStopCops, MSpawnCop, MSpawnTraffic
+constant message.InitialVec -> nil  # field of MSpawnCop, MSpawnTraffic
+constant message.IsActive -> boolean  # field of MHubActivityStateChanged
+constant message.IsFrozen -> boolean  # field of MFreezeCamera
+constant message.IsSafe -> boolean  # field of MNotifyEscapeSafe
+constant message.IsSuccessful -> boolean  # field of MHubCarChangedAcknowledge
+constant message.Key -> handle or nil  # field of MNotifySurfaceFX
+constant message.Lap -> number  # field of MNotifyLapFinished
+constant message.LapTime -> number  # field of MNotifyLapFinished
+constant message.Licenced -> boolean  # field of MControlPathfinder
+constant message.MilestoneName -> string  # field of MNotifyMilestoneProgress, MNotifyMilestoneReached
+constant message.MinHeatLevel -> number  # field of MForcePursuitStart
+constant message.MinPlayers -> number  # field of MHubEventChanged
+constant message.MusicType -> number  # field of MNotifyMusicFlow
+constant message.NISName -> string  # field of MDriverNISComplete, MNISComplete
+constant message.NOS -> boolean  # field of MHubEventChanged
+constant message.Name -> string  # field of MNotifyRacerTimer, MNotifyTimer
+constant message.NewState -> number  # field of MHubRoomStateChanged
+constant message.Offset -> number  # field of MBreakerStopCops
+constant message.OpponentId -> number  # field of MNotifySectorTriggerEnter
+constant message.Param -> number  # field of MUnspawnCop
+constant message.Part -> number  # field of MNotifyMusicFlow
+constant message.PartID -> number  # field of MControlPathfinder
+constant message.PassedRacer -> simable or nil  # field of MNotifyPassingMove
+constant message.PassingRacer -> simable or nil  # field of MNotifyPassingMove
+constant message.PathControl -> number  # field of MControlPathfinder
+constant message.PathEvent -> number  # field of MControlPathfinder
+constant message.PatterToPlay -> number  # field of MAIEngineRev
+constant message.Perpetrator -> simable or nil  # field of MPerpBusted, MPerpEscaped, MPursuitOver
+constant message.Placement -> number  # field of MNotifyPlayerRanking
+constant message.Placing -> number  # field of MNotifyRacePlacement
+constant message.PlayerIndex -> number  # field of MHubCarChanged, MHubCarChangedAcknowledge, MNotifyPlayerRanking
+constant message.PlayerNum -> number  # field of MAudioReflection
+constant message.Public -> boolean  # field of MHubEventChanged
+constant message.RaceMode -> number  # field of MNotifyTrackRecordBroken
+constant message.Racer -> simable or nil  # field of MCommandRacerStart, MNotifyEngineBlown, MNotifyHandicapEntered, MNotifyInitiateHandicap, MNotifyKnockedOut, MNotifyLapFinished and 13 more
+constant message.RacerTargetTime -> number  # field of MNotifySectorTriggerEnter
+constant message.RacerTime -> number  # field of MNotifySectorTriggerEnter
+constant message.Radius -> number  # field of MBreakerStopCops
+constant message.Reason -> number  # field of MNotifyAbandoned, MNotifyEscaped, MNotifyRacerFinished
+constant message.RepPoints -> number  # field of MNotifyPlayerRep
+constant message.RoadBlock -> boolean  # field of MSpawnCop
+constant message.SceneType -> number  # field of MNISComplete, MNISFailed
+constant message.SectionNumber -> number  # field of MSceneryUpdated
+constant message.SectorTriggerIndex -> number  # field of MNotifySectorTriggerEnter
+constant message.Sender -> instance or nil  # field of MNotifyFinished, MTriggerEnter, MTriggerExit, MTriggerInside
+constant message.SettingsIndex -> number  # field of MHideHUD
+constant message.ShowFlashers -> boolean  # field of MHideHUD
+constant message.SimTime -> number  # field of MNotifySimTick
+constant message.SoundID -> number  # field of MMiscSound
+constant message.SpeedDefault -> number  # field of MSetTrafficSpeed
+constant message.SpeedHighway -> number  # field of MSetTrafficSpeed
+constant message.SpeedKmh -> number  # field of MNotifySpeedTrap
+constant message.SpeedQuarterMile -> number  # field of MDynoResults
+constant message.StagingDuration -> number  # field of MNotifyStagingEntered
+constant message.Start -> boolean  # field of MOnlinePunkbusterUpdate
+constant message.StartBreaker -> boolean  # field of MPursuitBreaker
+constant message.State -> number  # field of MPlayerStateEnter, MPlayerStateExit, MRaceStateEnter, MRaceStateExit
+constant message.Time0To100 -> number  # field of MDynoResults
+constant message.Time0To60 -> number  # field of MDynoResults
+constant message.Time100To0 -> number  # field of MDynoResults
+constant message.Time60Ft -> number  # field of MDynoResults
+constant message.Time70To150 -> number  # field of MDynoResults
+constant message.TimeElapsed -> number  # field of MNotifyRaceTime, MNotifyRaceTimeSecTick
+constant message.TimeIsLimited -> boolean  # field of MNotifyRaceTime
+constant message.TimeQuarterMile -> number  # field of MDynoResults
+constant message.TimeRemaining -> number  # field of MNotifyRaceTime
+constant message.TimeStep -> number  # field of MNotifySimTick
+constant message.TopSpeed -> number  # field of MDynoResults
+constant message.TrapActivity -> instance or nil  # field of MNotifySpeedTrap
+constant message.TriggerID -> number  # field of MLaunchPIP
+constant message.ValueReached -> number  # field of MNotifyMilestoneProgress, MNotifyMilestoneReached
+constant message.VehicleDestroyed -> boolean  # field of MNotifyEventReady
+constant message.VehicleName -> string  # field of MSpawnCop, MSpawnTraffic
+constant message.Won -> boolean  # field of MNotifyPinkSlipOutcome
+constant message.ZoneType -> string  # field of MEnterSafeHouse
+constant message.hSimable -> simable or nil  # field of MBreakerStopCops
+stdlib print  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib type  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib tostring  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib tonumber  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib pairs  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib ipairs  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib next  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib unpack  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib assert  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib error  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib pcall  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib xpcall  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib setmetatable  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib getmetatable  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib rawget  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib rawset  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib rawequal  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib loadstring  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib loadfile  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib dofile  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib require  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib collectgarbage  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib gcinfo  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib getfenv  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib setfenv  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib newproxy  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib _G  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib _VERSION  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib LUA_PATH  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib string  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib table  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib math  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib io  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib os  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib coroutine  # NOT available: the game opens no Lua standard library, so this global is nil
+stdlib debug  # NOT available: the game opens no Lua standard library, so this global is nil
+constant self  # handler parameter: the activity instance whose handler runs (GRuntimeInstance)
+constant message  # handler parameter: the message as a table, or nil for MStateEnter/MStateExit
+constant vars  # handler parameter: the activity's own table, kept between messages

@@ -1,0 +1,24 @@
+# Message names no header has, found from their handlers' names by
+# scripts/infer_messages.py; StringHash32 of each is the message_id it names.
+# undercover_wii
+MPursuitStart
+MNotifyRoundOver
+MPerpCooldown
+MScriptMadeDropOff
+MPlayMidNIS
+MScriptGotMoneyBag
+MNotifyGotMoneyBag
+MNotifyRacerBusted
+MRivalCameraFinished
+MNotifyHitSmackable
+MNotifyDamageRatio
+MNotifyWantedEventProgress
+MNotifyProximity
+MNotifyEngageFailed
+MNISPlaying
+MNotifyFirstContact
+MNotifyRobberBusted
+MNotifyTotalledBy
+MNotifyRoundStatsDone
+# mw_pc
+MCareerIntroDone
