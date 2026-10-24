@@ -168,7 +168,7 @@ namespace app
 			{
 				unsigned ck = 0, key = 0;
 				if (std::sscanf(v.c_str(), "%x:%x", &ck, &key) == 2) 
-					self->settings_.favorites.emplace_back(ck, key);
+					self->settings_.oldFavorites.emplace_back(ck, key);
 			}
 			else if (k == "ShowAsColour" || k == "ShowAsNumbers")
 			{
@@ -203,7 +203,6 @@ namespace app
 			out->appendf("NfsmsFollow=%d\nNfsmsStrict=%d\nRecordScript=%d\nRecordNfsms=%d\n", self->nfsmsFollow_ ? 1 : 0,
 				self->nfsmsStrict_ ? 1 : 0, self->recordAmod_ ? 1 : 0, self->recordNfsms_ ? 1 : 0);
 			if (!self->settings_.windowPlacement.empty()) out->appendf("WindowPlacement=%s\n", self->settings_.windowPlacement.c_str());
-			for (const auto& [ck, key] : self->settings_.favorites) out->appendf("Favorite=%08X:%08X\n", ck, key);
 			for (const auto& [name, colour] : self->prefs_.colour)
 				out->appendf("%s=%s\n", colour ? "ShowAsColour" : "ShowAsNumbers", name.c_str());
 			out->append("\n");
@@ -212,6 +211,7 @@ namespace app
 		if (io.IniFilename)
 			ImGui::LoadIniSettingsFromDisk(io.IniFilename);
 		loadRecent();
+		moveOldFavorites();
 
 		if (lightTheme_) 
 			ImGui::StyleColorsLight();
@@ -564,6 +564,8 @@ namespace app
 		else ok = openFile(path);
 		// Loading isn't undone: the history starts again from what is open now.
 		if (db_ && db_->packs().size() != packsBefore) resetUndo();
+		// Favourites are the database folder's, whether the folder or one of its files was opened.
+		if (const std::string f = databaseFolder(), n = f.empty() ? f : NormalPath(f); n != favoritesFor_) useFavoritesOf(n);
 		// A folder counts as opened when anything in it did: one unreadable file
 		// shouldn't keep it off the recent list.
 		if (ok || (folder && db_ && !db_->packs().empty())) addRecent(path);
@@ -904,26 +906,183 @@ namespace app
 		if (jump >= 0) jumpHistory(jump);
 	}
 
+	namespace
+	{
+		// favorites.txt: a "[folder]" line for each database, then its favourites
+		// as "class:collection" keys in hex and the name they had. "[]" holds an
+		// older version's list, which every database shared, until a database
+		// holding them takes them (useFavoritesOf).
+		using FavoriteLists = std::vector<std::pair<std::string, std::vector<App::Favorite>>>;
+
+		FavoriteLists ReadFavorites(const std::string& path)
+		{
+			FavoriteLists r;
+			std::ifstream in(FromUtf8(path), std::ios::binary);
+			std::string line;
+			while (std::getline(in, line))
+			{
+				if (!line.empty() && line.back() == '\r') line.pop_back();
+				if (line.size() >= 2 && line.front() == '[' && line.back() == ']')
+				{
+					r.emplace_back(line.substr(1, line.size() - 2), std::vector<App::Favorite>{});
+					continue;
+				}
+				unsigned cls = 0, key = 0;
+				int end = 0;
+				if (r.empty() || std::sscanf(line.c_str(), "%x:%x%n", &cls, &key, &end) != 2) continue;
+				App::Favorite f{ cls, key, line.substr(size_t(end)) };
+				f.name.erase(0, f.name.find_first_not_of(' '));
+				r.back().second.push_back(std::move(f));
+			}
+			return r;
+		}
+
+		std::string WriteFavorites(const std::string& path, const FavoriteLists& lists)
+		{
+			const fs::path p = FromUtf8(path), tmp = FromUtf8(path + ".tmp");
+			{
+				std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
+				for (const auto& [folder, list] : lists)
+				{
+					if (list.empty()) continue;
+					out << "[" << folder << "]\n";
+					char keys[24];
+					for (const App::Favorite& f : list)
+					{
+						std::snprintf(keys, sizeof keys, "%08X:%08X", f.cls, f.key);
+						out << keys << (f.name.empty() ? "" : " ") << f.name << "\n";
+					}
+				}
+				if (!out) return "could not write " + path + ".tmp";
+			}
+			std::error_code ec;
+			fs::rename(tmp, p, ec);
+			return ec ? ec.message() : std::string();
+		}
+
+		FavoriteLists::iterator FavoritesOf(FavoriteLists& lists, const std::string& folder)
+		{
+			return std::find_if(lists.begin(), lists.end(), [&](const auto& l)
+			{
+				return !l.first.empty() && SameFile(l.first, folder);
+			});
+		}
+	}
+
+	std::string App::favoritesPath() const
+	{
+		return iniPath_.empty() ? std::string() : ToUtf8(FromUtf8(iniPath_).parent_path() / "favorites.txt");
+	}
+
+	void App::useFavoritesOf(const std::string& folder)
+	{
+		favoritesFor_ = folder;
+		favorites_.clear();
+		const std::string path = favoritesPath();
+		if (folder.empty() || path.empty()) return;
+		FavoriteLists lists = ReadFavorites(path);
+		if (auto it = FavoritesOf(lists, folder); it != lists.end()) favorites_ = it->second;
+		// An older version's favourites go to the first database that holds them.
+		auto old = std::find_if(lists.begin(), lists.end(), [](const auto& l)
+		{
+			return l.first.empty();
+		});
+		if (old == lists.end()) return;
+		std::vector<Favorite> left;
+		size_t took = 0;
+		for (Favorite& f : old->second)
+		{
+			const Collection* c = db_->findCollection(f.cls, f.key);
+			if (!c)
+			{
+				left.push_back(std::move(f));
+				continue;
+			}
+			++took;
+			if (isFavorite(c)) continue;
+			f.name = db_->names().format(f.cls) + "/" + db_->names().format(f.key);
+			favorites_.push_back(std::move(f));
+		}
+		if (!took) return;
+		old->second = std::move(left);
+		if (auto it = FavoritesOf(lists, folder); it != lists.end()) it->second = favorites_;
+		else lists.emplace_back(folder, favorites_);
+		if (std::string e = WriteFavorites(path, lists); !e.empty()) log(LogLevel::Warning, "Could not save the favourites to " + path + ": " + e);
+		else log(LogLevel::Info, "Moved " + std::to_string(took) + " favourite(s) to this database from the single list older versions kept for every database");
+	}
+
+	void App::moveOldFavorites()
+	{
+		const std::string path = favoritesPath();
+		std::error_code ec;
+		if (!settings_.oldFavorites.empty() && !path.empty() && !fs::exists(FromUtf8(path), ec))
+		{
+			FavoriteLists lists(1);
+			for (const auto& [cls, key] : settings_.oldFavorites) lists[0].second.push_back({ cls, key, {} });
+			if (std::string e = WriteFavorites(path, lists); !e.empty())
+				log(LogLevel::Warning, "Could not move the favourites to " + path + ": " + e);
+		}
+		settings_.oldFavorites.clear();
+	}
+
+	void App::changeFavorites(const std::function<void(std::vector<Favorite>&)>& change)
+	{
+		const std::string path = favoritesFor_.empty() ? std::string() : favoritesPath();
+		if (path.empty())
+		{
+			change(favorites_); // kept for this window only
+			return;
+		}
+		FavoriteLists lists = ReadFavorites(path); // other windows write it too
+		auto it = FavoritesOf(lists, favoritesFor_);
+		if (it == lists.end())
+		{
+			lists.emplace_back(favoritesFor_, std::vector<Favorite>{});
+			it = std::prev(lists.end());
+		}
+		change(it->second);
+		favorites_ = it->second;
+		if (std::string e = WriteFavorites(path, lists); !e.empty()) log(LogLevel::Warning, "Could not save the favourites to " + path + ": " + e);
+	}
+
 	bool App::isFavorite(const Collection* c) const
 	{
-		return c && std::find(settings_.favorites.begin(), settings_.favorites.end(), std::make_pair(c->classKey, c->key)) !=
-			settings_.favorites.end();
+		return c && std::any_of(favorites_.begin(), favorites_.end(), [&](const Favorite& f)
+		{
+			return f.cls == c->classKey && f.key == c->key;
+		});
 	}
 
 	void App::toggleFavorite(const Collection* c)
 	{
-		if (!c) return;
-		auto& f = settings_.favorites;
-		const auto id = std::make_pair(c->classKey, c->key);
-		auto it = std::find(f.begin(), f.end(), id);
-		if (it != f.end()) f.erase(it);
-		else f.push_back(id);
-		ImGui::MarkIniSettingsDirty();
+		if (!c || !db_) return;
+		const bool add = !isFavorite(c); // as this window shows it
+		const std::string name = db_->names().format(c->classKey) + "/" + db_->names().format(c->key);
+		changeFavorites([&](std::vector<Favorite>& list)
+		{
+			std::erase_if(list, [&](const Favorite& f)
+			{
+				return f.cls == c->classKey && f.key == c->key;
+			});
+			if (add) list.push_back({ c->classKey, c->key, name });
+		});
+	}
+
+	void App::removeFavorite(uint32_t cls, uint32_t key)
+	{
+		changeFavorites([&](std::vector<Favorite>& list)
+		{
+			std::erase_if(list, [&](const Favorite& f)
+			{
+				return f.cls == cls && f.key == key;
+			});
+		});
 	}
 
 	void App::closeAll()
 	{
 		db_.reset();
+		useFavoritesOf({});
 		treesToReset_ = ~0u;
 		treeToggle_ = treeFocus_ = {};
 		treeToggleAll_ = Tree::None;
@@ -1673,8 +1832,6 @@ namespace app
 		const ImGuiID id = ImGui::GetID("MainDockSpace");
 		if (resetLayout_ || !ImGui::DockBuilderGetNode(id))
 		{
-			resetLayout_ = false;
-
 			showExplorer_ = true;
 			showInspector_ = true;
 			showLog_ = true;
@@ -1683,9 +1840,16 @@ namespace app
 			showNfsms_ = true;
 			bringNfsms_ = false;
 
-			showClass_ = false;
-			showDemo_ = false;
-			showSequence_ = false;
+			// Reset Layout closes the other panels. A first run (no dock space
+			// yet) leaves open the ones opened before its first frame, as the
+			// UI tests do.
+			if (resetLayout_)
+			{
+				showClass_ = false;
+				showDemo_ = false;
+				showSequence_ = false;
+			}
+			resetLayout_ = false;
 
 			ImGui::DockBuilderRemoveNode(id);
 			ImGui::DockBuilderAddNode(id, ImGuiDockNodeFlags_DockSpace);
@@ -1728,42 +1892,38 @@ namespace app
 			ImGui::End();
 			return;
 		}
-		if (!settings_.favorites.empty() && ImGui::CollapsingHeader("Favorites", ImGuiTreeNodeFlags_DefaultOpen))
+		if (!favorites_.empty() && ImGui::CollapsingHeader("Favorites", ImGuiTreeNodeFlags_DefaultOpen))
 		{
-			std::pair<uint32_t, uint32_t> remove{ 0, 0 };
-			bool removeIt = false;
-			for (const auto& [ck, key] : settings_.favorites)
+			std::optional<std::pair<uint32_t, uint32_t>> remove;
+			for (const Favorite& f : favorites_)
 			{
-				Collection* c = db_->findCollection(ck, key);
-				const std::string label = db_->names().format(ck) + "/" + db_->names().format(key);
-				ImGui::PushID(int(ck ^ key));
-				ImGui::BeginDisabled(!c);
+				Collection* c = db_->findCollection(f.cls, f.key);
+				const std::string label = c || f.name.empty() ? db_->names().format(f.cls) + "/" + db_->names().format(f.key) : f.name;
+				ImGui::PushID(int(f.cls ^ f.key));
+				// One the database no longer has is greyed out, not disabled: a
+				// disabled item never counts as hovered, so its menu wouldn't open.
+				if (!c) ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
 				if (ImGui::Selectable(label.c_str(), c && c == selected_) && c)
 				{
 					if (ImGui::GetIO().KeyCtrl) openInNewTab(c, false);
 					else select(c, true);
 				}
+				if (!c)
+				{
+					ImGui::PopStyleColor();
+					ImGui::SetItemTooltip("This database has no such collection. Right-click to remove the favourite.");
+				}
 				linkClicks(c);
 				if (c && ImGui::IsItemFocused()) explorerFocus_ = { c, c->cls };
-				ImGui::EndDisabled();
 				if (ImGui::BeginPopupContextItem())
 				{
 					if (ImGui::MenuItem("Open in New Tab", "Middle-click", false, c != nullptr)) openInNewTab(c, false);
-					if (ImGui::MenuItem("Remove from Favorites"))
-					{
-						remove = { ck, key };
-						removeIt = true;
-					}
+					if (ImGui::MenuItem("Remove from Favorites")) remove = std::make_pair(f.cls, f.key);
 					ImGui::EndPopup();
 				}
 				ImGui::PopID();
 			}
-			if (removeIt)
-			{
-				auto& f = settings_.favorites;
-				f.erase(std::remove(f.begin(), f.end(), remove), f.end());
-				ImGui::MarkIniSettingsDirty();
-			}
+			if (remove) removeFavorite(remove->first, remove->second);
 			ImGui::Separator();
 		}
 		ImGui::SetNextItemWidth(-FLT_MIN);

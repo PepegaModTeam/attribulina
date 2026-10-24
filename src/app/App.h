@@ -19,6 +19,7 @@
 #include "imgui.h"
 
 #include <deque>
+#include <functional>
 #include <map>
 #include <set>
 #include <memory>
@@ -250,8 +251,21 @@ namespace app
 		{
 			return prefs_;
 		}
+		// The open database's favourites. favorites.txt beside the .ini keeps a
+		// list per database folder (where its attributes.bin is), re-read
+		// before each change and written at once, as the recent files are.
+		struct Favorite
+		{
+			uint32_t cls = 0, key = 0;
+			std::string name; // "class/collection" as it was added, for one no longer there
+		};
+		const std::vector<Favorite>& favorites() const
+		{
+			return favorites_;
+		}
 		bool isFavorite(const attrib::Collection* c) const;
 		void toggleFavorite(const attrib::Collection* c);
+		void removeFavorite(uint32_t cls, uint32_t key);
 		// The gameplay model (null without a gameplay class); rebuilt with the caches.
 		const attrib::GameplayModel* gameplay() const
 		{
@@ -454,7 +468,9 @@ namespace app
 		{
 			std::string keysFile;
 			std::vector<std::string> recent;
-			std::vector<std::pair<uint32_t, uint32_t>> favorites; // class, collection
+			// Favorite= lines from an older version, which kept one list for
+			// every database; moved to favorites.txt (moveOldFavorites).
+			std::vector<std::pair<uint32_t, uint32_t>> oldFavorites; // class, collection
 			std::string windowPlacement;
 		};
 
@@ -500,6 +516,11 @@ namespace app
 		void saveRecent();
 		void addRecent(const std::string& path);
 		void clearRecent();
+		std::string favoritesPath() const;
+		void useFavoritesOf(const std::string& folder);
+		void moveOldFavorites();
+		// Applies a change to the open database's list as favorites.txt holds it now.
+		void changeFavorites(const std::function<void(std::vector<Favorite>&)>& change);
 		void updateTitle();
 		std::string title_; // as last given to the host
 		void rebuildCaches();
@@ -697,6 +718,8 @@ namespace app
 		std::vector<uint8_t> logLevels_;            // per line: 0 info, 1 warning, 2 error
 		LogView logView_;
 		Settings settings_;
+		std::vector<Favorite> favorites_;
+		std::string favoritesFor_; // the database folder favorites_ belongs to; empty: none open
 		DisplayPrefs prefs_;
 		std::vector<std::shared_ptr<const attrib::TypeSchema>> schemas_;
 		bool walkingHistory_ = false;
@@ -887,7 +910,7 @@ namespace app
 		// UI state.
 		std::string explorerFilter_, fieldFilter_;
 		ViewOptions view_;
-		bool showExplorer_ = true, showInspector_ = true, showClass_ = true, showLog_ = true, showDemo_ = false;
+		bool showExplorer_ = true, showInspector_ = true, showClass_ = false, showLog_ = true, showDemo_ = false;
 		bool showSequence_ = false;
 		std::string panelsSeen_; // openPanels() as last saved, to notice a change
 		bool resetLayout_ = false;
