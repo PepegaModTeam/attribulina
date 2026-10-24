@@ -15,22 +15,21 @@ cd "$ROOT"
 mkdir -p "$OUT"
 export ZIG_GLOBAL_CACHE_DIR="$OUT/zig-cache" ZIG_LOCAL_CACHE_DIR="$OUT/zig-cache"
 
-FLAGS=(-target x86_64-windows-gnu -std=c++20 -O1 -DNOMINMAX
-       -Isrc -Ithirdparty/imgui -Ithirdparty/imgui/backends -Ithirdparty/imgui/misc/cpp -IBBXCompression
-       -Ithirdparty/lua50 -Ithirdparty/lua51)
+# -Wno-date-time: clang makes __DATE__/__TIME__ (include/version_string.h) an error by default.
+FLAGS=(-target x86_64-windows-gnu -std=c++20 -O1 -DNOMINMAX -Wno-date-time
+       -Isrc -Iinclude -Iexternal/imgui -Iexternal/imgui/backends -Iexternal/imgui/misc/cpp
+       -Iexternal/lua50 -Iexternal/lua51)
 
 jobs=()
 for f in src/core/*.cpp src/core/lua/*.cpp src/app/*.cpp; do jobs+=("$f|-Wall -Wextra"); done
 jobs+=("src/platform/win32/main_win32.cpp|-Wall -Wextra -DUNICODE -D_UNICODE")
-for f in thirdparty/imgui/*.cpp thirdparty/imgui/misc/cpp/imgui_stdlib.cpp \
-         thirdparty/imgui/backends/imgui_impl_win32.cpp thirdparty/imgui/backends/imgui_impl_dx11.cpp; do
+for f in external/imgui/*.cpp external/imgui/misc/cpp/imgui_stdlib.cpp \
+         external/imgui/backends/imgui_impl_win32.cpp external/imgui/backends/imgui_impl_dx11.cpp; do
     jobs+=("$f|-w")
 done
-# Lua 5.0.1, compiled as C++ in namespace lua50 (see thirdparty/lua50/lua50_config.h).
-for f in thirdparty/lua50/*.cpp thirdparty/lua51/*.cpp; do jobs+=("$f|-w"); done
-for f in huffdecode huffencode jlzdecode jlzencode refdecode refencode OldLZDecompress libcodex; do
-    jobs+=("BBXCompression/$f.cpp|-w -include cstdlib -include cstring")
-done
+# Lua 5.0.1 and 5.1.3, compiled as C++ in namespaces lua50 and lua51 (see external/lua50/lua50_config.h).
+for f in external/lua50/*.cpp external/lua51/*.cpp; do jobs+=("$f|-w"); done
+for f in src/lzcompress/*.cpp; do jobs+=("$f|-w"); done
 
 # attribcli's own sources go in cli/, so the editor's link doesn't see its main.
 mkdir -p "$OUT/cli"
@@ -58,6 +57,6 @@ done
     -o "$OUT/Attribulina.exe" > "$OUT/link.log" 2>&1 || { grep -E "error" "$OUT/link.log" | grep -v "warning:" | head -20; exit 1; }
 echo "OK: $OUT/Attribulina.exe"
 
-"$ZIG" c++ -target x86_64-windows-gnu -municode "$OUT"/src_core_*.o "$OUT"/thirdparty_lua50_*.o "$OUT"/thirdparty_lua51_*.o "$OUT"/BBXCompression_*.o \
+"$ZIG" c++ -target x86_64-windows-gnu -municode "$OUT"/src_core_*.o "$OUT"/external_lua50_*.o "$OUT"/external_lua51_*.o "$OUT"/src_lzcompress_*.o \
     "$OUT"/cli/*.o -o "$OUT/attribcli.exe" > "$OUT/link_cli.log" 2>&1 || { grep -E "error" "$OUT/link_cli.log" | grep -v "warning:" | head -20; exit 1; }
 echo "OK: $OUT/attribcli.exe"
