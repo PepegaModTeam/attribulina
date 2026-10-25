@@ -409,7 +409,7 @@ namespace attrib::script
 		private:
 			enum class Context
 			{
-				Top, Collection
+				Top, Collection, Class
 			};
 
 			const Token& peek(size_t k = 0) const
@@ -489,7 +489,7 @@ namespace attrib::script
 						out.push_back(std::move(s));
 						continue;
 					}
-					out.push_back(ctx == Context::Top ? topStatement() : blockStatement());
+					out.push_back(ctx == Context::Top ? topStatement() : ctx == Context::Class ? classField() : blockStatement());
 				}
 			}
 
@@ -726,6 +726,12 @@ namespace attrib::script
 						s.kind = K::DeleteVault;
 						s.vault = name("a vault name");
 					}
+					else if (atWord("class") && !atPunct("/", 1))
+					{
+						next();
+						s.kind = K::DeleteClass;
+						s.word = className();
+					}
 					else
 					{
 						s.kind = K::Delete;
@@ -737,6 +743,32 @@ namespace attrib::script
 							s.withChildren = true;
 						}
 					}
+				}
+				else if (w == "class" && !atPunct("/", 1))
+				{
+					next();
+					s.kind = K::Class;
+					s.word = className();
+					for (;;)
+					{
+						if (atWord("in") && s.vault.empty())
+						{
+							next();
+							expectWord("vault");
+							s.vault = name("a vault name");
+						}
+						else if (peek().t == Token::T::Word && IsClassSetting(peek().text))
+						{
+							const std::string key = next().text;
+							s.settings.emplace_back(key, integer(key.c_str()));
+						}
+						else
+						{
+							break;
+						}
+					}
+					s.body = block(Context::Class);
+					return s;
 				}
 				else if (w == "rename")
 				{
@@ -772,6 +804,90 @@ namespace attrib::script
 				else
 				{
 					fail(k.pos, "unknown statement '" + w + "' (values go in an edit block)");
+				}
+				endStatement(s);
+				return s;
+			}
+
+			// A class's name; a quoted 0x... is a name, not a hash.
+			std::string className()
+			{
+				bool q = false;
+				return quotedName(name("a class name", &q), q);
+			}
+
+			static bool IsClassSetting(const std::string& w)
+			{
+				return w == "reserve" || w == "layoutsize" || w == "layoutcount" || w == "keyshift" || w == "staticsize";
+			}
+			static bool IsFieldSetting(const std::string& w)
+			{
+				return w == "at" || w == "align" || w == "flags" || w == "max" || w == "size";
+			}
+
+			// A whole number (0x... too) for `what`.
+			int64_t integer(const char* what)
+			{
+				const Token& n = peek();
+				char* end = nullptr;
+				const long long v = n.t == Token::T::Word ? std::strtoll(n.text.c_str(), &end, 0) : -1;
+				if (n.t != Token::T::Word || n.text.empty() || !end || *end || v < 0) failHere(std::string("expected a number after ") + what);
+				next();
+				return v;
+			}
+
+			// layout|entry|static NAME TYPE[[count]] [unsearchable] [at n] [align n]
+			// [flags n] [max n] [size n] [= value]
+			Statement classField()
+			{
+				Statement s;
+				s.kind = Statement::Kind::ClassField;
+				s.pos = peek().pos;
+				if (atWord("bytes"))
+				{
+					// The static block as stored, for bytes no static field covers.
+					s.word = "bytes";
+					s.value = value();
+					endStatement(s);
+					return s;
+				}
+				if (!atWord("layout") && !atWord("entry") && !atWord("static"))
+					failHere("expected a field: layout, entry or static, its name and its type");
+				s.word = next().text;
+				s.path.pos = peek().pos;
+				bool q = false;
+				s.path.field = quotedName(name("the field's name", &q), q);
+				const Token& ty = peek();
+				if (ty.t != Token::T::Word && ty.t != Token::T::String) failHere("expected the field's type");
+				s.text = next().text;
+				if (atPunct("[") && !peek().spaceBefore)
+				{
+					next();
+					s.isArray = true;
+					if (!atPunct("]")) s.count = uint32_t(integer("'['"));
+					expectPunct("]");
+				}
+				for (;;)
+				{
+					if (atWord("unsearchable") && !s.unsearchable)
+					{
+						next();
+						s.unsearchable = true;
+					}
+					else if (peek().t == Token::T::Word && IsFieldSetting(peek().text))
+					{
+						const std::string key = next().text;
+						s.settings.emplace_back(key, integer(key.c_str()));
+					}
+					else
+					{
+						break;
+					}
+				}
+				if (atPunct("="))
+				{
+					next();
+					s.value = value();
 				}
 				endStatement(s);
 				return s;
@@ -1483,6 +1599,36 @@ namespace attrib::script
 					break;
 				case K::Remove: out += "remove " + s.path.text(); break;
 				case K::Include: out += "include " + Quote(s.text); break;
+				case K::Class:
+					out += "class " + Name(s.word);
+					if (!s.vault.empty()) out += " in vault " + Name(s.vault);
+					for (const auto& [k, v] : s.settings) out += " " + k + " " + std::to_string(v);
+					body(s.body);
+					break;
+				case K::ClassField:
+				{
+					if (s.word == "bytes")
+					{
+						PrintValueTo(out, *s.value, indent);
+						break;
+					}
+					out += s.word + " " + s.path.text() + " " + (IsBare(s.text) ? s.text : Quote(s.text));
+					if (s.isArray) out += "[" + (s.count ? std::to_string(s.count) : std::string()) + "]";
+					if (s.unsearchable) out += " unsearchable";
+					for (const auto& [k, v] : s.settings)
+					{
+						char hex[16];
+						std::snprintf(hex, sizeof(hex), "0x%02llX", (unsigned long long)v);
+						out += " " + k + " " + (k == "flags" ? std::string(hex) : std::to_string(v));
+					}
+					if (s.value)
+					{
+						out += " = ";
+						PrintValueTo(out, *s.value, indent);
+					}
+					break;
+				}
+				case K::DeleteClass: out += "delete class " + Name(s.word); break;
 				case K::Echo:
 					out += "echo";
 					if (!s.word.empty()) out += " " + s.word;

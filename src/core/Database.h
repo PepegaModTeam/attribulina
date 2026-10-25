@@ -173,6 +173,7 @@ namespace attrib
 	struct ClassDef;
 	struct Collection;
 	struct LoadedPack;
+	struct ClassList; // ClassList.h
 
 	struct Attribute
 	{
@@ -352,11 +353,28 @@ namespace attrib
 		{
 			return types_;
 		}
+
+		// The game's own classes, as its retail files define them (data/classes,
+		// ClassList.h): which classes are the game's (they can be deleted and
+		// restored but not redefined) and what restoring one gives.
+		void addClassList(std::shared_ptr<const ClassList> list)
+		{
+			classLists_.push_back(std::move(list));
+		}
+		const std::vector<std::shared_ptr<const ClassList>>& classLists() const
+		{
+			return classLists_;
+		}
 		const TypeInfo* typeByHash(uint32_t hash) const;
+		// DatabaseLoadData's mNumClasses, about 1.5 x (classes + 2) in retail
+		// files. ClassEditor raises it as classes are added.
 		uint32_t numClassesDeclared() const
 		{
 			return numClassesDeclared_;
 		}
+		// DatabaseLoadData's mDefaultDataSize: the largest class layout in retail
+		// files (World's: its largest type). ClassEditor raises it as classes are
+		// added.
 		uint32_t defaultDataSize() const
 		{
 			return defaultDataSize_;
@@ -426,6 +444,7 @@ namespace attrib
 
 	private:
 		friend class CollectionEditor;
+		friend class ClassEditor;
 
 		void loadVault(Vault& vault);
 		void loadDatabaseExport(Vault& vault, const ExportEntry& e, detail::BlockReader& blocks);
@@ -436,6 +455,7 @@ namespace attrib
 
 		Target target_;
 		std::vector<std::shared_ptr<const TypeSchema>> schemaCandidates_;
+		std::vector<std::shared_ptr<const ClassList>> classLists_;
 		std::shared_ptr<const TypeSchema> typeSchema_;
 		std::vector<TypeInfo> types_;
 		std::deque<TypeInfo> unlistedTypes_; // kUnlistedTypes this database's fields may use
@@ -487,6 +507,10 @@ namespace attrib
 	// The bytes a class's layout block holds: its layout size, or more when such
 	// a bool ends past it.
 	uint32_t LayoutBytes(const ClassDef& cls);
+	// A new array's Attrib::Array::mEncodedTypeAndPad: 0x8000 when its elements
+	// are 16-aligned (they start 16 bytes in), else 0, as in every retail array.
+	// The low bits are a type index the game fills in as it loads (0 on disk).
+	uint16_t ArrayPad(const FieldDef& f);
 	// Header size of an out-of-line Attrib::Array.
 	inline uint32_t ArrayHeaderSize(uint16_t encodedTypePad)
 	{

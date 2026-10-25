@@ -132,17 +132,22 @@ namespace attrib
 
 	ValueType TypeOfAttribute(const Attribute& a, const std::string& fieldName)
 	{
+		return TypeOfType(a.type, a.elemSize, fieldName);
+	}
+
+	ValueType TypeOfType(const TypeInfo* type, uint32_t size, const std::string& fieldName)
+	{
 		ValueType vt;
 		vt.name = fieldName;
-		vt.size = a.elemSize;
-		if (!a.type) return vt;
-		vt.kind = a.type->kind;
-		vt.size = a.type->size;
-		vt.typeName = TypeLabel(a.type);
-		if (a.type->schemaEnum) vt.en = a.type->schemaEnum;
-		if (a.type->kind == TypeKind::Unknown && a.type->size == 4 && ShownInHex(a.type->name)) vt.hint = "hex";
-		if (a.type->kind == TypeKind::Struct) ApplyStruct(vt, a.type->schemaStruct);
-		else if (a.type->schemaStruct) vt.st = a.type->schemaStruct;
+		vt.size = size;
+		if (!type) return vt;
+		vt.kind = type->kind;
+		vt.size = type->size;
+		vt.typeName = TypeLabel(type);
+		if (type->schemaEnum) vt.en = type->schemaEnum;
+		if (type->kind == TypeKind::Unknown && type->size == 4 && ShownInHex(type->name)) vt.hint = "hex";
+		if (type->kind == TypeKind::Struct) ApplyStruct(vt, type->schemaStruct);
+		else if (type->schemaStruct) vt.st = type->schemaStruct;
 		return vt;
 	}
 

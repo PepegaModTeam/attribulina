@@ -125,6 +125,11 @@ namespace attrib
 		return (1u << f.alignment) > 8 ? 16u : 8u;
 	}
 
+	uint16_t ArrayPad(const FieldDef& f)
+	{
+		return (1u << f.alignment) > 8 ? 0x8000 : 0;
+	}
+
 	uint32_t LayoutExtent(const FieldDef& f, uint16_t capacity)
 	{
 		return f.isArray() ? LayoutArrayHeader(f) + uint32_t(capacity) * f.size : f.size;

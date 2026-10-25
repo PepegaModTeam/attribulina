@@ -25,6 +25,7 @@
 // difference between two databases. Values are typed only when they are
 // applied, against the field they go into.
 
+#include "ClassDesign.h"
 #include "Database.h"
 #include "Values.h"
 
@@ -176,6 +177,17 @@ namespace attrib::script
 			Remove,      // remove path[index]
 			Echo,        // echo [warning|error] values...: word is the level ("" for plain), value a List
 			Include,     // include "path": text is the path as written
+			// class word [in vault vault] [reserve n ...] { fields }: made if missing,
+			// else laid out again to this design (a class of the game only when it
+			// is this already). settings: the stored values the rules don't give.
+			Class,
+			// layout|entry|static path.field text[[count]] [unsearchable] [at n ...]
+			// [= value]: one field of a class (word: where it is kept; text: its
+			// type; value: a static field's value). Or `bytes "..."` (word "bytes"):
+			// the class's static block as stored, when it has bytes no static
+			// field covers (World's gameplay).
+			ClassField,
+			DeleteClass, // delete class word: the class and every collection of it
 		} kind = Kind::Comment;
 		Pos pos;
 		std::string comment; // Comment's text, or a comment after the statement
@@ -194,6 +206,10 @@ namespace attrib::script
 		std::vector<Statement> body, elseBody;
 		// Include: the script it names, once LoadIncludes has read it.
 		std::shared_ptr<const Script> included;
+		// Class, ClassField: stored values the layout rules don't give, as
+		// written (`reserve 12`, `at 4`, `flags 0x2E`), in order.
+		std::vector<std::pair<std::string, int64_t>> settings;
+		bool isArray = false, unsearchable = false; // ClassField
 	};
 
 	struct Script
@@ -281,6 +297,7 @@ namespace attrib::script
 		bool ok = false;
 		std::vector<Message> messages; // warnings, and the error that stopped it
 		size_t valuesSet = 0, created = 0, deleted = 0, moved = 0, renamed = 0, reverted = 0;
+		size_t classesCreated = 0, classesChanged = 0, classesDeleted = 0;
 		std::set<LoadedPack*> touched;     // packs that changed (now marked dirty)
 		std::vector<std::string> newNames; // names the dictionary didn't have
 		std::string summary() const;       // "3 values set, 1 collection created"
@@ -345,6 +362,16 @@ namespace attrib::script
 
 	// `path = value` for a collection's own (or inherited) value at `path`.
 	Statement ExportValue(const Database& db, const Collection& c, uint32_t field);
+
+	// A `class` statement that makes `cls` as `db` holds it: its fields, with
+	// the stored values the layout rules don't give, its vault, and (with
+	// `values`) its static values.
+	Statement ClassStatement(const Database& db, const ClassDef& cls, bool values = true);
+
+	// The design a `class` statement describes, its types looked up in `db`'s
+	// type table. Throws ScriptError for a type the table doesn't have and for
+	// settings that aren't numbers in range.
+	ClassDesign DesignFromStatement(const Database& db, const Statement& s);
 
 	// A new script with the header, the game and `statements`.
 	Script NewScript(const Database& db, std::vector<Statement> statements = {});

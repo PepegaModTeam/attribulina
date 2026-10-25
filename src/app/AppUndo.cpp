@@ -198,6 +198,7 @@ namespace app
 		auto fresh = std::make_unique<Database>();
 		fresh->setTarget(db_->target());
 		if (db_->sharedTypeSchema()) fresh->addTypeSchema(db_->sharedTypeSchema());
+		for (const auto& l : db_->classLists()) fresh->addClassList(l); // which classes are the game's
 		fresh->names() = db_->names();
 		fresh->binNames() = db_->binNames();
 		try

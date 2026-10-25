@@ -81,7 +81,8 @@ namespace attrib
 	// kIndexTableType, TypeLayouts.h) list the collections of their class: in
 	// aud_moment, traffic_engine and traffic_horn each parent's key (0 for the
 	// roots) with its children's keys, in speech each collection's key with its
-	// parent's. Which of the two a table is comes from its stored entries. After
+	// parent's. Which of the two a table is comes from its stored entries (an
+	// empty one's from the class: speech's the second way). After
 	// a collection of the class is created, deleted, renamed or moved this brings
 	// the table in line: entries that still hold stay as stored (their order, a
 	// root's unexplained value in speech), the rest are added or dropped.

@@ -2,6 +2,7 @@
 
 #include "Script.h"
 
+#include "ClassList.h"
 #include "Compression.h"
 #include "Gameplay.h"
 #include "Curve.h"
@@ -1342,6 +1343,8 @@ namespace attrib::script
 						}
 						case K::CreateVault: createVault(s); break;
 						case K::DeleteVault: deleteVault(s); break;
+						case K::Class: classStatement(s); break;
+						case K::DeleteClass: deleteClass(s); break;
 						case K::Echo: echo(s, nullptr); break;
 						case K::Include: include(s); break;
 						default: fail(s.pos, "this goes inside an edit, create or collection block");
@@ -1510,6 +1513,130 @@ namespace attrib::script
 				touch(c->vault);
 				for (Collection* k : c->children) touch(k->vault);
 				++rep_.renamed;
+			}
+
+			Vault& databaseVault()
+			{
+				for (const auto& pk : db_.packs())
+					for (const auto& v : pk->vaults)
+						if (v->isDatabase) return *v;
+				fail("no pack with the database (attributes.bin) is open: say which vault the class goes in: in vault <name>");
+			}
+
+			void classStatement(const Statement& s)
+			{
+				ClassDesign d;
+				try
+				{
+					d = DesignFromStatement(db_, s);
+				}
+				catch (const ScriptError& e)
+				{
+					fail(e.pos, e.message);
+				}
+				learn(s.word);
+				for (const Statement& f : s.body)
+					if (f.kind == K::ClassField && f.word != "bytes") learn(f.path.field);
+				ClassDef* cls = db_.findClass(d.key);
+				ClassEditor ed(db_);
+				try
+				{
+					if (!cls)
+					{
+						Vault& v = s.vault.empty() ? databaseVault() : vaultNamed(s.vault);
+						cls = &ed.create(v, d);
+						++rep_.classesCreated;
+					}
+					else
+					{
+						if (!s.vault.empty() && &vaultNamed(s.vault) != cls->vault)
+							warn("class " + s.word + " is defined in vault " + (cls->vault ? cls->vault->name : std::string("?")) + "; it stays there");
+						if (IsGameClass(db_, cls->key))
+						{
+							// The game's classes stay as they are; a statement of one as it is changes nothing.
+							ClassDef laid;
+							laid.collections = cls->collections;
+							LayOutClass(db_, d, laid);
+							laid.collectionReserve = cls->collectionReserve;
+							bool same = laid.fields.size() == cls->fields.size() && laid.layoutSize == cls->layoutSize &&
+								laid.layoutCount == cls->layoutCount && laid.layoutKeyShift == cls->layoutKeyShift && laid.staticSize == cls->staticSize;
+							for (size_t i = 0; same && i < laid.fields.size(); ++i)
+							{
+								const FieldDef& a = laid.fields[i];
+								const FieldDef& b = cls->fields[i];
+								same = a.key == b.key && a.typeHash == b.typeHash && a.offset == b.offset && a.size == b.size &&
+									a.maxCount == b.maxCount && a.flags == b.flags && a.alignment == b.alignment;
+							}
+							if (!same)
+								fail(s.word + " is a class of the game: its compiled code reads it as it is, so it can't be redefined "
+									 "(only classes made for a mod can)");
+						}
+						else if (ed.redesign(*cls, d))
+						{
+							++rep_.classesChanged;
+						}
+					}
+				}
+				catch (const ScriptError&)
+				{
+					throw;
+				}
+				catch (const std::exception& e)
+				{
+					fail(e.what());
+				}
+				for (LoadedPack* p : ed.touched()) rep_.touched.insert(p);
+				// Static values: the block as stored first, then each field's.
+				endian_ = cls->vault ? cls->vault->raw.endian : Endian::Little;
+				for (const Statement& f : s.body)
+				{
+					if (f.kind != K::ClassField || f.word != "bytes" || !f.value) continue;
+					pos_ = f.pos;
+					std::vector<uint8_t> bytes;
+					if (f.value->kind != Value::Kind::Bytes || !ParseHexBytes(f.value->text, bytes))
+						fail(f.pos, "a class's bytes are hex: bytes \"0a 1b 2c\"");
+					if (bytes.size() > cls->staticSize)
+						fail(f.pos, std::to_string(bytes.size()) + " bytes don't fit the class's " + std::to_string(cls->staticSize) + " static bytes");
+					if (cls->staticData.bytes.size() < cls->staticSize) cls->staticData.bytes.resize(cls->staticSize, 0);
+					if (!std::equal(bytes.begin(), bytes.end(), cls->staticData.bytes.begin()))
+					{
+						std::copy(bytes.begin(), bytes.end(), cls->staticData.bytes.begin());
+						++rep_.valuesSet;
+						touch(cls->vault);
+					}
+				}
+				for (const Statement& f : s.body)
+				{
+					if (f.kind != K::ClassField || f.word == "bytes" || !f.value) continue;
+					pos_ = f.pos;
+					const FieldDef* def = cls->field(KeyOf(f.path.field));
+					if (!def || !def->isStatic()) fail(f.pos, "only a static field takes a value here: collections hold the others");
+					if (cls->staticData.bytes.size() < uint32_t(def->offset) + def->size) cls->staticData.bytes.resize(uint32_t(def->offset) + def->size, 0);
+					const DataBlock before = cls->staticData;
+					assignValue(cls->staticData, def->offset, TypeOfType(def->type, def->size, names().format(def->key)), *f.value);
+					if (cls->staticData.bytes != before.bytes || cls->staticData.ptrs.size() != before.ptrs.size())
+					{
+						++rep_.valuesSet;
+						touch(cls->vault);
+					}
+				}
+				pos_ = s.pos;
+			}
+
+			void deleteClass(const Statement& s)
+			{
+				ClassDef* cls = db_.findClass(KeyOf(s.word));
+				if (!cls)
+				{
+					info("class " + s.word + " is gone already");
+					return;
+				}
+				ClassEditor ed(db_);
+				const size_t n = cls->collections.size();
+				ed.remove(*cls, st_.beforeRemove);
+				for (LoadedPack* p : ed.touched()) rep_.touched.insert(p);
+				rep_.deleted += n;
+				++rep_.classesDeleted;
 			}
 
 			void createVault(const Statement& s)
@@ -1983,6 +2110,62 @@ namespace attrib::script
 		return out;
 	}
 
+	ClassDesign DesignFromStatement(const Database& db, const Statement& s)
+	{
+		auto keyOf = [](const std::string& text) -> uint32_t
+		{
+			if (text.size() >= 2 && text.front() == '"' && text.back() == '"') return StringHash32(text.substr(1, text.size() - 2));
+			if (IsHex(text)) return uint32_t(std::strtoul(text.c_str() + 2, nullptr, 16));
+			return StringHash32(text);
+		};
+		auto nameOf = [](const std::string& text) -> std::string
+		{
+			if (text.size() >= 2 && text.front() == '"' && text.back() == '"') return text.substr(1, text.size() - 2);
+			return IsHex(text) ? std::string() : text;
+		};
+		auto ranged = [](const Statement& st, const std::string& key, int64_t v, int64_t most) -> int64_t
+		{
+			if (v > most) throw ScriptError(st.pos, key + " " + std::to_string(v) + " is more than " + std::to_string(most));
+			return v;
+		};
+		ClassDesign d;
+		d.name = nameOf(s.word);
+		d.key = keyOf(s.word);
+		for (const auto& [k, v] : s.settings)
+		{
+			if (k == "reserve") d.collectionReserve = uint32_t(ranged(s, k, v, UINT32_MAX));
+			else if (k == "layoutsize") d.layoutSize = uint32_t(ranged(s, k, v, UINT32_MAX));
+			else if (k == "staticsize") d.staticSize = uint32_t(ranged(s, k, v, UINT32_MAX));
+			else if (k == "layoutcount") d.layoutCount = uint16_t(ranged(s, k, v, 0xFFFF));
+			else if (k == "keyshift") d.layoutKeyShift = uint16_t(ranged(s, k, v, 0xFFFF));
+		}
+		for (const Statement& f : s.body)
+		{
+			if (f.kind != K::ClassField || f.word == "bytes") continue;
+			FieldDesign fd;
+			fd.name = nameOf(f.path.field);
+			fd.key = keyOf(f.path.field);
+			fd.storage = f.word == "layout" ? FieldStorage::Layout : f.word == "static" ? FieldStorage::Static : FieldStorage::Entry;
+			fd.array = f.isArray;
+			fd.count = uint16_t(ranged(f, "a count", f.count, 0xFFFF));
+			fd.searchable = !f.unsearchable;
+			for (const auto& [k, v] : f.settings)
+			{
+				if (k == "at") fd.offset = uint16_t(ranged(f, k, v, 0xFFFF));
+				else if (k == "align") fd.alignment = uint8_t(ranged(f, k, v, 7));
+				else if (k == "flags") fd.flags = uint8_t(ranged(f, k, v, 0xFF));
+				else if (k == "max") fd.maxCount = uint16_t(ranged(f, k, v, 0xFFFF));
+				else if (k == "size") fd.size = uint16_t(ranged(f, k, v, 0xFFFF));
+			}
+			const TypeInfo* t = FindTypeByName(db, f.text);
+			if (!t && !fd.size)
+				throw ScriptError(f.path.pos, "the type table has no type " + f.text + " (a field's type is one of the types the game's files list)");
+			fd.typeHash = t ? t->hash : StringHash32(f.text);
+			d.fields.push_back(std::move(fd));
+		}
+		return d;
+	}
+
 	ValueType TypeAt(Database& db, Collection& c, const FieldPath& path, Bytes* current)
 	{
 		static const Script none;
@@ -2027,6 +2210,9 @@ namespace attrib::script
 		add(renamed, "collection renamed", "collections renamed");
 		add(moved, "collection moved", "collections moved");
 		add(deleted, "collection deleted", "collections deleted");
+		add(classesCreated, "class created", "classes created");
+		add(classesChanged, "class changed", "classes changed");
+		add(classesDeleted, "class deleted", "classes deleted");
 		return s.empty() ? "no changes" : s;
 	}
 
@@ -2049,6 +2235,7 @@ namespace attrib::script
 		auto out = std::make_unique<Database>();
 		out->setTarget(db.target());
 		if (db.sharedTypeSchema()) out->addTypeSchema(db.sharedTypeSchema());
+		for (const auto& l : db.classLists()) out->addClassList(l);
 		out->names() = db.names();
 		out->binNames() = db.binNames();
 		for (const auto& pk : db.packs())

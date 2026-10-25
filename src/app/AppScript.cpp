@@ -264,6 +264,7 @@ namespace app
 			auto base = std::make_unique<Database>();
 			base->setTarget(db_->target());
 			if (db_->sharedTypeSchema()) base->addTypeSchema(db_->sharedTypeSchema());
+			for (const auto& l : db_->classLists()) base->addClassList(l);
 			base->names() = db_->names();
 			base->binNames() = db_->binNames();
 			size_t fromBak = 0;

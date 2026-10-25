@@ -174,6 +174,7 @@ namespace attrib
 			a.elemSize = field.type ? field.type->size : field.size;
 			a.count = a.isArray ? 0 : 1;
 			a.capacity = 0;
+			a.encodedTypePad = a.isArray ? ArrayPad(field) : 0;
 			a.data.bytes.assign(size_t(a.count) * a.elemSize, 0);
 			if (a.isArray)
 				a.nodeFlags = NodeFlag::Array;
@@ -430,8 +431,11 @@ namespace attrib
 					if (auto it = byKey.find(x); it != byKey.end() && it->second->parentKey == k) ++asChildren;
 				if (auto it = byKey.find(k); it != byKey.end() && v.size() == 1 && v[0] == it->second->parentKey) ++asParent;
 			}
-			if (!asChildren && !asParent) continue; // neither: leave it
-			const bool children = asChildren >= asParent;
+			// An empty table (a class restored, or with no collections yet) goes by
+			// the class: speech maps each collection to its parent, the others
+			// each parent to its children.
+			if (!asChildren && !asParent && !stored.entries.empty()) continue; // neither: leave it
+			const bool children = stored.entries.empty() ? cls.key != StringHash32("speech") : asChildren >= asParent;
 			std::map<uint32_t, std::vector<uint32_t>> want;
 			for (const Collection* c : cls.collections)
 			{
@@ -529,6 +533,7 @@ namespace attrib
 				a.isArray = f.isArray();
 				a.count = a.isArray ? 0 : 1;
 				a.capacity = a.isArray ? f.maxCount : 0;
+				a.encodedTypePad = a.isArray ? ArrayPad(f) : 0;
 				a.data.bytes.assign(size_t(a.count) * a.elemSize, 0);
 				col->attributes.push_back(std::move(a));
 			}

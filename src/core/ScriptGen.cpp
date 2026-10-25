@@ -7,10 +7,12 @@
 
 #include "Compression.h"
 #include "Curve.h"
+#include "TypeLayouts.h"
 #include "Hash.h"
 #include "lua/Lua.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -617,7 +619,10 @@ namespace attrib::script
 			{
 				const std::string fieldName = names.format(a.key);
 				if (!a.def) continue; // kept as read (UndefinedField)
-				if (const Attribute* b = o.find(a.key))
+				const Attribute* b = o.find(a.key);
+				// A field whose class changed its type is set whole.
+				if (b && !(b->type && a.type && b->type->hash == a.type->hash && b->isArray == a.isArray && b->elemSize == a.elemSize)) b = nullptr;
+				if (b)
 				{
 					gen.diffAttribute(ed.body, *b, a, fieldName, e, was);
 				}
@@ -629,7 +634,7 @@ namespace attrib::script
 				}
 			}
 			for (const Attribute& b : o.attributes)
-				if (!b.inLayout && b.def && !c.find(b.key))
+				if (!b.inLayout && b.def && !c.find(b.key) && c.cls && c.cls->field(b.key))
 				{
 					Statement r;
 					r.kind = K::Revert;
@@ -691,6 +696,100 @@ namespace attrib::script
 		return s;
 	}
 
+	namespace
+	{
+		// A key as scripts write a name: the name (quoted when it looks like a
+		// hash), or 0x... when it has none.
+		std::string NameText(const Database& db, uint32_t key)
+		{
+			const std::string* n = db.names().find(key);
+			if (!n) return Hex32(key);
+			// Only a name that reads as a 32-bit hash needs them ("0x" and 16 hex
+			// digits, a 64-bit key's name, is a name as it is).
+			bool hash = n->size() > 2 && n->size() <= 10 && (*n)[0] == '0' && ((*n)[1] == 'x' || (*n)[1] == 'X');
+			for (size_t i = 2; hash && i < n->size(); ++i) hash = std::isxdigit(static_cast<unsigned char>((*n)[i])) != 0;
+			return hash ? "\"" + *n + "\"" : *n;
+		}
+
+		bool SameClass(const ClassDef& a, const ClassDef& b)
+		{
+			if (a.fields.size() != b.fields.size() || a.layoutSize != b.layoutSize || a.layoutCount != b.layoutCount ||
+				a.layoutKeyShift != b.layoutKeyShift || a.staticSize != b.staticSize || a.collectionReserve != b.collectionReserve)
+				return false;
+			for (size_t i = 0; i < a.fields.size(); ++i)
+			{
+				const FieldDef& x = a.fields[i];
+				const FieldDef& y = b.fields[i];
+				if (x.key != y.key || x.typeHash != y.typeHash || x.offset != y.offset || x.size != y.size || x.maxCount != y.maxCount ||
+					x.flags != y.flags || x.alignment != y.alignment)
+					return false;
+			}
+			return SameBlockDeep(a.staticData, b.staticData);
+		}
+	} // namespace
+
+	Statement ClassStatement(const Database& db, const ClassDef& cls, bool values)
+	{
+		const ClassDesign d = DesignOf(db, cls);
+		Gen gen(db);
+		Statement s;
+		s.kind = K::Class;
+		s.word = NameText(db, cls.key);
+		if (cls.vault) s.vault = cls.vault->name;
+		if (d.collectionReserve) s.settings.emplace_back("reserve", *d.collectionReserve);
+		if (d.layoutSize) s.settings.emplace_back("layoutsize", *d.layoutSize);
+		if (d.layoutCount) s.settings.emplace_back("layoutcount", *d.layoutCount);
+		if (d.layoutKeyShift) s.settings.emplace_back("keyshift", *d.layoutKeyShift);
+		if (d.staticSize) s.settings.emplace_back("staticsize", *d.staticSize);
+		const Endian e = cls.vault ? cls.vault->raw.endian : Endian::Little;
+		for (const FieldDesign& fd : d.fields)
+		{
+			Statement f;
+			f.kind = K::ClassField;
+			f.word = FieldStorageName(fd.storage);
+			f.path.field = NameText(db, fd.key);
+			const TypeInfo* t = db.typeByHash(fd.typeHash);
+			f.text = t ? t->name : Hex32(fd.typeHash);
+			f.isArray = fd.array;
+			f.count = fd.count;
+			f.unsearchable = !fd.searchable;
+			if (fd.offset) f.settings.emplace_back("at", *fd.offset);
+			if (fd.alignment) f.settings.emplace_back("align", *fd.alignment);
+			if (fd.flags) f.settings.emplace_back("flags", *fd.flags);
+			if (fd.maxCount) f.settings.emplace_back("max", *fd.maxCount);
+			if (fd.size) f.settings.emplace_back("size", *fd.size);
+			const FieldDef* def = cls.field(fd.key);
+			// Index tables follow the class's collections (UpdateIndexTables).
+			if (values && def && def->isStatic() && !(t && t->name == kIndexTableType) && uint32_t(def->offset) + def->size <= cls.staticData.bytes.size())
+				f.value = gen.value(cls.staticData, def->offset, TypeOfType(def->type, def->size, gen.name(def->key)), e);
+			s.body.push_back(std::move(f));
+		}
+		// Static bytes no static field covers (World's gameplay keeps 8 nonzero ones).
+		if (values && cls.staticSize)
+		{
+			Bytes block = cls.staticData.bytes;
+			block.resize(cls.staticSize, 0);
+			bool loose = false;
+			for (uint32_t i = 0; i < block.size() && !loose; ++i)
+			{
+				if (!block[i]) continue;
+				bool covered = false;
+				for (const FieldDef& f : cls.fields)
+					covered |= f.isStatic() && i >= f.offset && i < uint32_t(f.offset) + f.size;
+				loose = !covered;
+			}
+			if (loose)
+			{
+				Statement b;
+				b.kind = K::ClassField;
+				b.word = "bytes";
+				b.value = BytesValue(block.data(), block.size());
+				s.body.push_back(std::move(b));
+			}
+		}
+		return s;
+	}
+
 	Script Diff(const Database& base, const Database& cur, const DiffSettings& settings)
 	{
 		Gen gen(cur);
@@ -731,8 +830,9 @@ namespace attrib::script
 		std::vector<const Collection*> created, deleted;
 		for (const Collection* c : newAll)
 			if (!oldById.count(Id(c->classKey, c->key))) created.push_back(c);
+		// A deleted class's collections go with it (`delete class`).
 		for (const Collection* c : oldAll)
-			if (!newById.count(Id(c->classKey, c->key))) deleted.push_back(c);
+			if (!newById.count(Id(c->classKey, c->key)) && cur.findClass(c->classKey)) deleted.push_back(c);
 
 		// A deleted and a created collection with the same values, vault and
 		// parent are a rename.
@@ -808,6 +908,30 @@ namespace attrib::script
 			for (Statement& s : vaults) out.push_back(std::move(s));
 		}
 
+		// Classes made or changed, in packs open in both, before their collections.
+		auto classInPack = [](const ClassDef& c, const std::unordered_set<std::string>& files)
+		{
+			return c.vault && c.vault->pack && files.count(Lower(FileName(c.vault->pack->path)));
+		};
+		std::vector<Statement> classes, dropClasses;
+		for (const auto& c : cur.classes())
+		{
+			if (!wanted(c->key) || !classInPack(*c, oldFiles)) continue;
+			const ClassDef* o = base.findClass(c->key);
+			if (o && SameClass(*o, *c)) continue;
+			classes.push_back(ClassStatement(cur, *c, true));
+		}
+		for (const auto& o : base.classes())
+		{
+			if (!wanted(o->key) || !classInPack(*o, newFiles) || cur.findClass(o->key)) continue;
+			Statement s;
+			s.kind = K::DeleteClass;
+			s.word = NameText(base, o->key);
+			dropClasses.push_back(std::move(s));
+		}
+		if (!classes.empty()) comment("New and changed classes");
+		for (Statement& s : classes) out.push_back(std::move(s));
+
 		if (!renames.empty()) comment("Renamed");
 		for (const auto& [d, c] : renames)
 		{
@@ -869,6 +993,9 @@ namespace attrib::script
 			s.target = TargetOf(cur, d->classKey, d->key);
 			out.push_back(std::move(s));
 		}
+
+		if (!dropClasses.empty()) comment("Deleted classes, with their collections");
+		for (Statement& s : dropClasses) out.push_back(std::move(s));
 
 		std::vector<Statement> dropVaults;
 		for (const auto& o : base.packs())

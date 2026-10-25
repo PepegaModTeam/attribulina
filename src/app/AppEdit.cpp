@@ -524,8 +524,15 @@ namespace app
 					exportFields_.clear();
 					request(Pending::ExportFields);
 				}
+				if (ImGui::MenuItem("Class Definition")) addToScript({ script::ClassStatement(*db_, *t.cls) });
+				if (ImGui::IsItemHovered()) ImGui::SetTooltip("A class statement that makes the class, or changes it to this");
 			}
 			ImGui::EndMenu();
+		}
+		if (!c && t.cls && plain)
+		{
+			ImGui::Separator();
+			drawClassItems(t.cls);
 		}
 		ImGui::Separator();
 		if (ImGui::MenuItem("Find References", "Shift+F12", false, !t.empty())) commandFindReferences(t);
@@ -550,6 +557,8 @@ namespace app
 		else ImGui::TextDisabled("Nothing selected");
 		ImGui::Separator();
 		drawEditItems(t);
+		ImGui::Separator();
+		drawNewClassItems();
 		ImGui::Separator();
 		if (ImGui::MenuItem("Find in Database...", "Ctrl+Shift+F", false, db_ != nullptr)) openSearch();
 		if (ImGui::MenuItem("Filter Explorer", "Ctrl+F"))

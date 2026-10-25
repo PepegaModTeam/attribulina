@@ -1,5 +1,6 @@
 #include "App.h"
 
+#include "core/ClassList.h"
 #include "core/Edit.h"
 #include "core/Folder.h"
 #include "core/Hash.h"
@@ -279,6 +280,23 @@ namespace app
 				log(LogLevel::Warning, "No type schemas in " + ToUtf8(dir) + "; game structs and enums will be edited as raw values.");
 		}
 
+		// The game's classes (data/classes/*.txt): which are the game's, and how to restore one.
+		{
+			std::error_code ec;
+			for (const auto& e : fs::directory_iterator(FromUtf8(host_.executableDirectory()) / "data" / "classes", ec))
+			{
+				if (!e.is_regular_file(ec) || ToLower(ToUtf8(e.path().extension())) != ".txt") continue;
+				try
+				{
+					classLists_.push_back(ClassList::Load(ToUtf8(e.path())));
+				}
+				catch (const std::exception& ex)
+				{
+					log(LogLevel::Warning, std::string("Class list: ") + ex.what());
+				}
+			}
+		}
+
 		// Hermes messages (data/messages/*.txt), for message handlers.
 		{
 			std::error_code ec;
@@ -417,6 +435,7 @@ namespace app
 		db_ = std::make_unique<Database>();
 		treesToReset_ = ~0u;
 		for (const auto& sc : schemas_) db_->addTypeSchema(sc);
+		for (const auto& l : classLists_) db_->addClassList(l);
 		for (const std::string& n : userNames_)
 		{
 			db_->names().add(n);
@@ -1102,6 +1121,8 @@ namespace app
 		explorerFocus_ = explorerTarget_ = {};
 		dropSource_ = dropParent_ = nullptr;
 		dropClass_ = nullptr;
+		designer_.open = false; // its design was of the database that went
+		designer_.editing = 0;
 		cut_.clear();
 		cutText_.clear();
 		searchResult_ = {};
@@ -1393,6 +1414,7 @@ namespace app
 		drawScriptPanel();
 		drawNfsmsPanel();
 		drawSequenceBuilder();
+		drawClassDesigner();
 		drawUserLuaWindow();
 		if (showDemo_) ImGui::ShowDemoWindow(&showDemo_);
 		drawModals();
@@ -1692,7 +1714,7 @@ namespace app
 					} kKinds[] = {
 						{LzKind::Jdlz, "LZ77, what every retail gameplay.lzc uses."},
 						{LzKind::Huff, "Huffman coding"},
-						{LzKind::Raww, "Stored without compression, as VltEd saves it."},
+						{LzKind::Raww, "No compression."},
 					};
 					for (const auto& k : kKinds)
 					{
@@ -1761,6 +1783,11 @@ namespace app
 			ImGui::MenuItem(kWindowClass, nullptr, &showClass_);
 			ImGui::MenuItem(kWindowLog, nullptr, &showLog_);
 			ImGui::MenuItem("Sequence Builder", nullptr, &showSequence_);
+			if (ImGui::MenuItem("Class Designer", nullptr, designer_.open, db_ && db_->hasSchema()))
+			{
+				if (designer_.open) designer_.open = false;
+				else openClassDesigner(nullptr);
+			}
 			if (ImGui::MenuItem("Search", "Ctrl+Shift+F", showSearch_))
 			{
 				if (showSearch_) showSearch_ = false;
@@ -2204,6 +2231,11 @@ namespace app
 				treeToggleAllOpen_ = open;
 				treeToggleFrame_ = ImGui::GetFrameCount();
 			}
+		if (t == Tree::Classes)
+		{
+			ImGui::Separator();
+			drawNewClassItems();
+		}
 		ImGui::EndPopup();
 	}
 
@@ -3067,6 +3099,12 @@ namespace app
 		ImGui::PopFont();
 		ImGui::TextDisabled("0x%08X  |  %zu fields  |  layout %u bytes  |  %zu collections  |  vault %s", cls->key, cls->fields.size(),
 			cls->layoutSize, cls->collections.size(), cls->vault ? cls->vault->name.c_str() : "?");
+		const bool game = IsGameClass(*db_, cls->key);
+		if (ImGui::SmallButton(game ? "View in Class Designer" : "Open in Class Designer")) openClassDesigner(cls);
+		ImGui::SameLine();
+		if (ImGui::SmallButton("Attrib::Gen Header")) openClassDesigner(cls, true);
+		ImGui::SameLine();
+		ImGui::TextDisabled(game ? "a class of the game" : "a class made for a mod");
 		const ImGuiTableFlags tf = ImGuiTableFlags_Resizable | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV |
 			ImGuiTableFlags_ScrollY | ImGuiTableFlags_Sortable | ImGuiTableFlags_SizingStretchProp;
 		if (ImGui::BeginTable("##defs", 6, tf))
@@ -3194,9 +3232,11 @@ namespace app
 			case Pending::ExportFields: id = "Add Class to Script"; break;
 			case Pending::NfsmsSetup: id = "nfsms Setup"; break;
 			case Pending::ChooseTarget: id = "Game and Platform"; break;
+			case Pending::DeleteClass: break; // drawDeleteClassPrompt
 			case Pending::None: break;
 		}
 		if (id && !ImGui::IsPopupOpen(id)) ImGui::OpenPopup(id);
+		drawDeleteClassPrompt();
 
 		const ImVec2 center = ImGui::GetMainViewport()->GetCenter();
 		auto begin = [&](const char* name)

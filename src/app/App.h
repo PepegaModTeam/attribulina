@@ -9,8 +9,10 @@
 
 #include "Search.h"
 
+#include "core/ClassDesign.h"
 #include "core/Clip.h"
 #include "core/Edit.h"
+#include "core/GenHeader.h"
 #include "core/Database.h"
 #include "core/Gameplay.h"
 #include "core/Nfsms.h"
@@ -427,6 +429,37 @@ namespace app
 			return nfsmsActive_;
 		}
 
+		// Classes (AppClass.cpp). The Class Designer makes a class, changes one
+		// made for a mod, or shows a class of the game (which stays as it is: its
+		// compiled code reads it) to copy, and writes its Attrib::Gen header.
+		struct ClassDesigner
+		{
+			bool open = false;
+			bool focus = false;      // bring the window to front on the next frame
+			bool headerTab = false;  // with its header tab in front
+			bool fieldsTab = false;  // with its fields in front
+			attrib::ClassDesign draft;
+			uint32_t editing = 0;    // the class it changes; 0: a new one
+			bool readOnly = false;   // a class of the game
+			attrib::GenHeaderOptions header;
+			std::string typeFilter;
+		};
+		// `cls` in the designer (null: a new class); `header` brings its header to front.
+		void openClassDesigner(const attrib::ClassDef* cls, bool header = false);
+		ClassDesigner& classDesigner()
+		{
+			return designer_;
+		}
+		// Makes the designer's class, or changes the class it edits. False, with
+		// a log line, when the design has a problem.
+		bool applyClassDesign();
+		// Deletes a class and every collection of it (the menus ask first).
+		bool removeClass(attrib::ClassDef* cls);
+		// Puts a class of the game back as its retail files define it (ClassList.h).
+		bool restoreGameClass(uint32_t classKey);
+		// The header the designer shows: its class laid out, or "" with a design problem.
+		std::string designerHeader();
+
 		// Recording changes made in the editor as script statements: into the
 		// Script panel (amod) and/or the nfsms window. Recording starts from a
 		// copy of the database taken when it is switched on.
@@ -697,7 +730,7 @@ namespace app
 		{
 			None, NewChild, Rename, Delete, ConfirmClose, ConfirmCloseAll, ConfirmReplace, About,
 			GameplayNew, GameplayDuplicate, GameplayDelete, NewState, NewHandler, MoveToVault,
-			ApplyScript, ExportChanges, ExportFields, NfsmsSetup, ChooseTarget
+			ApplyScript, ExportChanges, ExportFields, NfsmsSetup, ChooseTarget, DeleteClass
 		};
 		void request(Pending p, attrib::Collection* target = nullptr);
 		void requestNew(attrib::ClassDef* cls, attrib::Collection* parent);
@@ -942,6 +975,14 @@ namespace app
 		ImVec2 sbPan_{ 0, 0 };
 		std::string sbFilter_;
 		const attrib::MessageDef* sbMessage_ = nullptr;
+		// Classes.
+		ClassDesigner designer_;
+		std::vector<std::shared_ptr<const attrib::ClassList>> classLists_; // data/classes
+		void drawClassDesigner();
+		void drawClassItems(attrib::ClassDef* cls);
+		void drawNewClassItems();
+		void drawDeleteClassPrompt();
+		void forgetClass(attrib::ClassDef* cls);
 		// Gameplay modals.
 		attrib::Collection* pendingTemplate_ = nullptr;
 		std::string vaultInput_;

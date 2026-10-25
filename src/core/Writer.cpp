@@ -580,9 +580,9 @@ namespace attrib
 					case ExportRef::Kind::Class:
 					{
 						const ClassDef& c = *p.ref->cls;
-						// As read: the layout fields that aren't NotSearchable up to
-						// Undercover, a number nothing here derives in World (61 in
-						// caraudio, which lays out 32). Nothing edits a class's fields.
+						// As stored: the layout fields that aren't NotSearchable up to
+						// Undercover, a larger table in World (61 in caraudio, which
+						// lays out 32). LayOutClass (ClassDesign.h) derives a new class's.
 						const uint16_t layoutCount = c.layoutCount;
 						key(c.key);
 						vlt_.u32(c.collectionReserve);
