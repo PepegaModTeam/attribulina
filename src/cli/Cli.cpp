@@ -1,9 +1,11 @@
 #include "Cli.h"
 
+#include "core/ClassList.h"
 #include "core/Compression.h"
 #include "core/Database.h"
 #include "core/Folder.h"
 #include "core/Gameplay.h"
+#include "core/GenHeader.h"
 #include "core/Hash.h"
 #include "core/Nfsms.h"
 #include "core/Script.h"
@@ -40,6 +42,7 @@ namespace cli
   attribcli get    <database> <class>/<collection> [<field>...]
   attribcli convert <database> <script.nfsms> [-o <out.amod>]
   attribcli list   <database> [<class>]
+  attribcli header <database> <class> [-o <out.h>] [--types] [--no-setters]
   attribcli info   <database>
 
 A <database> is a game folder (with attributes.bin) or one pack file in it.
@@ -74,6 +77,10 @@ only those fields, --exact makes applying it revert what it doesn't list,
 
 get: a collection's values as a script; with fields, those (inherited ones
 too, marked).
+
+header: the class's Attrib::Gen C++ header, for code that reads its
+collections the way the game's own classes do. --types adds the game's structs
+and enums its fields use, from the type schema; --no-setters leaves out Set_.
 
 convert: an nfsms script (and the scripts it includes) as a mod script. Its
 setup becomes options and `if` blocks. It is tried on a copy of the database,
@@ -199,6 +206,7 @@ which decides how values read; lines that fail come out as comments.
 					if (cmd == "get") return get(rest);
 					if (cmd == "list") return list(rest);
 					if (cmd == "info") return info(rest);
+					if (cmd == "header") return header(rest);
 					if (cmd == "convert") return convert(rest);
 					err_ << "attribcli: unknown command " << cmd << " (attribcli help lists them)\n";
 					return 2;
@@ -278,6 +286,9 @@ which decides how values read; lines that fail come out as comments.
 				if (schemas_.empty())
 					for (const std::string& f : filesIn(dataDir_ / "schema")) schemas_.push_back(TypeSchema::Load(f));
 				for (const auto& s : schemas_) db->addTypeSchema(s);
+				if (classLists_.empty())
+					for (const std::string& f : filesIn(dataDir_ / "classes")) classLists_.push_back(ClassList::Load(f));
+				for (const auto& l : classLists_) db->addClassList(l);
 				auto names = [&](const std::string& f, bool bin)
 				{
 					std::error_code ec;
@@ -505,11 +516,12 @@ which decides how values read; lines that fail come out as comments.
 				}
 
 				auto db = load(a.positional[0]);
+				std::vector<std::string> removed; // World event vault files whose vault a script deleted
 				for (const auto& [isNfsms, index] : order)
 				{
 					if (!isNfsms)
 					{
-						if (!applyOne(*db, scripts[index], a, given)) return 1;
+						if (!applyOne(*db, scripts[index], a, given, removed)) return 1;
 						continue;
 					}
 					const ns::Script& s = nfsmsScripts[index];
@@ -563,10 +575,18 @@ which decides how values read; lines that fail come out as comments.
 				std::vector<LoadedPack*> dirty;
 				for (const auto& pk : db->packs())
 					if (pk->dirty) dirty.push_back(pk.get());
+				// A file made again after its vault was deleted stays.
+				std::erase_if(removed, [&](const std::string& f)
+				{
+					return std::any_of(db->packs().begin(), db->packs().end(), [&](const auto& pk) { return pk->path == f; });
+				});
+				std::sort(removed.begin(), removed.end());
+				removed.erase(std::unique(removed.begin(), removed.end()), removed.end());
 				if (a.has("--dry-run"))
 				{
 					for (const LoadedPack* p : dirty) out_ << "would write " << p->path << "\n";
-					if (dirty.empty()) out_ << "nothing would change\n";
+					for (const std::string& f : removed) out_ << "would remove " << f << "\n";
+					if (dirty.empty() && removed.empty()) out_ << "nothing would change\n";
 					return 0;
 				}
 				const std::string outDir = a.get("--out");
@@ -596,14 +616,40 @@ which decides how values read; lines that fail come out as comments.
 							}
 						}
 					}
+					// A new event vault file's folder may not be there yet.
+					if (std::error_code ec; !fs::exists(FromUtf8(target).parent_path(), ec)) fs::create_directories(FromUtf8(target).parent_path(), ec);
 					SavePack(*db, *p, target);
 					out_ << "saved " << target << (twin ? " and " + ToUtf8(FromUtf8(*twin).filename()) : std::string()) << "\n";
 				}
-				if (dirty.empty()) out_ << "nothing changed\n";
+				for (const std::string& f : removed)
+				{
+					std::error_code ec;
+					const fs::path t = FromUtf8(f);
+					if (!outDir.empty() || !fs::exists(t, ec))
+					{
+						if (!outDir.empty()) out_ << "deleted the vault of " << f << " (left as it is: --out writes elsewhere)\n";
+						continue;
+					}
+					fs::path bak = t;
+					bak += ".bak";
+					if (!a.has("--no-backup") && !fs::exists(bak, ec))
+					{
+						fs::rename(t, bak, ec);
+						if (!ec) out_ << "removed " << f << ", kept as " << ToUtf8(bak) << "\n";
+					}
+					else
+					{
+						fs::remove(t, ec);
+						if (!ec) out_ << "removed " << f << "\n";
+					}
+					if (ec) throw Failed{ "could not remove " + f + ": " + ec.message() };
+				}
+				if (dirty.empty() && removed.empty()) out_ << "nothing changed\n";
 				return 0;
 			}
 
-			bool applyOne(Database& db, const sc::Script& s, const Args& a, const std::map<std::string, std::string>& given)
+			bool applyOne(Database& db, const sc::Script& s, const Args& a, const std::map<std::string, std::string>& given,
+						  std::vector<std::string>& removed)
 			{
 				sc::ApplySettings st;
 				st.strict = a.has("--strict");
@@ -619,6 +665,7 @@ which decides how values read; lines that fail come out as comments.
 				}
 				out_ << s.source << ": " << r.summary() << (r.warnings() ? " (" + std::to_string(r.warnings()) + " warning(s))" : "") << "\n";
 				if (!a.has("--dry-run")) rememberNames(r.newNames);
+				removed.insert(removed.end(), r.removedFiles.begin(), r.removedFiles.end());
 				return true;
 			}
 
@@ -823,6 +870,20 @@ which decides how values read; lines that fail come out as comments.
 				return 0;
 			}
 
+			int header(const std::vector<std::string>& in)
+			{
+				const Args a = Parse(in, { "-o" }, { "--types", "--no-setters" });
+				if (a.positional.size() != 2) throw Failed{ "header takes a database and a class" };
+				auto db = load(a.positional[0]);
+				const ClassDef* cls = db->findClass(StringHash32(a.positional[1]));
+				if (!cls) throw std::runtime_error("no class " + a.positional[1]);
+				GenHeaderOptions o;
+				o.types = a.has("--types");
+				o.setters = !a.has("--no-setters");
+				write(GenHeader(*db, *cls, o), a.get("-o"));
+				return 0;
+			}
+
 			int info(const std::vector<std::string>& in)
 			{
 				const Args a = Parse(in, {}, {});
@@ -853,6 +914,7 @@ which decides how values read; lines that fail come out as comments.
 			Detection detection_;          // of the last database loaded
 			std::vector<std::shared_ptr<const ns::PropertyNames>> nfsmsNames_;
 			std::vector<std::shared_ptr<TypeSchema>> schemas_;
+			std::vector<std::shared_ptr<const ClassList>> classLists_;
 		};
 
 	} // namespace
