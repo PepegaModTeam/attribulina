@@ -60,8 +60,9 @@ namespace attrib
 		for (auto& n : a.data.nulls)
 			if (n.offset >= pos) n.offset += a.elemSize;
 		++a.count;
-		if (a.isArray && a.count > a.capacity && !a.inLayout)
-			a.capacity = uint16_t(a.count);
+		// An entry array's mAlloc is its count, as in every file read (a layout
+		// array's is the space its layout has).
+		if (a.isArray && !a.inLayout) a.capacity = uint16_t(a.count);
 	}
 
 	void RemoveElement(Attribute& a, uint32_t at)
@@ -86,6 +87,8 @@ namespace attrib
 		for (auto& n : nulls)
 			if (n.offset >= end) n.offset -= a.elemSize;
 		--a.count;
+		// Spare capacity would be written as zeroed elements past the count.
+		if (a.isArray && !a.inLayout) a.capacity = uint16_t(a.count);
 	}
 
 	ElementData CopyElement(const DataBlock& b, uint32_t at, uint32_t elemSize)

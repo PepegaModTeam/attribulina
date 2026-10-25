@@ -1039,12 +1039,22 @@ namespace attrib
 				a.encodedTypePad = br.u16(*target + 6);
 				if (a.count > a.capacity || (a.elemSize != valueSize && valueSize != 0))
 					throw FormatError("array " + names_.format(a.key) + " of " + where + " has an inconsistent header");
+				const uint32_t hdr = ArrayHeaderSize(a.encodedTypePad);
 				if (a.count != a.capacity)
 				{
-					vault.warnings.push_back("array " + names_.format(a.key) + " of " + where + " has unused capacity; it is written zeroed");
-					vault.exactlyWritable = false;
+					// No retail file has spare capacity; earlier builds of the editor left
+					// it when an array shrank. The writer zeroes it, so zeros write exactly.
+					const ByteSpan bin = br.data();
+					const size_t spare = size_t(*target) + hdr + size_t(a.count) * a.elemSize;
+					const size_t spareBytes = size_t(a.capacity - a.count) * a.elemSize;
+					const bool zeroed = spare <= bin.size() && spareBytes <= bin.size() - spare &&
+						std::all_of(bin.begin() + spare, bin.begin() + spare + spareBytes, [](uint8_t b) { return b == 0; });
+					if (!zeroed)
+					{
+						vault.warnings.push_back("array " + names_.format(a.key) + " of " + where + " has data past its count; it is written zeroed");
+						vault.exactlyWritable = false;
+					}
 				}
-				const uint32_t hdr = ArrayHeaderSize(a.encodedTypePad);
 				a.data = blocks.read(*target + hdr, a.count * a.elemSize);
 				for (uint32_t k = 0; k < a.count; ++k)
 					blocks.attach(a.data, *target + hdr, k * a.elemSize, a.type);

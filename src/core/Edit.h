@@ -17,6 +17,8 @@ namespace attrib
 	void DetachCopy(DataBlock& b);
 
 	// Inserts a zeroed element at `at` (0..count), shifting pointer slots.
+	// Both keep an entry array's capacity (Array::mAlloc) at its count, as every
+	// file read has it, so an array grown and shrunk back writes as it was read.
 	void InsertElement(Attribute& a, uint32_t at);
 	// Removes element `at`, dropping its pointer slots and shifting the rest.
 	void RemoveElement(Attribute& a, uint32_t at);
