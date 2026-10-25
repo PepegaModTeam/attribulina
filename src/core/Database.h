@@ -317,6 +317,12 @@ namespace attrib
 		// must be loaded before any pack that only holds collections.
 		LoadedPack& loadPack(const std::string& path);
 		LoadedPack& loadPack(const std::string& path, ByteSpan fileData);
+		// A new pack with no vaults, saved to `path` (World's event vault files
+		// are made this way: CreateEventVaultFile, Edit.h).
+		LoadedPack& addPack(const std::string& path, PackFormat format);
+		// Drops a pack whose vaults hold nothing (no collections, no classes, not
+		// the database). False when one does or the pack isn't this database's.
+		bool removePack(const LoadedPack& pack);
 
 		bool hasSchema() const
 		{

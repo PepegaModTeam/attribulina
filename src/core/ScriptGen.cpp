@@ -18,6 +18,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <functional>
+#include <set>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -804,6 +805,26 @@ namespace attrib::script
 		std::unordered_set<std::string> oldFiles, newFiles;
 		for (const auto& pk : base.packs()) oldFiles.insert(Lower(FileName(pk->path)));
 		for (const auto& pk : cur.packs()) newFiles.insert(Lower(FileName(pk->path)));
+		// World's event vaults are files of their own. When both sides loaded the
+		// gc.vaults folder (each has one), a file only one side has was made or
+		// deleted, with its vault and collections.
+		auto hasEventFiles = [](const Database& d)
+		{
+			return std::any_of(d.packs().begin(), d.packs().end(), [](const auto& pk)
+			{
+				return pk->format == PackFormat::VaultFile;
+			});
+		};
+		std::vector<const LoadedPack*> newEventFiles, goneEventFiles;
+		if (hasEventFiles(base) && hasEventFiles(cur))
+		{
+			for (const auto& pk : cur.packs())
+				if (pk->format == PackFormat::VaultFile && !oldFiles.count(Lower(FileName(pk->path)))) newEventFiles.push_back(pk.get());
+			for (const auto& pk : base.packs())
+				if (pk->format == PackFormat::VaultFile && !newFiles.count(Lower(FileName(pk->path)))) goneEventFiles.push_back(pk.get());
+			for (const LoadedPack* pk : newEventFiles) oldFiles.insert(Lower(FileName(pk->path)));
+			for (const LoadedPack* pk : goneEventFiles) newFiles.insert(Lower(FileName(pk->path)));
+		}
 		auto inPack = [](const Collection* c, const std::unordered_set<std::string>& files)
 		{
 			return c->vault && c->vault->pack && files.count(Lower(FileName(c->vault->pack->path)));
@@ -882,22 +903,58 @@ namespace attrib::script
 			out.push_back(std::move(s));
 		};
 
-		// New vaults, in packs open in both.
-		std::vector<Statement> vaults;
+		// New and renamed vaults, in packs open in both, and new event vault
+		// files. A vault only the base has and one only the current has, in the
+		// same pack and holding the same collections, are a rename.
+		std::vector<Statement> vaults, vaultRenames;
+		std::unordered_map<std::string, std::string> renamedVault; // old name -> new
+		std::unordered_set<std::string> keptVaults;                 // in both under another name
+		auto idsOf = [](const Vault& v)
+		{
+			std::set<uint64_t> ids;
+			for (const Collection* c : v.collections) ids.insert(Id(c->classKey, c->key));
+			return ids;
+		};
 		for (const auto& pk : cur.packs())
 		{
 			const LoadedPack* old = nullptr;
 			for (const auto& o : base.packs())
 				if (Lower(FileName(o->path)) == Lower(FileName(pk->path))) old = o.get();
-			if (!old) continue;
+			const bool newFile = std::find(newEventFiles.begin(), newEventFiles.end(), pk.get()) != newEventFiles.end();
+			if (!old && !newFile) continue;
+			std::vector<const Vault*> gone;
+			if (old)
+				for (const auto& ov : old->vaults)
+				{
+					bool there = false;
+					for (const auto& v : pk->vaults) there |= ov->name == v->name;
+					if (!there && !ov->collections.empty()) gone.push_back(ov.get());
+				}
 			for (const auto& v : pk->vaults)
 			{
 				bool there = false;
-				for (const auto& ov : old->vaults) there |= ov->name == v->name;
+				if (old)
+					for (const auto& ov : old->vaults) there |= ov->name == v->name;
 				if (there) continue;
+				const std::set<uint64_t> ids = idsOf(*v);
+				auto was = std::find_if(gone.begin(), gone.end(), [&](const Vault* ov)
+				{
+					return idsOf(*ov) == ids;
+				});
 				Statement s;
-				s.kind = K::CreateVault;
 				s.vault = v->name;
+				if (was != gone.end())
+				{
+					s.kind = K::RenameVault;
+					s.vault = (*was)->name;
+					s.word = v->name;
+					renamedVault[(*was)->name] = v->name;
+					keptVaults.insert((*was)->name);
+					gone.erase(was);
+					vaultRenames.push_back(std::move(s));
+					continue;
+				}
+				s.kind = K::CreateVault;
 				s.word = FileName(pk->path);
 				vaults.push_back(std::move(s));
 			}
@@ -907,6 +964,16 @@ namespace attrib::script
 			comment("New vaults");
 			for (Statement& s : vaults) out.push_back(std::move(s));
 		}
+		if (!vaultRenames.empty())
+		{
+			comment("Renamed vaults");
+			for (Statement& s : vaultRenames) out.push_back(std::move(s));
+		}
+		auto vaultNow = [&](const std::string& name)
+		{
+			auto it = renamedVault.find(name);
+			return it == renamedVault.end() ? name : it->second;
+		};
 
 		// Classes made or changed, in packs open in both, before their collections.
 		auto classInPack = [](const ClassDef& c, const std::unordered_set<std::string>& files)
@@ -965,7 +1032,7 @@ namespace attrib::script
 				else s.under.root = true;
 				moves.push_back(std::move(s));
 			}
-			if (c->vault && o->vault && c->vault->name != o->vault->name)
+			if (c->vault && o->vault && c->vault->name != vaultNow(o->vault->name))
 			{
 				Statement s;
 				s.kind = K::MoveToVault;
@@ -1003,11 +1070,13 @@ namespace attrib::script
 			const LoadedPack* pk = nullptr;
 			for (const auto& p : cur.packs())
 				if (Lower(FileName(o->path)) == Lower(FileName(p->path))) pk = p.get();
-			if (!pk) continue;
+			const bool goneFile = std::find(goneEventFiles.begin(), goneEventFiles.end(), o.get()) != goneEventFiles.end();
+			if (!pk && !goneFile) continue;
 			for (const auto& ov : o->vaults)
 			{
-				bool there = false;
-				for (const auto& v : pk->vaults) there |= ov->name == v->name;
+				bool there = keptVaults.count(ov->name) > 0;
+				if (pk)
+					for (const auto& v : pk->vaults) there |= ov->name == v->name;
 				if (there) continue;
 				Statement s;
 				s.kind = K::DeleteVault;

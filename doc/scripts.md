@@ -55,8 +55,9 @@ Scripts are UTF-8 text. A statement ends at the end of the line or at `;`, and `
 | `rename C to NAME` | Renames `C`. The collections under it follow. |
 | `move C under P` | Puts `C` under another parent (`under root` for none), which changes what it inherits. |
 | `move C to vault V` | Saves `C` in another vault. |
-| `create vault V in FILE` | A new, empty vault in an open pack such as `gameplay.lzc`. |
-| `delete vault V` | Removes an empty vault. |
+| `create vault V in FILE` | A new, empty vault in an open pack such as `gameplay.lzc`. In World, a `FILE` that isn't open, such as `V.bin`, is a new event vault file in `gc.vaults` (each of World's events is a file of its own). |
+| `delete vault V` | Removes an empty vault. One of World's event vaults takes its file with it: saving moves the file to `.bak`. |
+| `rename vault V to NAME` | Renames vault `V`. Its `.vlt` and `.bin` dependencies follow, and so does every `gameplayvault` value that named it. The database's vault (`db`) and World's event vaults, which are named after their files, keep their names. |
 | `class C [in vault V] { fields }` | Makes class `C` if it's missing, or else lays it out again to these fields, its collections' values following (see Classes). A class of the game stays as it is: the statement applies only when it describes it as it is. |
 | `delete class C` | Deletes class `C` and every collection of it. Deleting one that is gone already is a note, not an error. |
 | `if ... { } else { }` | Runs one of the blocks, by option values. Works at the top and inside blocks. |
@@ -194,9 +195,9 @@ In the editor, the Script panel (View > Script) holds one script, with line numb
 
 File > Apply Script... applies a file without opening it in the panel.
 
-A diff between two databases compares only packs that both have open. It gives, in this order:
+A diff between two databases compares only packs that both have open. World's event vault files are the exception: when both sides loaded `gc.vaults`, a file only one side has was made or deleted. A diff gives, in this order:
 
-1. new vaults, then classes made or changed,
+1. new vaults, then renamed vaults (a vault only the base has and one only the other has, in the same file and holding the same collections), then classes made or changed,
 2. renames: a deleted and a new collection with the same values, vault and parent,
 3. new collections, as `collection` statements with all their values, layout fields included, parents first,
 4. moves to another parent or vault,

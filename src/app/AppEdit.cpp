@@ -1,7 +1,8 @@
 // Editing collections the way files are edited: the collection clipboard
 // (core/Clip.h, also between windows), moves, deletes with everything under a
 // collection, drag and drop in the class tree, the Edit and Go menus and their
-// shortcuts, and the check that keeps one database per window.
+// shortcuts, vaults made, renamed and deleted from the Files tree, and the
+// check that keeps one database per window.
 
 #include "App.h"
 
@@ -10,6 +11,7 @@
 
 #include "imgui.h"
 #include "imgui_internal.h"
+#include "imgui_stdlib.h"
 
 #include <algorithm>
 #include <cctype>
@@ -27,6 +29,7 @@ namespace app
 	{
 
 		const ImVec4 kWarn(1.0f, 0.72f, 0.25f, 1.0f);
+		const ImVec4 kError(1.0f, 0.42f, 0.38f, 1.0f);
 		const char* kPayload = "ATTRIB_COLLECTION";
 
 		fs::path FromUtf8(const std::string& s)
@@ -764,6 +767,7 @@ namespace app
 				ImGui::TextColored(kWarn, "Unsaved changes in:");
 				for (const auto& p : db_->packs())
 					if (p->dirty) ImGui::BulletText("%s", p->path.c_str());
+				for (const std::string& f : removedFiles()) ImGui::BulletText("%s (deleted)", f.c_str());
 			}
 			ImGui::Spacing();
 			const std::string path = pendingPath_;
@@ -953,6 +957,322 @@ namespace app
 						markDirty(c);
 						structureChanged();
 						log(LogLevel::Info, "Moved " + Label(names, c) + " from vault " + from + " to " + c->vault->name);
+					}
+					catch (const std::exception& e)
+					{
+						log(LogLevel::Error, e.what());
+					}
+					done();
+				}
+				ImGui::EndDisabled();
+				ImGui::SameLine();
+				if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape)) done();
+			}
+			ImGui::EndPopup();
+		}
+	}
+
+
+	// ----------------------------------------------------------------- vaults ---
+
+	namespace
+	{
+		std::string FileOf(const LoadedPack& pk)
+		{
+			return ToUtf8(FromUtf8(pk.path).filename());
+		}
+
+		// "tracks/autobahn_gd, tracks/x and 3 more"
+		std::string SomeNames(const KeyNames& names, const std::vector<Collection*>& cs, size_t shown = 3)
+		{
+			std::string out;
+			for (size_t i = 0; i < cs.size() && i < shown; ++i) out += (i ? ", " : "") + names.format(cs[i]->key);
+			if (cs.size() > shown) out += " and " + std::to_string(cs.size() - shown) + " more";
+			return out;
+		}
+	} // namespace
+
+	bool App::canMakeEventVaults() const
+	{
+		return db_ && db_->target().game == Game::World && EventVaultModel(*db_) && !NewEventVaultPath(*db_, "x").empty();
+	}
+
+	void App::drawNewEventVaultItem()
+	{
+		if (ImGui::MenuItem("New Event Vault File...", nullptr, false, canMakeEventVaults()))
+		{
+			request(Pending::NewEventVault);
+			pendingPack_ = nullptr;
+		}
+		if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+			ImGui::SetTooltip("A file of its own in gc.vaults holding one vault, as each of World's events is");
+	}
+
+	void App::drawPackItems(LoadedPack& pack)
+	{
+		const bool eventFile = pack.format == PackFormat::VaultFile;
+		if (ImGui::MenuItem("New Vault...", nullptr, false, !eventFile))
+		{
+			request(Pending::NewVault);
+			pendingPack_ = &pack;
+		}
+		if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+			ImGui::SetTooltip(eventFile ? "An event vault file holds one vault. New Event Vault File makes another."
+				: "An empty vault in this file. Collections go in with Move to Vault, or by choosing\n"
+				"it when you make one.");
+		if (eventFile && canMakeEventVaults()) drawNewEventVaultItem();
+	}
+
+	void App::drawVaultItems(Vault& vault)
+	{
+		const bool eventFile = vault.pack && vault.pack->format == PackFormat::VaultFile;
+		const bool renamable = !vault.isDatabase && !eventFile;
+		if (ImGui::MenuItem("Rename Vault...", nullptr, false, renamable))
+		{
+			request(Pending::RenameVault);
+			pendingVault_ = &vault;
+			nameInput_ = vault.name;
+		}
+		if (!renamable && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+			ImGui::SetTooltip(vault.isDatabase ? "The database's vault keeps its name."
+				: "An event vault is named after its file. Make a new event vault file and move the\n"
+				"collections into it.");
+		const bool deletable = !vault.isDatabase && vault.classes.empty();
+		if (ImGui::MenuItem("Delete Vault...", nullptr, false, deletable))
+		{
+			request(Pending::DeleteVault);
+			pendingVault_ = &vault;
+		}
+		if (!deletable && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+			ImGui::SetTooltip("It holds the database's classes.");
+		ImGui::Separator();
+		if (ImGui::MenuItem("Copy Name")) ImGui::SetClipboardText(vault.name.c_str());
+	}
+
+	void App::deleteVault(Vault& vault)
+	{
+		if (!db_ || !vault.pack) return;
+		LoadedPack* pack = vault.pack;
+		const std::string name = vault.name, file = FileOf(*pack);
+		const bool eventFile = pack->format == PackFormat::VaultFile;
+		nameAction("Delete vault " + name);
+		const std::vector<Collection*> all = VaultContents(vault);
+		for (Collection* x : all)
+		{
+			markDirty(x);
+			forgetCollection(x, nullptr, false);
+		}
+		CollectionEditor ed(*db_);
+		for (Collection* x : all) ed.remove(*x); // each child before its parent
+		noteEdit(pack, nullptr);
+		if (pendingVault_ == &vault) pendingVault_ = nullptr;
+		if (eventFile)
+		{
+			if (pendingPack_ == pack) pendingPack_ = nullptr;
+			db_->removePack(*pack);
+		}
+		else
+		{
+			RemoveVault(*pack, vault);
+			pack->dirty = true;
+		}
+		structureChanged();
+		updateTitle();
+		std::string what = "Deleted vault " + name;
+		if (!all.empty()) what += " and " + std::to_string(all.size()) + " collection" + (all.size() == 1 ? "" : "s");
+		log(LogLevel::Info, what + (eventFile ? ". Saving removes " + file : std::string()));
+	}
+
+	void App::drawVaultModals()
+	{
+		const ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+		auto begin = [&](const char* name)
+		{
+			ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+			return ImGui::BeginPopupModal(name, nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+		};
+		auto done = [&]()
+		{
+			pending_ = Pending::None;
+			pendingTarget_ = nullptr;
+			pendingVault_ = nullptr;
+			pendingPack_ = nullptr;
+			ImGui::CloseCurrentPopup();
+		};
+		auto nameBox = [&](const char* hint)
+		{
+			if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
+			ImGui::SetNextItemWidth(ImGui::GetFontSize() * 24);
+			return ImGui::InputTextWithHint("##name", hint, &nameInput_, ImGuiInputTextFlags_EnterReturnsTrue);
+		};
+
+		if (begin("New Vault"))
+		{
+			LoadedPack* pk = pendingPack_;
+			if (!db_ || !pk)
+			{
+				done();
+			}
+			else
+			{
+				ImGui::Text("New vault in %s", FileOf(*pk).c_str());
+				ImGui::TextDisabled("Collections go in with Move to Vault, or by choosing it when you make one. The game\n"
+									"loads a gameplay element's children from the vault its gameplayvault names.");
+				const bool enter = nameBox("vault name");
+				const std::string problem = nameInput_.empty() ? std::string() : VaultNameProblem(*db_, *pk, nameInput_);
+				if (!problem.empty()) ImGui::TextColored(kError, "%s", problem.c_str());
+				const bool ok = !nameInput_.empty() && problem.empty();
+				ImGui::BeginDisabled(!ok);
+				if (ImGui::Button("Create") || (enter && ok))
+				{
+					try
+					{
+						const Vault* like = !pk->vaults.empty() ? pk->vaults.front().get() : EventVaultModel(*db_);
+						if (!like) throw std::runtime_error("no vault is open to copy the header from");
+						nameAction("New vault " + nameInput_);
+						CreateVault(*pk, nameInput_, *like);
+						pk->dirty = true;
+						noteEdit(pk, nullptr);
+						structureChanged();
+						updateTitle();
+						log(LogLevel::Info, "Made vault " + nameInput_ + " in " + FileOf(*pk));
+					}
+					catch (const std::exception& e)
+					{
+						log(LogLevel::Error, e.what());
+					}
+					done();
+				}
+				ImGui::EndDisabled();
+				ImGui::SameLine();
+				if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape)) done();
+			}
+			ImGui::EndPopup();
+		}
+
+		if (begin("Rename Vault"))
+		{
+			Vault* v = pendingVault_;
+			if (!db_ || !v || !v->pack)
+			{
+				done();
+			}
+			else
+			{
+				const KeyNames& names = db_->names();
+				ImGui::Text("Rename vault %s (%s)", v->name.c_str(), FileOf(*v->pack).c_str());
+				const bool enter = nameBox("new name");
+				const bool same = nameInput_ == v->name;
+				const std::string problem = nameInput_.empty() || same ? std::string() : VaultNameProblem(*db_, *v->pack, nameInput_, v);
+				if (!problem.empty()) ImGui::TextColored(kError, "%s", problem.c_str());
+				const std::vector<Collection*> naming = CollectionsNamingVault(*db_, v->name);
+				if (!naming.empty())
+					ImGui::TextDisabled("The gameplayvault of %s names it and takes the new name.", SomeNames(names, naming).c_str());
+				else
+					ImGui::TextColored(kWarn, "Nothing in the database names this vault. If the game's code loads it by name, as\n"
+						"it does gpcore, it won't find it under another.");
+				const bool ok = !nameInput_.empty() && !same && problem.empty();
+				ImGui::BeginDisabled(!ok);
+				if (ImGui::Button("Rename") || (enter && ok))
+				{
+					try
+					{
+						const std::string from = v->name;
+						nameAction("Rename vault " + from + " to " + nameInput_);
+						noteEdit(v->pack, nullptr);
+						for (Collection* c : RenameVault(*db_, *v, nameInput_)) markDirty(c);
+						v->pack->dirty = true;
+						structureChanged();
+						updateTitle();
+						log(LogLevel::Info, "Renamed vault " + from + " to " + v->name +
+							(naming.empty() ? std::string() : " and its " + std::to_string(naming.size()) + " gameplayvault value" + (naming.size() == 1 ? "" : "s")));
+					}
+					catch (const std::exception& e)
+					{
+						log(LogLevel::Error, e.what());
+					}
+					done();
+				}
+				ImGui::EndDisabled();
+				ImGui::SameLine();
+				if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape)) done();
+			}
+			ImGui::EndPopup();
+		}
+
+		if (begin("Delete Vault"))
+		{
+			Vault* v = pendingVault_;
+			if (!db_ || !v || !v->pack)
+			{
+				done();
+			}
+			else
+			{
+				const KeyNames& names = db_->names();
+				const std::vector<Collection*> all = VaultContents(*v);
+				const size_t elsewhere = size_t(std::count_if(all.begin(), all.end(), [&](const Collection* c) { return c->vault != v; }));
+				const bool eventFile = v->pack->format == PackFormat::VaultFile;
+				ImGui::Text("Delete vault %s (%s)?", v->name.c_str(), FileOf(*v->pack).c_str());
+				if (all.empty())
+					ImGui::TextDisabled("It holds no collections.");
+				else
+					ImGui::TextColored(kWarn, "Its %zu collection%s go%s too%s.", v->collections.size(), v->collections.size() == 1 ? "" : "s",
+						v->collections.size() == 1 ? "es" : "",
+						elsewhere ? (", and the " + std::to_string(elsewhere) + " in other vaults made from them").c_str() : "");
+				if (eventFile) ImGui::TextDisabled("Saving removes its file and keeps the first original as .bak.");
+				const std::vector<Collection*> naming = CollectionsNamingVault(*db_, v->name);
+				if (!naming.empty()) ImGui::TextDisabled("The gameplayvault of %s still names it.", SomeNames(names, naming).c_str());
+				if (!all.empty()) ImGui::TextDisabled("References to its collections elsewhere are not changed.");
+				bool del = ImGui::Button("Delete");
+				ImGui::SameLine();
+				const bool cancel = ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape);
+				if (ConfirmKey()) del = true;
+				if (del)
+				{
+					deleteVault(*v);
+					done();
+				}
+				else if (cancel)
+				{
+					done();
+				}
+			}
+			ImGui::EndPopup();
+		}
+
+		if (begin("New Event Vault File"))
+		{
+			if (!canMakeEventVaults())
+			{
+				done();
+			}
+			else
+			{
+				ImGui::TextUnformatted("New event vault file");
+				ImGui::TextDisabled("World loads each file in gc.vaults as a vault of its own, one per event. It is\n"
+									"written when you save.");
+				const bool enter = nameBox("vault name");
+				LoadedPack probe;
+				probe.format = PackFormat::VaultFile;
+				std::string problem = nameInput_.empty() ? std::string() : VaultNameProblem(*db_, probe, nameInput_);
+				const std::string path = nameInput_.empty() ? std::string() : NewEventVaultPath(*db_, nameInput_);
+				if (std::error_code ec; problem.empty() && !path.empty() && fs::exists(FromUtf8(path), ec))
+					problem = "gc.vaults has a file " + nameInput_ + ".bin already. Open it, or choose another name.";
+				if (!problem.empty()) ImGui::TextColored(kError, "%s", problem.c_str());
+				else if (!path.empty()) ImGui::TextDisabled("%s", path.c_str());
+				const bool ok = !nameInput_.empty() && problem.empty();
+				ImGui::BeginDisabled(!ok);
+				if (ImGui::Button("Create") || (enter && ok))
+				{
+					try
+					{
+						nameAction("New event vault " + nameInput_);
+						LoadedPack& made = CreateEventVaultFile(*db_, path, nameInput_, *EventVaultModel(*db_));
+						noteEdit(&made, nullptr);
+						structureChanged();
+						updateTitle();
+						log(LogLevel::Info, "Made the event vault " + nameInput_ + ". Saving writes " + path);
 					}
 					catch (const std::exception& e)
 					{

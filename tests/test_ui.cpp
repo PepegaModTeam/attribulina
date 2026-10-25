@@ -6,6 +6,7 @@
 
 #include "app/App.h"
 #include "app/ValueEditors.h"
+#include "core/ClassList.h"
 #include "core/Clip.h"
 #include "core/Compression.h"
 #include "core/Edit.h"
@@ -31,6 +32,7 @@
 #include <cfloat>
 #include <cmath>
 #include <memory>
+#include <tuple>
 #include <unordered_set>
 
 using namespace attrib;
@@ -2245,6 +2247,8 @@ TEST("ui: an array stops at its definition's count until Edit > Allow Arrays Pas
     CHECK_EQ(gear()->count, 10u);
     typeCount("8");
     CHECK_EQ(gear()->count, 8u);
+    // Back to its count, it holds no spare capacity (saving writes it as read).
+    CHECK_EQ(uint32_t(gear()->capacity), 8u);
     for (const auto& c : probe.conflicts) std::printf("        ID conflict: %s\n", c.c_str());
     CHECK(probe.conflicts.empty());
 }
@@ -4078,4 +4082,360 @@ TEST("ui: changes made in the editor are recorded as nfsms and as a mod script")
     a.markDirty(rev);
     imgui.run(a, 1);
     CHECK_EQ(a.nfsmsText(), before);
+}
+
+TEST("ui: class designer: a new class is made from its design; the game's classes show read only, copy, delete and restore") {
+    platform::HeadlessImGui imgui;
+    imgui.beforeFrame = ProbeBefore;
+    imgui.afterFrame = ProbeAfter;
+    test::UiProbe& probe = test::UiProbe::get();
+    probe.conflicts.clear();
+    platform::HeadlessHost host;
+    app::App a(host);
+    a.setup(1.0f, "");
+    CHECK(a.open(ProStreetDir() + "/ATTRIBUTES.BIN"));
+    imgui.run(a, 2);
+    Database* db = a.database();
+    auto click = [&](const char* label, const char* window) {
+        const test::ProbeItem* it = probe.find(label, window);
+        if (!it) std::printf("        no %s in %s\n", label, window);
+        ClickItem(imgui, a, it);
+    };
+
+    // A design, then Create Class.
+    a.openClassDesigner(nullptr);
+    ClassDesign& d = a.classDesigner().draft;
+    d.name = "mod_racer";
+    d.key = StringHash32(d.name);
+    d.fields.clear();
+    for (const auto& [name, type, layout, array] : std::vector<std::tuple<const char*, const char*, bool, bool>>{
+             {"SPEED", "EA::Reflection::Float", true, false},
+             {"TARGET", "Attrib::RefSpec", true, false},
+             {"COUNT", "EA::Reflection::Int32", false, false},
+             {"NAMES", "Attrib::StringKey", false, true}}) {
+        FieldDesign f;
+        f.name = name;
+        f.key = StringHash32(name);
+        f.typeHash = StringHash32(type);
+        f.storage = layout ? FieldStorage::Layout : FieldStorage::Entry;
+        f.array = array;
+        d.fields.push_back(f);
+    }
+    imgui.run(a, 2);
+    CHECK_EQ(probe.count("Create Class", "Class Designer"), 1);
+    click("Create Class", "Class Designer");
+    imgui.run(a, 2);
+    ClassDef* mine = db->findClass(StringHash32("mod_racer"));
+    CHECK(mine != nullptr);
+    CHECK_EQ(mine->fields.size(), size_t(4));
+    CHECK(a.hasUnsavedChanges());
+    CHECK(a.undoLabels().back() == "New class mod_racer");
+    CHECK_EQ(probe.count("Apply Changes", "Class Designer"), 1); // now it edits the class it made
+
+    // Its menu in the tree (a collection of it, revealed, scrolls the tree
+    // there; the designer, floating over the tree, is closed first).
+    a.classDesigner().open = false;
+    CHECK(a.runConsole("create mod_racer/racer_one under root in vault db"));
+    a.select(db->findCollection(mine->key, StringHash32("racer_one")), true);
+    imgui.run(a, 3);
+    const test::ProbeItem* node = nullptr;
+    for (const auto& it : probe.items)
+        if (it.label.rfind("mod_racer  (", 0) == 0) node = &it;
+    Rightclick(imgui, a, node);
+    CHECK_EQ(probe.count("Class Design...", "##Popup"), 1);
+    CHECK_EQ(probe.count("Attrib::Gen Header...", "##Popup"), 1);
+    CHECK_EQ(probe.count("Delete Class...", "##Popup"), 1);
+    imgui.key(a, ImGuiKey_Escape);
+    imgui.run(a, 1);
+
+    // The header tab shows its Attrib::Gen class.
+    a.openClassDesigner(mine, true);
+    imgui.run(a, 2);
+    const std::string header = a.designerHeader();
+    CHECK(header.find("class mod_racer : private Instance") != std::string::npos);
+    CHECK(probe.find("Save As...", "Class Designer") != nullptr);
+    const std::string saved = (std::filesystem::temp_directory_path() / "attribulina_mod_racer.h").string();
+    host.nextSaveFile = saved;
+    click("Save As...", "Class Designer");
+    CHECK(std::filesystem::exists(saved) && ReadFile(saved).size() == header.size());
+    std::filesystem::remove(saved);
+
+    // A class of the game: read only, and Copy as New Class makes an editable design of it.
+    ClassDef* pv = db->findClass(StringHash32("pvehicle"));
+    a.openClassDesigner(pv);
+    imgui.run(a, 2);
+    CHECK(a.classDesigner().readOnly);
+    CHECK_EQ(probe.count("Create Class", "Class Designer"), 0);
+    CHECK_EQ(probe.count("Apply Changes", "Class Designer"), 0);
+    click("Copy as New Class", "Class Designer");
+    imgui.run(a, 1);
+    CHECK(!a.classDesigner().readOnly);
+    CHECK_EQ(a.classDesigner().draft.name, std::string("pvehicle_copy"));
+    CHECK_EQ(probe.count("Create Class", "Class Designer"), 1);
+    CHECK(!a.applyClassDesign() || db->findClass(StringHash32("pvehicle_copy")) != nullptr);
+
+    // Delete Class asks first, then the class and its collections go.
+    a.classDesigner().open = false;
+    a.select(db->findCollection(mine->key, StringHash32("racer_one")), true);
+    imgui.run(a, 3);
+    node = nullptr;
+    for (const auto& it : probe.items)
+        if (it.label.rfind("mod_racer  (", 0) == 0) node = &it;
+    Rightclick(imgui, a, node);
+    click("Delete Class...", "##Popup");
+    imgui.run(a, 2);
+    CHECK(probe.find("Delete", "Delete Class") != nullptr);
+    click("Delete", "Delete Class");
+    imgui.run(a, 2);
+    CHECK(db->findClass(StringHash32("mod_racer")) == nullptr);
+    CHECK(a.selection() == nullptr);
+    CHECK(a.tabs().empty());
+
+    // Undo brings it back, and the game's classes stay locked in the database undo made.
+    CHECK(a.undo());
+    imgui.run(a, 2);
+    db = a.database();
+    CHECK(db->findClass(StringHash32("mod_racer")) != nullptr);
+    CHECK(IsGameClass(*db, StringHash32("pvehicle")));
+
+    // A game class, deleted, is offered back and restored as the retail files define it.
+    ClassDef* sm = db->findClass(StringHash32("smackable"));
+    const ClassDesign before = DesignOf(*db, *sm);
+    CHECK(a.removeClass(sm));
+    imgui.run(a, 1);
+    CHECK_EQ(MissingRetailClasses(*db).size(), size_t(1));
+    CHECK(a.restoreGameClass(StringHash32("smackable")));
+    imgui.run(a, 2);
+    CHECK(db->findClass(StringHash32("smackable")) != nullptr);
+    CHECK(DesignOf(*db, *db->findClass(StringHash32("smackable"))) == before);
+    CHECK_EQ(Errors(a), size_t(0));
+    for (const auto& x : probe.conflicts) std::printf("        ID conflict: %s\n", x.c_str());
+    CHECK(probe.conflicts.empty());
+}
+
+TEST("ui: classes made, changed, deleted and restored in the editor are recorded as class statements") {
+    namespace sc = attrib::script;
+    platform::HeadlessImGui imgui;
+    platform::HeadlessHost host;
+    app::App a(host);
+    a.setup(1.0f, "");
+    a.setUserKeysPath("");
+    CHECK(a.open(ProStreetDir() + "/ATTRIBUTES.BIN"));
+    Database* db = a.database();
+    a.setRecording(true, true);
+    imgui.run(a, 1);
+
+    a.openClassDesigner(nullptr);
+    ClassDesign& d = a.classDesigner().draft;
+    d.name = "rec_class";
+    d.key = StringHash32(d.name);
+    d.fields[0].name = "SPEED";
+    d.fields[0].key = StringHash32("SPEED");
+    CHECK(a.applyClassDesign());
+    imgui.run(a, 1);
+    CHECK(a.scriptText().find("class rec_class in vault db") != std::string::npos);
+    CHECK(a.scriptText().find("    layout SPEED EA::Reflection::Float\n") != std::string::npos);
+    CHECK(a.nfsmsText().find("# class rec_class: nfsms has no command") != std::string::npos);
+
+    FieldDesign extra;
+    extra.name = "EXTRA";
+    extra.key = StringHash32(extra.name);
+    extra.typeHash = StringHash32("EA::Reflection::Int32");
+    a.classDesigner().draft.fields.push_back(extra);
+    CHECK(a.applyClassDesign());
+    imgui.run(a, 1);
+    CHECK(a.scriptText().find("    entry EXTRA EA::Reflection::Int32\n") != std::string::npos);
+
+    CHECK(a.removeClass(db->findClass(StringHash32("smackable"))));
+    imgui.run(a, 1);
+    CHECK(a.scriptText().find("delete class smackable\n") != std::string::npos);
+    CHECK(a.restoreGameClass(StringHash32("smackable")));
+    imgui.run(a, 1);
+    CHECK(a.scriptText().find("class smackable in vault db") != std::string::npos);
+
+    // The recorded script makes the same classes from the files.
+    Database fresh;
+    for (const auto& s : db->classLists()) fresh.addClassList(s);
+    fresh.addTypeSchema(db->sharedTypeSchema());
+    fresh.names() = db->names();
+    fresh.setTarget(db->target());
+    fresh.loadPack(ProStreetDir() + "/ATTRIBUTES.BIN");
+    const sc::ApplyReport r = sc::Apply(fresh, sc::Parse(a.scriptText(), "recorded.amod"));
+    for (const auto& m : r.messages)
+        if (m.level == sc::Message::Level::Error) std::printf("        %s\n", m.text.c_str());
+    CHECK(r.ok);
+    for (const char* name : {"rec_class", "smackable"}) {
+        const ClassDef* x = fresh.findClass(StringHash32(name));
+        const ClassDef* y = db->findClass(StringHash32(name));
+        CHECK(x && y);
+        if (x && y) CHECK(DesignOf(fresh, *x) == DesignOf(*db, *y));
+    }
+    CHECK_EQ(Errors(a), size_t(0));
+}
+
+namespace {
+// The Explorer's Files tree: a pack's or vault's node, by the start of its label.
+const test::ProbeItem* FilesNode(const std::string& start) {
+    for (const auto& it : test::UiProbe::get().items)
+        if (it.label.rfind(start, 0) == 0 && it.window.find("##files") != std::string::npos) return &it;
+    return nullptr;
+}
+} // namespace
+
+TEST("ui: the Files tree makes, renames and deletes vaults, each an undo step") {
+    if (!std::filesystem::exists(ProStreetDir() + "/gameplay.lzc")) return;
+    platform::HeadlessImGui imgui;
+    imgui.beforeFrame = ProbeBefore;
+    imgui.afterFrame = ProbeAfter;
+    test::UiProbe& probe = test::UiProbe::get();
+    probe.conflicts.clear();
+    platform::HeadlessHost host;
+    app::App a(host);
+    a.setup(1.0f, "");
+    a.setUserKeysPath("");
+    CHECK(a.open(ProStreetDir()));
+    imgui.run(a, 2);
+    ClickItem(imgui, a, probe.find("Files"));
+    imgui.run(a, 1);
+    auto menu = [&](const test::ProbeItem* node, const char* item) {
+        Rightclick(imgui, a, node);
+        ClickItem(imgui, a, probe.find(item, "##Popup"));
+        imgui.run(a, 2);
+    };
+
+    // A new vault in gameplay.lzc, from the pack's menu.
+    menu(FilesNode("gameplay.lzc"), "New Vault...");
+    imgui.type(a, "aaa_ui_vault");
+    imgui.run(a, 1);
+    imgui.key(a, ImGuiKey_Enter);
+    imgui.run(a, 2);
+    CHECK(FindVault(*a.database(), "aaa_ui_vault"));
+    CHECK(a.hasUnsavedChanges());
+    // Undone and redone.
+    imgui.key(a, ImGuiMod_Ctrl | ImGuiKey_Z);
+    imgui.run(a, 2);
+    CHECK(!FindVault(*a.database(), "aaa_ui_vault"));
+    CHECK(!a.hasUnsavedChanges());
+    imgui.key(a, ImGuiMod_Ctrl | ImGuiKey_Y);
+    imgui.run(a, 2);
+    CHECK(FindVault(*a.database(), "aaa_ui_vault"));
+
+    // Renamed from its own menu (it sorts first in the open pack).
+    if (const test::ProbeItem* pack = FilesNode("gameplay.lzc")) ClickItem(imgui, a, *pack);
+    imgui.run(a, 2);
+    menu(FilesNode("aaa_ui_vault  ("), "Rename Vault...");
+    imgui.key(a, ImGuiMod_Ctrl | ImGuiKey_A);
+    imgui.type(a, "aab_ui_vault");
+    imgui.run(a, 1);
+    imgui.key(a, ImGuiKey_Enter);
+    imgui.run(a, 2);
+    CHECK(!FindVault(*a.database(), "aaa_ui_vault") && FindVault(*a.database(), "aab_ui_vault"));
+    // A taken name is refused.
+    menu(FilesNode("aab_ui_vault  ("), "Rename Vault...");
+    imgui.key(a, ImGuiMod_Ctrl | ImGuiKey_A);
+    imgui.type(a, "GPCORE");
+    imgui.run(a, 1);
+    imgui.key(a, ImGuiKey_Enter);
+    imgui.run(a, 2);
+    imgui.key(a, ImGuiKey_Escape);
+    imgui.run(a, 2);
+    CHECK(FindVault(*a.database(), "aab_ui_vault"));
+
+    // Deleted; the database's vault can be neither.
+    menu(FilesNode("aab_ui_vault  ("), "Delete Vault...");
+    imgui.key(a, ImGuiKey_Enter);
+    imgui.run(a, 2);
+    CHECK(!FindVault(*a.database(), "aab_ui_vault"));
+    imgui.key(a, ImGuiMod_Ctrl | ImGuiKey_Z);
+    imgui.run(a, 2);
+    CHECK(FindVault(*a.database(), "aab_ui_vault"));
+    if (const test::ProbeItem* attrs = FilesNode("ATTRIBUTES.BIN  (")) ClickItem(imgui, a, *attrs);
+    imgui.run(a, 2);
+    menu(FilesNode("db  ("), "Delete Vault...");
+    CHECK(FindVault(*a.database(), "db"));
+    CHECK_EQ(Errors(a), size_t(0));
+    for (const auto& c : probe.conflicts) std::printf("        ID conflict: %s\n", c.c_str());
+    CHECK(probe.conflicts.empty());
+}
+
+TEST("ui: World: a new event vault file is written by Save All; deleted from its vault's menu, saving removes the file") {
+    namespace fs = std::filesystem;
+    const fs::path from = test::DataPath("attrib/databases/pc/world-final");
+    if (!fs::exists(from)) return;
+    const fs::path tmp = fs::temp_directory_path() / "attribulina_event_vault_test";
+    fs::remove_all(tmp);
+    fs::create_directories(tmp / "gc.vaults");
+    fs::copy_file(from / "attributes.bin", tmp / "attributes.bin");
+    fs::copy_file(from / "gc.vaults" / "1_2_1_sprint.bin", tmp / "gc.vaults" / "1_2_1_sprint.bin");
+    platform::HeadlessImGui imgui;
+    imgui.beforeFrame = ProbeBefore;
+    imgui.afterFrame = ProbeAfter;
+    test::UiProbe& probe = test::UiProbe::get();
+    probe.conflicts.clear();
+    platform::HeadlessHost host;
+    app::App a(host);
+    a.setup(1.0f, "");
+    a.setUserKeysPath("");
+    CHECK(a.open(tmp.string()));
+    CHECK(a.database() && a.database()->packs().size() == 2);
+    if (!a.database()) return;
+    imgui.run(a, 2);
+    ClickItem(imgui, a, probe.find("Files"));
+    imgui.run(a, 1);
+
+    // From the tree's own menu, below its rows.
+    const test::ProbeItem* last = FilesNode("1_2_1_sprint.bin  (");
+    CHECK(last);
+    if (!last) return;
+    imgui.click(a, last->rect.Min.x + 20, last->rect.Max.y + 60, 1);
+    imgui.run(a, 1);
+    ClickItem(imgui, a, probe.find("New Event Vault File...", "##Popup"));
+    imgui.run(a, 2);
+    imgui.type(a, "attribulina_ui_event");
+    imgui.run(a, 1);
+    imgui.key(a, ImGuiKey_Enter);
+    imgui.run(a, 2);
+    const fs::path file = tmp / "gc.vaults" / "attribulina_ui_event.bin";
+    auto pack = [&]() -> const LoadedPack* {
+        for (const auto& p : a.database()->packs())
+            if (fs::path(p->path) == file) return p.get();
+        return nullptr;
+    };
+    CHECK(pack() && pack()->format == PackFormat::VaultFile && pack()->dirty && !fs::exists(file));
+    imgui.key(a, ImGuiMod_Ctrl | ImGuiKey_Z);
+    imgui.run(a, 2);
+    CHECK(!pack() && !a.hasUnsavedChanges());
+    imgui.key(a, ImGuiMod_Ctrl | ImGuiKey_Y);
+    imgui.run(a, 2);
+    CHECK(pack() && a.hasUnsavedChanges());
+    CHECK(a.saveAll());
+    CHECK(!a.hasUnsavedChanges() && fs::exists(file));
+    {
+        const PackFile pf = ReadPack(ReadFile(file.string()));
+        CHECK(pf.format == PackFormat::VaultFile && pf.vaults.size() == 1 && pf.vaults[0].name == "attribulina_ui_event");
+    }
+
+    // Deleted from its vault's menu: saving moves the file aside.
+    imgui.run(a, 1);
+    ClickItem(imgui, a, FilesNode("attribulina_ui_event.bin  ("));
+    imgui.run(a, 1);
+    Rightclick(imgui, a, FilesNode("attribulina_ui_event  ("));
+    ClickItem(imgui, a, probe.find("Delete Vault...", "##Popup"));
+    imgui.run(a, 2);
+    imgui.key(a, ImGuiKey_Enter);
+    imgui.run(a, 2);
+    CHECK(!pack() && a.hasUnsavedChanges() && fs::exists(file));
+    // Undone, it is the file as saved; redone, it goes again.
+    imgui.key(a, ImGuiMod_Ctrl | ImGuiKey_Z);
+    imgui.run(a, 2);
+    CHECK(pack() && !pack()->dirty && !a.hasUnsavedChanges());
+    imgui.key(a, ImGuiMod_Ctrl | ImGuiKey_Y);
+    imgui.run(a, 2);
+    CHECK(!pack() && a.hasUnsavedChanges());
+    CHECK(a.saveAll());
+    CHECK(!a.hasUnsavedChanges() && !fs::exists(file) && fs::exists(fs::path(file.string() + ".bak")));
+    CHECK_EQ(Errors(a), size_t(0));
+    for (const auto& c : probe.conflicts) std::printf("        ID conflict: %s\n", c.c_str());
+    CHECK(probe.conflicts.empty());
+    fs::remove_all(tmp);
 }

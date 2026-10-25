@@ -1,9 +1,13 @@
 #include "Edit.h"
 
+#include "Folder.h"
+#include "Gameplay.h"
 #include "Hash.h"
 #include "Values.h"
 
 #include <algorithm>
+#include <cctype>
+#include <cstring>
 #include <functional>
 #include <map>
 #include <unordered_map>
@@ -225,6 +229,8 @@ namespace attrib
 			throw std::runtime_error("a vault needs a name");
 		if (FindVault(pack, name))
 			throw std::runtime_error("the pack already has a vault named " + name);
+		if (pack.format == PackFormat::VaultFile && !pack.vaults.empty())
+			throw std::runtime_error(pack.path + " is one of World's event vault files, which hold one vault each");
 		auto v = std::make_unique<Vault>();
 		v->name = name;
 		v->pack = &pack;
@@ -235,6 +241,7 @@ namespace attrib
 		v->raw.mostWantedLayout = like.raw.mostWantedLayout;
 		v->raw.keys64 = like.raw.keys64;
 		v->raw.strNFirst = like.raw.strNFirst;
+		v->raw.endC = like.raw.endC;
 		for (const char* ext : { ".vlt", ".bin" })
 			v->raw.dependencies.push_back(Dependency{ like.raw.keys64 ? StringHash64(name + ext) : StringHash32(name + ext), name + ext });
 		// Packs keep their vaults sorted by name (the writer sorts them anyway).
@@ -263,6 +270,152 @@ namespace attrib
 		for (const auto& v : pack.vaults)
 			if (v->name == name) return v.get();
 		return nullptr;
+	}
+
+	Vault* FindVault(const Database& db, const std::string& name)
+	{
+		for (const auto& pk : db.packs())
+			if (Vault* v = FindVault(*pk, name)) return v;
+		return nullptr;
+	}
+
+	namespace
+	{
+		bool SameNoCase(const std::string& a, const std::string& b)
+		{
+			return a.size() == b.size() && std::equal(a.begin(), a.end(), b.begin(), [](char x, char y)
+			{
+				return std::tolower(static_cast<unsigned char>(x)) == std::tolower(static_cast<unsigned char>(y));
+			});
+		}
+
+		constexpr size_t kVaultFileNameSize = 0x2C; // the event vault header's name field, with its terminator
+	} // namespace
+
+	std::string VaultNameProblem(const Database& db, const LoadedPack& pack, const std::string& name, const Vault* self)
+	{
+		if (name.empty()) return "A vault needs a name.";
+		if (name.front() == ' ' || name.back() == ' ') return "A vault name can't start or end with a space.";
+		for (const char ch : name)
+		{
+			const auto u = static_cast<unsigned char>(ch);
+			if (u < 0x20 || u >= 0x7F || std::strchr("/\\:*?\"<>|", ch))
+				return std::string("A vault name can't hold ") + (u < 0x20 || u >= 0x7F ? "that character" : std::string("'") + ch + "'") +
+					": it names the vault's files.";
+		}
+		if (pack.format == PackFormat::VaultFile && name.size() >= kVaultFileNameSize)
+			return "An event vault's name is at most " + std::to_string(kVaultFileNameSize - 1) + " characters.";
+		for (const auto& pk : db.packs())
+			for (const auto& v : pk->vaults)
+				if (v.get() != self && SameNoCase(v->name, name))
+					return "The database has a vault named " + v->name + " already.";
+		return {};
+	}
+
+	std::vector<Collection*> CollectionsNamingVault(const Database& db, const std::string& vaultName)
+	{
+		std::vector<Collection*> out;
+		const ClassDef* cls = db.findClass(StringHash32("gameplay"));
+		if (!cls) return out;
+		const uint32_t field = StringHash32(gameplay::kGameplayVault);
+		for (Collection* c : cls->collections)
+		{
+			const Attribute* a = c->find(field);
+			const PtrSlot* s = a ? a->data.ptrAt(0) : nullptr;
+			if (s && s->isString && s->text == vaultName) out.push_back(c);
+		}
+		return out;
+	}
+
+	std::vector<Collection*> RenameVault(Database& db, Vault& vault, const std::string& name)
+	{
+		if (!vault.pack) throw std::runtime_error("vault " + vault.name + " isn't in a pack");
+		if (vault.isDatabase) throw std::runtime_error("the database's vault " + vault.name + " keeps its name");
+		if (vault.pack->format == PackFormat::VaultFile)
+			throw std::runtime_error("the event vault " + vault.name + " is named after its file. Make a new event vault file and move the collections to it");
+		if (name == vault.name) return {};
+		if (const std::string p = VaultNameProblem(db, *vault.pack, name, &vault); !p.empty()) throw std::runtime_error(p);
+		const std::string old = vault.name;
+		const std::vector<Collection*> naming = CollectionsNamingVault(db, old);
+		vault.name = vault.raw.name = name;
+		for (Dependency& d : vault.raw.dependencies)
+			for (const char* ext : { ".vlt", ".bin" })
+				if (d.name == old + ext)
+				{
+					d.name = name + ext;
+					d.id = vault.raw.keys64 ? StringHash64(d.name) : StringHash32(d.name);
+					db.names().add(d.name);
+				}
+		std::stable_sort(vault.pack->vaults.begin(), vault.pack->vaults.end(), [](const auto& a, const auto& b)
+		{
+			return a->name < b->name;
+		});
+		for (Collection* c : naming)
+			EnsureStringSlot(c->find(StringHash32(gameplay::kGameplayVault))->data, 0).text = name;
+		return naming;
+	}
+
+	std::vector<Collection*> VaultContents(const Vault& vault)
+	{
+		std::vector<Collection*> out;
+		std::unordered_set<const Collection*> seen;
+		std::function<void(Collection*)> add = [&](Collection* c)
+		{
+			if (!seen.insert(c).second) return;
+			for (Collection* ch : c->children) add(ch);
+			out.push_back(c);
+		};
+		for (Collection* c : vault.collections) add(c);
+		return out;
+	}
+
+	LoadedPack& CreateEventVaultFile(Database& db, const std::string& path, const std::string& name, const Vault& like)
+	{
+		for (const auto& pk : db.packs())
+			if (SameNoCase(pk->path, path)) throw std::runtime_error(path + " is open already");
+		LoadedPack probe;
+		probe.format = PackFormat::VaultFile;
+		if (const std::string p = VaultNameProblem(db, probe, name); !p.empty()) throw std::runtime_error(p);
+		LoadedPack& pack = db.addPack(path, PackFormat::VaultFile);
+		Vault& v = CreateVault(pack, name, like);
+		// As every event vault has it: StringHash32("VaultData"), 4 bytes.
+		DataExport slot{ StringHash32("VaultData"), ExportType::VaultData, Bytes(4, 0) };
+		for (const DataExport& d : like.dataExports)
+			if (d.type == ExportType::VaultData)
+			{
+				slot.id = d.id;
+				slot.type = d.type;
+			}
+		v.dataExports.push_back(std::move(slot));
+		ExportRef ref{ ExportRef::Kind::Data, nullptr, nullptr };
+		ref.data = 0;
+		v.exportOrder.push_back(ref);
+		return pack;
+	}
+
+	std::string NewEventVaultPath(const Database& db, const std::string& name)
+	{
+		const LoadedPack* at = nullptr;
+		for (const auto& pk : db.packs())
+		{
+			if (pk->format == PackFormat::VaultFile) return EventVaultPath(pk->path, name + ".bin");
+			for (const auto& v : pk->vaults)
+				if (v->isDatabase && !at) at = pk.get();
+		}
+		if (!at && !db.packs().empty()) at = db.packs().front().get();
+		return at ? EventVaultPath(at->path, name + ".bin") : std::string();
+	}
+
+	const Vault* EventVaultModel(const Database& db)
+	{
+		const Vault* model = nullptr;
+		for (const auto& pk : db.packs())
+			for (const auto& v : pk->vaults)
+			{
+				if (pk->format == PackFormat::VaultFile) return v.get();
+				if (v->isDatabase || !model) model = v.get();
+			}
+		return model;
 	}
 
 	uint32_t CollectionExportId(const KeyNames& names, uint32_t classKey, const std::string& name)

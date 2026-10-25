@@ -144,6 +144,10 @@ namespace app
 			saveOnlyChanged_ = on;
 		}
 		bool savePackAs(attrib::LoadedPack& pack, const std::string& path);
+		// Files of packs the database no longer has (World event vault files
+		// whose vault was deleted): Save All removes them.
+		std::vector<std::string> removedFiles() const;
+		bool removeFile(const std::string& path);
 		// How a compressed pack (gameplay.lzc) is saved: JDLZ as retail files are,
 		// HUFF, or RAWW (stored). It starts as the file is; a change is an undo step.
 		void setPackCompression(attrib::LoadedPack& pack, attrib::LzKind kind);
@@ -683,6 +687,16 @@ namespace app
 		void drawDropMenu();
 		void drawEditModals();
 		void requestGameplayDuplicate(attrib::Collection* c);
+		// Vault commands (AppEdit.cpp), on the Files tree's menus: a new vault in
+		// a pack, renaming and deleting one, and World's event vault files.
+		void drawPackItems(attrib::LoadedPack& pack);
+		void drawVaultItems(attrib::Vault& vault);
+		void drawNewEventVaultItem();
+		bool canMakeEventVaults() const;
+		// Deletes `vault` with its collections and everything under them; one of
+		// World's event vaults takes its file with it (Save All removes it).
+		void deleteVault(attrib::Vault& vault);
+		void drawVaultModals();
 
 		// Script panel (AppScript.cpp).
 		void drawScriptPanel();
@@ -730,7 +744,8 @@ namespace app
 		{
 			None, NewChild, Rename, Delete, ConfirmClose, ConfirmCloseAll, ConfirmReplace, About,
 			GameplayNew, GameplayDuplicate, GameplayDelete, NewState, NewHandler, MoveToVault,
-			ApplyScript, ExportChanges, ExportFields, NfsmsSetup, ChooseTarget, DeleteClass
+			ApplyScript, ExportChanges, ExportFields, NfsmsSetup, ChooseTarget, DeleteClass,
+			NewVault, RenameVault, DeleteVault, NewEventVault
 		};
 		void request(Pending p, attrib::Collection* target = nullptr);
 		void requestNew(attrib::ClassDef* cls, attrib::Collection* parent);
@@ -892,7 +907,8 @@ namespace app
 		struct UndoState
 		{
 			std::string label;                                      // the action that led here
-			std::vector<std::shared_ptr<const attrib::Bytes>> packs; // per db_->packs(); unchanged ones shared
+			std::vector<std::string> paths;                         // its packs (World's event vault files come and go)
+			std::vector<std::shared_ptr<const attrib::Bytes>> packs; // per path; unchanged ones shared
 			std::vector<std::optional<attrib::LzKind>> compression; // per pack: how saving compresses it
 			std::set<uint64_t> touched;                             // class << 32 | key of what it edited
 			bool script = false;                                    // a script run (not recorded)
@@ -900,8 +916,11 @@ namespace app
 		};
 		std::deque<UndoState> undo_;
 		int undoPos_ = -1;
-		std::vector<std::shared_ptr<const attrib::Bytes>> savedPacks_; // what each pack's file holds (null: unknown)
-		std::vector<std::optional<attrib::LzKind>> savedCompression_;  // and how it is compressed
+		// What each pack's file holds (null: unknown), by path, and how it is
+		// compressed. A pack with no entry has no file yet; an entry no pack has
+		// is a file saving removes (its event vault was deleted).
+		std::map<std::string, std::shared_ptr<const attrib::Bytes>> savedPacks_;
+		std::map<std::string, std::optional<attrib::LzKind>> savedCompression_;
 		std::set<const attrib::LoadedPack*> undoPacks_;                // edited since the last step
 		std::set<uint64_t> undoTouched_;
 		bool undoChanged_ = false, undoAll_ = false, undoScript_ = false;
@@ -956,6 +975,7 @@ namespace app
 		attrib::Collection* pendingTarget_ = nullptr;
 		attrib::ClassDef* pendingClass_ = nullptr;
 		attrib::Vault* pendingVault_ = nullptr;
+		attrib::LoadedPack* pendingPack_ = nullptr; // New Vault's pack
 		std::string pendingPath_;
 		std::string nameInput_;
 		// Sequence Builder.

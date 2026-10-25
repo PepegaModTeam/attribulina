@@ -116,6 +116,15 @@ namespace attrib
 		return out;
 	}
 
+	std::string EventVaultPath(const std::string& pack, const std::string& file)
+	{
+		const fs::path dir = FromUtf8(pack).parent_path();
+		if (Lower(ToUtf8(dir.filename())) == kEventVaults) return ToUtf8(dir / FromUtf8(file));
+		const std::string d = ToUtf8(dir.empty() ? fs::path(".") : dir);
+		const std::optional<std::string> gc = FindDirNoCase(d, kEventVaults);
+		return ToUtf8((gc ? FromUtf8(*gc) : dir / kEventVaults) / FromUtf8(file));
+	}
+
 	std::optional<std::string> DatabaseFileFor(const std::string& pack)
 	{
 		const fs::path dir = FromUtf8(pack).parent_path();

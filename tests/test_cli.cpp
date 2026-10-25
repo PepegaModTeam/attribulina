@@ -222,3 +222,31 @@ TEST("cli: apply --compress saves gameplay.lzc with another codec, and its .bin 
     CHECK_EQ(run({"apply", vanilla, "--compress", "jdlz", "--dry-run"}), 0);
     CHECK(run.out.find("nothing would change") != std::string::npos);
 }
+
+TEST("cli: a class made by a script saves and loads; header writes its Attrib::Gen class; the game's stay as they are") {
+    const fs::path tmp = fs::temp_directory_path() / "attribulina_cli_class_test";
+    fs::remove_all(tmp);
+    fs::create_directories(tmp / "out");
+    const std::string attrs = test::DataPath("attrib/databases/pc/prostreet-vanilla/ATTRIBUTES.BIN");
+    Cli run(tmp);
+    WriteText(tmp / "mod.amod", "attribulina 1\n"
+                                "game prostreet_pc\n"
+                                "class cli_class {\n"
+                                "    layout SPEED Float\n"
+                                "    entry NAMES StringKey[]\n"
+                                "}\n"
+                                "collection cli_class/base under root in vault db { SPEED = 2 }\n");
+    CHECK_EQ(run({"apply", attrs, (tmp / "mod.amod").string(), "--out", (tmp / "out").string(), "--no-backup"}), 0);
+    const std::string saved = (tmp / "out" / "ATTRIBUTES.BIN").string();
+    CHECK(fs::exists(saved));
+    CHECK_EQ(run({"get", saved, "cli_class/base"}), 0);
+    CHECK(run.out.find("SPEED = 2") != std::string::npos);
+    CHECK_EQ(run({"header", saved, "cli_class", "-o", (tmp / "cli_class.h").string()}), 0);
+    const std::string h = ReadText(tmp / "cli_class.h");
+    CHECK(h.find("class cli_class : private Instance") != std::string::npos);
+    CHECK(h.find("unsigned int Num_NAMES() const") != std::string::npos);
+    // A game class can't be redefined from a script.
+    CHECK(run({"apply", attrs, "--dry-run", "-e", "class pvehicle {\n    entry MOD Float\n}"}) != 0);
+    CHECK(run.err.find("class of the game") != std::string::npos);
+    fs::remove_all(tmp);
+}

@@ -500,6 +500,66 @@ TEST("writer: the early Most Wanted demos' packs (64-bit keys) round trip byte f
     }
 }
 
+TEST("writer: an entry array grown past its limit and shrunk back writes as read; spare capacity of zeros reads exactly, of data warns") {
+    Database db;
+    LoadedPack& pack = db.loadPack(PS("ATTRIBUTES.BIN"));
+    const Bytes original = ReadFile(PS("ATTRIBUTES.BIN"));
+    auto gear = [](Database& d) { return d.findCollection(StringHash32("vehicle"), StringHash32("997gt3rs"))->find(StringHash32("GEAR_RATIO")); };
+    Attribute* g = gear(db);
+    CHECK(g && g->isArray && !g->inLayout && g->count == 8 && g->capacity == 8 && ElementLimit(*g) == 9);
+    if (!g) return;
+    // Past the definition's 9 and back: the capacity follows the count both ways.
+    while (g->count < 12) InsertElement(*g, g->count);
+    CHECK_EQ(uint32_t(g->capacity), 12u);
+    while (g->count > 8) RemoveElement(*g, g->count - 1);
+    CHECK_EQ(uint32_t(g->capacity), 8u);
+    CheckIdentical(WritePack(db, pack), original, "grown and shrunk back");
+
+    // As earlier builds left it: two spare elements past the count, zeroed.
+    g->capacity = 10;
+    const Bytes spare = WritePack(db, pack);
+    CHECK(spare != original);
+    {
+        Database again;
+        LoadedPack& p = again.loadPack("spare", spare);
+        for (const auto& v : p.vaults) {
+            for (const auto& w : v->warnings) std::printf("        warning: %s\n", w.c_str());
+            CHECK(v->warnings.empty());
+            CHECK(v->exactlyWritable);
+        }
+        Attribute* a = gear(again);
+        CHECK(a && a->count == 8 && a->capacity == 10);
+        CheckIdentical(WritePack(again, p), spare, "spare capacity, zeroed");
+        // Resizing drops it, and the file is the retail one again.
+        InsertElement(*a, a->count);
+        RemoveElement(*a, a->count - 1);
+        CHECK_EQ(uint32_t(a->capacity), 8u);
+        CheckIdentical(WritePack(again, p), original, "spare capacity dropped");
+    }
+
+    // Spare elements holding data aren't kept: the vault says so.
+    Bytes header(8);
+    store16(header.data(), 10, Endian::Little);
+    store16(header.data() + 2, 8, Endian::Little);
+    store16(header.data() + 4, uint16_t(g->elemSize), Endian::Little);
+    store16(header.data() + 6, g->encodedTypePad, Endian::Little);
+    header.insert(header.end(), g->data.bytes.begin(), g->data.bytes.end());
+    Bytes poked = spare;
+    const auto at = std::search(poked.begin(), poked.end(), header.begin(), header.end());
+    CHECK(at != poked.end());
+    if (at == poked.end()) return;
+    CHECK(std::search(at + 1, poked.end(), header.begin(), header.end()) == poked.end());
+    *(at + header.size()) = 1;
+    Database again;
+    LoadedPack& p = again.loadPack("poked", poked);
+    size_t warned = 0;
+    for (const auto& v : p.vaults) {
+        for (const auto& w : v->warnings) warned += w.find("997gt3rs") != std::string::npos && w.find("data past its count") != std::string::npos;
+        if (!v->warnings.empty()) CHECK(!v->exactlyWritable);
+    }
+    CHECK_EQ(warned, size_t(1));
+}
+
 TEST("writer: edits survive a write and re-read, nothing else changes") {
     Database db;
     LoadedPack& pack = db.loadPack(PS("ATTRIBUTES.BIN"));

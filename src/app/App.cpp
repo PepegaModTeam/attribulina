@@ -411,7 +411,7 @@ namespace app
 		if (!db_) return false;
 		for (const auto& p : db_->packs())
 			if (p->dirty) return true;
-		return false;
+		return !removedFiles().empty();
 	}
 
 	void App::rememberName(const std::string& name)
@@ -793,14 +793,17 @@ namespace app
 				}
 			}
 			commitUndo(true); // the step being saved
+			// A new event vault file's folder may not be there yet.
+			if (std::error_code ec; !fs::exists(FromUtf8(path).parent_path(), ec)) fs::create_directories(FromUtf8(path).parent_path(), ec);
 			SavePack(*db_, pack, path);
 			// Undoing back to this step finds the file as it is now.
-			for (size_t i = 0; i < db_->packs().size(); ++i)
+			if (undoPos_ >= 0)
 			{
-				if (db_->packs()[i].get() != &pack) continue;
-				if (undoPos_ >= 0 && i < savedPacks_.size()) savedPacks_[i] = undo_[size_t(undoPos_)].packs[i];
-				if (i < savedCompression_.size()) savedCompression_[i] = pack.compression;
+				const UndoState& now = undo_[size_t(undoPos_)];
+				for (size_t i = 0; i < now.paths.size(); ++i)
+					if (now.paths[i] == pack.path) savedPacks_[pack.path] = now.packs[i];
 			}
+			savedCompression_[pack.path] = pack.compression;
 			if (twin)
 				log(LogLevel::Info, "Saved " + path + " and " + ToUtf8(FromUtf8(*twin).filename()) +
 					" beside it: the game lists the vaults in the .lzc and streams them from the .bin");
@@ -816,10 +819,52 @@ namespace app
 		}
 	}
 
+	std::vector<std::string> App::removedFiles() const
+	{
+		std::vector<std::string> out;
+		if (!db_) return out;
+		for (const auto& [path, bytes] : savedPacks_)
+			if (std::none_of(db_->packs().begin(), db_->packs().end(), [&](const auto& p) { return p->path == path; }))
+				out.push_back(path);
+		return out;
+	}
+
+	bool App::removeFile(const std::string& path)
+	{
+		std::error_code ec;
+		const fs::path target = FromUtf8(path);
+		if (fs::exists(target, ec))
+		{
+			// The first original is kept, as saving keeps it.
+			fs::path bak = target;
+			bak += ".bak";
+			if (!fs::exists(bak, ec))
+			{
+				fs::rename(target, bak, ec);
+				if (!ec) log(LogLevel::Info, "Moved " + path + " to " + ToUtf8(bak.filename()) + ": its vault was deleted");
+			}
+			else
+			{
+				fs::remove(target, ec);
+				if (!ec) log(LogLevel::Info, "Deleted " + path + ": its vault was deleted (the original is in " + ToUtf8(bak.filename()) + ")");
+			}
+			if (ec)
+			{
+				log(LogLevel::Error, "Could not remove " + path + ": " + ec.message());
+				return false;
+			}
+		}
+		savedPacks_.erase(path);
+		savedCompression_.erase(path);
+		updateTitle();
+		return true;
+	}
+
 	bool App::saveAll()
 	{
 		if (!db_) return true;
 		bool ok = true;
+		for (const std::string& f : removedFiles()) ok &= removeFile(f);
 		for (const auto& p : db_->packs())
 		{
 			if (!p->dirty)
@@ -859,9 +904,8 @@ namespace app
 	std::optional<LzKind> App::savedCompression(const LoadedPack& pack) const
 	{
 		if (!db_) return std::nullopt;
-		for (size_t i = 0; i < db_->packs().size() && i < savedCompression_.size(); ++i)
-			if (db_->packs()[i].get() == &pack) return savedCompression_[i];
-		return std::nullopt;
+		const auto it = savedCompression_.find(pack.path);
+		return it == savedCompression_.end() ? std::nullopt : it->second;
 	}
 
 	void App::stepHistory(int delta)
@@ -1114,6 +1158,7 @@ namespace app
 		pendingTarget_ = nullptr;
 		pendingClass_ = nullptr;
 		pendingVault_ = nullptr;
+		pendingPack_ = nullptr;
 		pendingTemplate_ = nullptr;
 		sbActivity_ = sbState_ = sbHandler_ = nullptr;
 		sbBoxes_.clear();
@@ -2140,6 +2185,8 @@ namespace app
 				ImGui::TextDisabled("%s", label.c_str());
 				ImGui::Separator();
 				treeToggleItem(packId, packOpen);
+				ImGui::Separator();
+				drawPackItems(*pk);
 				ImGui::EndPopup();
 			}
 			if (!packOpen) continue;
@@ -2157,6 +2204,8 @@ namespace app
 					ImGui::TextDisabled("vault %s", v->name.c_str());
 					ImGui::Separator();
 					treeToggleItem(vaultId, open);
+					ImGui::Separator();
+					drawVaultItems(*v);
 					ImGui::EndPopup();
 				}
 				if (!open) continue;
@@ -2235,6 +2284,11 @@ namespace app
 		{
 			ImGui::Separator();
 			drawNewClassItems();
+		}
+		if (t == Tree::Files && canMakeEventVaults())
+		{
+			ImGui::Separator();
+			drawNewEventVaultItem();
 		}
 		ImGui::EndPopup();
 	}
@@ -3233,6 +3287,10 @@ namespace app
 			case Pending::NfsmsSetup: id = "nfsms Setup"; break;
 			case Pending::ChooseTarget: id = "Game and Platform"; break;
 			case Pending::DeleteClass: break; // drawDeleteClassPrompt
+			case Pending::NewVault: id = "New Vault"; break;
+			case Pending::RenameVault: id = "Rename Vault"; break;
+			case Pending::DeleteVault: id = "Delete Vault"; break;
+			case Pending::NewEventVault: id = "New Event Vault File"; break;
 			case Pending::None: break;
 		}
 		if (id && !ImGui::IsPopupOpen(id)) ImGui::OpenPopup(id);
@@ -3387,6 +3445,7 @@ namespace app
 			ImGui::TextUnformatted("Some packs have unsaved changes:");
 			for (const auto& p : db_->packs())
 				if (p->dirty) ImGui::BulletText("%s", p->path.c_str());
+			for (const std::string& f : removedFiles()) ImGui::BulletText("%s (deleted)", f.c_str());
 			const Pending what = pending_;
 			auto proceed = [&]()
 			{
@@ -3428,6 +3487,7 @@ namespace app
 		drawGameplayModals();
 		drawSequenceModals();
 		drawEditModals();
+		drawVaultModals();
 		drawScriptModals();
 		drawNfsmsModals();
 

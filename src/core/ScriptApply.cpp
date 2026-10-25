@@ -1343,6 +1343,7 @@ namespace attrib::script
 						}
 						case K::CreateVault: createVault(s); break;
 						case K::DeleteVault: deleteVault(s); break;
+						case K::RenameVault: renameVault(s); break;
 						case K::Class: classStatement(s); break;
 						case K::DeleteClass: deleteClass(s); break;
 						case K::Echo: echo(s, nullptr); break;
@@ -1650,13 +1651,28 @@ namespace attrib::script
 					if (slash != std::string::npos) fn = fn.substr(slash + 1);
 					if (Lower(fn) == file || Lower(pk->path) == file) pack = pk.get();
 				}
-				if (!pack) fail("no pack " + s.word + " is open");
 				const std::string name = NameOf(s.vault).empty() ? s.vault : NameOf(s.vault);
-				if (FindVault(*pack, name))
+				if (pack && FindVault(*pack, name))
 				{
 					info("vault " + name + " exists already");
 					return;
 				}
+				if (!pack)
+				{
+					// World's event vaults are files of their own: `create vault x in
+					// x.bin` makes one in gc.vaults.
+					if (db_.target().game != Game::World) fail("no pack " + s.word + " is open");
+					if (file.size() < 5 || file.substr(file.size() - 4) != ".bin") fail("an event vault file's name ends in .bin, not " + s.word);
+					if (FindVault(db_, name)) fail("the database has a vault " + name + " already");
+					const Vault* like = EventVaultModel(db_);
+					if (!like) fail("no vault is open to copy the header from");
+					const std::string written = NameOf(s.word).empty() ? s.word : NameOf(s.word);
+					const std::string path = NewEventVaultPath(db_, written.substr(0, written.size() - 4));
+					LoadedPack& made = CreateEventVaultFile(db_, path, name, *like);
+					rep_.touched.insert(&made);
+					return;
+				}
+				if (const std::string p = VaultNameProblem(db_, *pack, name); !p.empty()) fail(p);
 				if (pack->vaults.empty()) fail(s.word + " has no vault to copy the header from");
 				CreateVault(*pack, name, *pack->vaults.front());
 				pack->dirty = true;
@@ -1669,12 +1685,53 @@ namespace attrib::script
 				for (const auto& pk : db_.packs())
 					if (Vault* v = FindVault(*pk, name))
 					{
-						if (!RemoveVault(*pk, *v)) fail("vault " + name + " isn't empty");
-						pk->dirty = true;
-						rep_.touched.insert(pk.get());
+						LoadedPack* pack = pk.get();
+						if (pack->format == PackFormat::VaultFile)
+						{
+							// An event vault is its file: the file goes when the database is saved.
+							const std::string path = pack->path;
+							if (!db_.removePack(*pack)) fail("vault " + name + " isn't empty");
+							rep_.touched.erase(pack);
+							rep_.removedFiles.push_back(path);
+							return;
+						}
+						if (!RemoveVault(*pack, *v)) fail("vault " + name + " isn't empty");
+						pack->dirty = true;
+						rep_.touched.insert(pack);
 						return;
 					}
 				info("vault " + name + " is gone already");
+			}
+
+			void renameVault(const Statement& s)
+			{
+				const std::string name = NameOf(s.vault).empty() ? s.vault : NameOf(s.vault);
+				const std::string to = NameOf(s.word).empty() ? s.word : NameOf(s.word);
+				Vault* v = FindVault(db_, name);
+				if (!v)
+				{
+					if (FindVault(db_, to))
+					{
+						info("vault " + name + " is called " + to + " already");
+						return;
+					}
+					fail("no vault " + name + " is open");
+				}
+				try
+				{
+					for (Collection* c : RenameVault(db_, *v, to))
+						if (c->vault && c->vault->pack)
+						{
+							c->vault->pack->dirty = true;
+							rep_.touched.insert(c->vault->pack);
+						}
+				}
+				catch (const std::runtime_error& e)
+				{
+					fail(e.what());
+				}
+				v->pack->dirty = true;
+				rep_.touched.insert(v->pack);
 			}
 
 			// `echo`: its values joined by spaces. In a block, a word naming one of

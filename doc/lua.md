@@ -122,7 +122,7 @@ for byte.
 
 ## The compilers
 
-`thirdparty/lua50` holds the core of Lua 5.0.1 (`src/`, from lua.org, with
+`external/lua50` holds the core of Lua 5.0.1 (`src/`, from lua.org, with
 its `COPYRIGHT`). Each `lua50_*.cpp` compiles one Lua source file as C++
 inside `namespace lua50`, so none of Lua's `lua_*`/`luaX_*` symbols can clash
 with a second Lua version linked later. `lua50_config.h` includes the C
@@ -153,7 +153,7 @@ pick a patch level. 5.0.1 is the version `project_description.txt` names, and it
 
 ### Lua 5.1.3
 
-`thirdparty/lua51` holds the core of Lua 5.1.3 (`src/`, from lua.org's
+`external/lua51` holds the core of Lua 5.1.3 (`src/`, from lua.org's
 `lua-5.1.3.tar.gz`, with its `COPYRIGHT`), built the way the 5.0 core is: each
 `lua51_*.cpp` compiles one source file as C++ inside `namespace lua51`. The
 two cores share no symbol, and no translation unit sees both: callers include

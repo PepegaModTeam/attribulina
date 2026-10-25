@@ -38,8 +38,11 @@ namespace app
 	{
 		arrayTails_.clear(); // they point into the old database
 		undo_.clear();
+		// A deleted event vault's file is still removed by the next save.
+		const std::vector<std::string> removed = removedFiles();
 		savedPacks_.clear();
 		savedCompression_.clear();
+		for (const std::string& f : removed) savedPacks_[f] = nullptr;
 		undoPacks_.clear();
 		undoTouched_.clear();
 		undoChanged_ = undoAll_ = undoScript_ = false;
@@ -61,10 +64,11 @@ namespace app
 				log(LogLevel::Warning, "Undo is off: could not keep " + pk->path + ": " + e.what());
 				return;
 			}
+			first.paths.push_back(pk->path);
 			first.packs.push_back(b);
 			first.compression.push_back(pk->compression);
-			savedPacks_.push_back(pk->dirty ? nullptr : b);
-			savedCompression_.push_back(pk->compression);
+			savedPacks_[pk->path] = pk->dirty ? nullptr : b;
+			savedCompression_[pk->path] = pk->compression;
 		}
 		undo_.push_back(std::move(first));
 		undoPos_ = 0;
@@ -115,29 +119,41 @@ namespace app
 		label.swap(undoLabel_);
 		const bool script = undoScript_;
 		undoChanged_ = undoAll_ = undoScript_ = false;
-		if (!db_ || undoPos_ < 0 || undo_[size_t(undoPos_)].packs.size() != db_->packs().size()) return;
+		if (!db_ || undoPos_ < 0) return;
 
+		// Packs by path: an event vault file made or deleted since is new or gone.
+		const UndoState& prev = undo_[size_t(undoPos_)];
 		UndoState next;
-		next.packs = undo_[size_t(undoPos_)].packs;
-		for (const auto& pk : db_->packs()) next.compression.push_back(pk->compression);
-		bool any = next.compression != undo_[size_t(undoPos_)].compression;
-		for (size_t i = 0; i < db_->packs().size(); ++i)
+		bool any = false;
+		for (const auto& pk : db_->packs())
 		{
-			const LoadedPack& pk = *db_->packs()[i];
-			if (!packs.count(&pk) && !(all && pk.dirty)) continue;
-			try
+			const auto at = std::find(prev.paths.begin(), prev.paths.end(), pk->path);
+			const size_t j = size_t(at - prev.paths.begin());
+			const bool was = at != prev.paths.end();
+			std::shared_ptr<const Bytes> b = was ? prev.packs[j] : nullptr;
+			any |= !was || prev.compression[j] != pk->compression;
+			if (!was || packs.count(pk.get()) || (all && pk->dirty))
 			{
-				auto b = std::make_shared<const Bytes>(WritePack(*db_, pk));
-				if (*b == *next.packs[i]) continue; // set back to what it was
-				next.packs[i] = std::move(b);
-				any = true;
+				try
+				{
+					auto w = std::make_shared<const Bytes>(WritePack(*db_, *pk));
+					if (!b || *w != *b) // else set back to what it was
+					{
+						b = std::move(w);
+						any = true;
+					}
+				}
+				catch (const std::exception& e)
+				{
+					log(LogLevel::Warning, "Could not keep this step for undo: " + std::string(e.what()));
+					return;
+				}
 			}
-			catch (const std::exception& e)
-			{
-				log(LogLevel::Warning, "Could not keep this step for undo: " + std::string(e.what()));
-				return;
-			}
+			next.paths.push_back(pk->path);
+			next.packs.push_back(std::move(b));
+			next.compression.push_back(pk->compression);
 		}
+		any |= next.paths != prev.paths;
 		if (!any) return;
 		if (label.empty())
 		{
@@ -194,7 +210,6 @@ namespace app
 	void App::restoreUndo(int pos)
 	{
 		const UndoState& to = undo_[size_t(pos)];
-		if (to.packs.size() != db_->packs().size()) return;
 		auto fresh = std::make_unique<Database>();
 		fresh->setTarget(db_->target());
 		if (db_->sharedTypeSchema()) fresh->addTypeSchema(db_->sharedTypeSchema());
@@ -205,10 +220,10 @@ namespace app
 		{
 			for (size_t i = 0; i < to.packs.size(); ++i)
 			{
-				const LoadedPack& old = *db_->packs()[i];
-				LoadedPack& np = fresh->loadPack(old.path, *to.packs[i]);
-				np.compression = i < to.compression.size() ? to.compression[i] : old.compression;
-				np.dirty = to.packs[i] != savedPacks_[i] || (i < savedCompression_.size() && np.compression != savedCompression_[i]);
+				LoadedPack& np = fresh->loadPack(to.paths[i], *to.packs[i]);
+				np.compression = to.compression[i];
+				const auto saved = savedPacks_.find(to.paths[i]);
+				np.dirty = saved == savedPacks_.end() || to.packs[i] != saved->second || np.compression != savedCompression_[to.paths[i]];
 			}
 		}
 		catch (const std::exception& e)
@@ -243,6 +258,7 @@ namespace app
 		pendingTarget_ = pendingTemplate_ = nullptr;
 		pendingClass_ = nullptr;
 		pendingVault_ = nullptr;
+		pendingPack_ = nullptr;
 		explorerFocus_ = explorerTarget_ = {};
 		dropSource_ = dropParent_ = nullptr;
 		dropClass_ = nullptr;

@@ -1973,6 +1973,7 @@ namespace attrib::nfsms
 						out.push_back("change_vault " + Token(nameOf(s.target.cls)) + " " + Token(nameOf(s.target.name)) + " " + Token(s.vault));
 						break;
 					case K::CreateVault: out.push_back("# vault " + s.vault + " in " + s.word + " (change_vault makes it)"); break;
+					case K::RenameVault: out.push_back("# rename vault " + s.vault + " to " + s.word + ": nfsms has no command that renames a vault"); break;
 					case K::Class: out.push_back("# class " + nameOf(s.word) + ": nfsms has no command that makes or changes a class (a mod script's class statement does)"); break;
 					case K::DeleteClass: out.push_back("# delete class " + nameOf(s.word) + ": nfsms has no command that deletes a class"); break;
 					default: out.push_back("# a mod script statement nfsms has no command for"); break;

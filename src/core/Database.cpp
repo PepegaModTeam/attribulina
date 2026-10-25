@@ -627,6 +627,29 @@ namespace attrib
 		return *packs_.back();
 	}
 
+	LoadedPack& Database::addPack(const std::string& path, PackFormat format)
+	{
+		auto pack = std::make_unique<LoadedPack>();
+		pack->path = path;
+		pack->format = format;
+		pack->dirty = true; // its file isn't there yet
+		packs_.push_back(std::move(pack));
+		return *packs_.back();
+	}
+
+	bool Database::removePack(const LoadedPack& pack)
+	{
+		const auto it = std::find_if(packs_.begin(), packs_.end(), [&](const auto& p)
+		{
+			return p.get() == &pack;
+		});
+		if (it == packs_.end()) return false;
+		for (const auto& v : pack.vaults)
+			if (!v->collections.empty() || !v->classes.empty() || v->isDatabase) return false;
+		packs_.erase(it);
+		return true;
+	}
+
 	void Database::loadVault(Vault& vault)
 	{
 		const RawVault& raw = vault.raw;

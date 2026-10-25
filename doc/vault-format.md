@@ -305,7 +305,14 @@ World classes, the data and the code describe (`scripts/world/world_types.h`).
   slot, `GameCore::VaultSlot` (the 2010 beta's bindings: -1 `kVaultSlot_Core`,
   0 `kVaultSlot_Event`), and the community Attribulator calls it
   `VaultSlotExport`. The model keeps it as read (`Vault::dataExports`), and a
-  new collection goes before it. **V**
+  new collection goes before it. Its export id is `StringHash32("VaultData")`
+  in every file. **V**
+- **A new event vault** (`CreateEventVaultFile`, Edit.h) is a file of its own
+  in `gc.vaults` holding one vault with the header fields of the database's
+  others, the `DepN` of any new vault, no `Sign`, and `VaultData` 0. The
+  folder's name sits beside `InitGameplayStage1` in `nfsw.exe`'s boot stages,
+  so the game reads the folder as it starts, and `gpcore.bin` names no event
+  vault. **I** (that the game takes a file it hasn't seen; not tried in game)
 - **`mLayoutCount`** isn't Undercover's rule in 49 of the final build's 113
   classes: `caraudio` lays out 32 fields and stores 61, `emitterdata` lays out
   44 and stores 9, and 33 classes have a key shift. They size the class's layout
@@ -433,10 +440,13 @@ An inline `Text` is a `char*`, so it carries a vlt-located fixup. **V**
 Elements start at +8, or at +16 when `mEncodedTypePad & 0x8000`, which the
 `Vector4` arrays use. In retail `mAlloc == mCount` (every entry array of
 every folder in `attrib/databases`, the re-saves included), and resizing an
-entry array keeps it so (`InsertElement`, `RemoveElement`). Earlier builds of
-the editor left `mAlloc` above the count when an array shrank; the writer writes
-the spare slots zeroed, so a zeroed tail reads as exactly writable, and only one
-holding data is a warning. No entry array's
+entry array keeps it so (`InsertElement`, `RemoveElement`). NFS-VltEd keeps
+`mAlloc` when an array it grew shrinks back, so its files can hold spare slots
+no retail file has. They do the game no harm and nothing needs them; the
+re-saves in `attrib/databases` have none. Earlier builds of the editor left
+`mAlloc` above the count the same way. The writer writes the spare slots
+zeroed, so a zeroed tail reads as exactly writable, and only one holding data
+is a warning. An array the editor resizes gets `mAlloc` back at its count. No entry array's
 count goes past its definition's `mMaxCount` (Pro Street PC and PS2, Carbon
 PC, the 360 demo, Undercover Wii). The game reads an entry array by its own
 header, so the editor lets scripts, and the inspector with Edit > Allow Arrays

@@ -29,6 +29,12 @@ namespace attrib
 	// in the folder above.
 	std::optional<std::string> DatabaseFileFor(const std::string& pack);
 
+	// Where World's event vault file `file` ("x.bin") goes for the database
+	// whose attributes.bin, or one of whose event vaults, is at `pack`: in the
+	// gc.vaults folder beside attributes.bin (as it is spelled there, when it
+	// is), or beside the event vault.
+	std::string EventVaultPath(const std::string& pack, const std::string& file);
+
 	// A VPAK, a compressed one, or one of World's event vaults.
 	bool LooksLikePack(const std::string& path);
 

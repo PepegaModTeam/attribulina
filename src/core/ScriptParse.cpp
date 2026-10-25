@@ -773,10 +773,21 @@ namespace attrib::script
 				else if (w == "rename")
 				{
 					next();
-					s.kind = K::Rename;
-					s.target = target();
-					expectWord("to");
-					s.word = name("the new name");
+					if (atWord("vault") && !atPunct("/", 1))
+					{
+						next();
+						s.kind = K::RenameVault;
+						s.vault = name("a vault name");
+						expectWord("to");
+						s.word = name("the new name");
+					}
+					else
+					{
+						s.kind = K::Rename;
+						s.target = target();
+						expectWord("to");
+						s.word = name("the new name");
+					}
 				}
 				else if (w == "move")
 				{
@@ -1576,6 +1587,7 @@ namespace attrib::script
 				case K::MoveToVault: out += "move " + s.target.text() + " to vault " + Name(s.vault); break;
 				case K::CreateVault: out += "create vault " + Name(s.vault) + " in " + Name(s.word); break;
 				case K::DeleteVault: out += "delete vault " + Name(s.vault); break;
+				case K::RenameVault: out += "rename vault " + Name(s.vault) + " to " + Name(s.word); break;
 				case K::Set:
 				{
 					out += s.path.text() + (s.op == '=' ? " = " : std::string(" ") + s.op + "= ");

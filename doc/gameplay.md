@@ -36,6 +36,12 @@ Every element sets `Name` and `CollectionName` to its own path. Retail breaks th
 
 The naming follows the siblings. A track layout's vault is its own last path part (`autobahn_gd_grip_1`). A race's is the bin's suffix plus its own (`an_2_1_gr_1` for `race_bin_an_2_1/gr_1`). The editor suggests names the same way.
 
+The 4426 elements that set no `gameplayvault` of their own inherit `gpcore` from `baseelement`, the root template, and the element header shows that.
+
+New Element Here makes the vault when its first child goes in. The Explorer's Files tab makes, renames and deletes vaults directly (a pack's and a vault's right-click menus). Renaming a vault changes every `gameplayvault` that named it. Deleting one takes its collections, and those made from them, with it, but leaves the `Children` lists and `gameplayvault` values that name them.
+
+World keeps each event in a file of its own, `gc.vaults/<event>.bin`, and the event's element sets `gameplayvault` to its own vault (`race_bin_10/10_2_2_sprint` in `10_2_2_sprint.bin`, with its children in the same file). The Files tab's menu makes a new one (New Event Vault File); saving writes it.
+
 ## References
 
 `GCollectionKey` fields hold `StringHash32` of a collection name. Of 8,394 resolvable values, all but `SunAndSky` point at gameplay elements. `SunAndSky` points at the `sunandsky` class (714 values). 63 values name nothing that is loaded.

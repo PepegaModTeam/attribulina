@@ -170,6 +170,7 @@ namespace attrib::script
 			MoveToVault, // move target to vault vault
 			CreateVault, // create vault vault in file word
 			DeleteVault, // delete vault vault
+			RenameVault, // rename vault vault to word
 			Set,         // path op value [was was]
 			Revert,      // revert path: inherit again
 			Resize,      // resize path count
@@ -299,6 +300,9 @@ namespace attrib::script
 		size_t valuesSet = 0, created = 0, deleted = 0, moved = 0, renamed = 0, reverted = 0;
 		size_t classesCreated = 0, classesChanged = 0, classesDeleted = 0;
 		std::set<LoadedPack*> touched;     // packs that changed (now marked dirty)
+		// Packs it dropped (World event vault files whose vault was deleted): saving
+		// the database removes their files.
+		std::vector<std::string> removedFiles;
 		std::vector<std::string> newNames; // names the dictionary didn't have
 		std::string summary() const;       // "3 values set, 1 collection created"
 		size_t warnings() const;

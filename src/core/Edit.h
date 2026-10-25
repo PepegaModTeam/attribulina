@@ -66,13 +66,54 @@ namespace attrib
 	// As `vault` stores it: StringHash64 of the same text in the early Most Wanted demos.
 	uint64_t CollectionExportId(const Vault& vault, const KeyNames& names, uint32_t classKey, const std::string& name);
 
-	// A new, empty vault in `pack`, with the header fields (version, endianness)
-	// of `like` and the usual dependencies "<name>.vlt" and "<name>.bin". Throws
-	// if the pack already has a vault of that name.
+	// A new, empty vault in `pack`, with the header fields (version, endianness,
+	// World's EndC chunks) of `like` and the usual dependencies "<name>.vlt" and
+	// "<name>.bin". Throws if the pack already has a vault of that name, or is
+	// one of World's event vault files (they hold one vault each).
 	Vault& CreateVault(LoadedPack& pack, const std::string& name, const Vault& like);
 	// Removes an empty vault (no collections, no classes, not the database).
 	bool RemoveVault(LoadedPack& pack, Vault& vault);
 	Vault* FindVault(LoadedPack& pack, const std::string& name);
+	// The vault of that name in any pack of the database, or null.
+	Vault* FindVault(const Database& db, const std::string& name);
+
+	// Why `name` can't name a new vault in `pack`, or be `self`'s new name: it
+	// is empty, starts or ends with a space, holds a character a file name can't
+	// (its dependencies are "<name>.vlt" and "<name>.bin", and World names an
+	// event vault's file by it), is too long for an event vault file's header,
+	// or a vault of the database has it already, in any case (the game finds
+	// vaults by name, and Windows file names ignore case). Empty when it can.
+	std::string VaultNameProblem(const Database& db, const LoadedPack& pack, const std::string& name, const Vault* self = nullptr);
+
+	// The gameplay collections whose own gameplayvault names `vaultName`: the
+	// elements whose children the game loads from that vault.
+	std::vector<Collection*> CollectionsNamingVault(const Database& db, const std::string& vaultName);
+
+	// Renames `vault`. Its dependencies follow, and so does every gameplayvault
+	// value that named it (CollectionsNamingVault), which it returns. Throws for
+	// a name VaultNameProblem refuses, for the database's vault, and for one of
+	// World's event vaults, which its file is named after (make another event
+	// vault file and move the collections into it).
+	std::vector<Collection*> RenameVault(Database& db, Vault& vault, const std::string& name);
+
+	// What deleting `vault` with what it holds takes: its collections and every
+	// collection under them (in any vault), each child before its parent.
+	std::vector<Collection*> VaultContents(const Vault& vault);
+
+	// World's event vaults are files of their own (gc.vaults\<name>.bin, Pack.h),
+	// loaded from that folder when the game starts. A new one at `path`, holding
+	// vault `name` with the header fields of `like` (another of the database's
+	// vaults) and the VaultData export every event vault ends with, set to slot
+	// 0 (kVaultSlot_Event). Throws for a name VaultNameProblem refuses or a
+	// path that is open already. Database::removePack drops one emptied again.
+	LoadedPack& CreateEventVaultFile(Database& db, const std::string& path, const std::string& name, const Vault& like);
+	// Where a new event vault `name` of the database goes (EventVaultPath,
+	// Folder.h): beside its open event vaults, else in the gc.vaults folder
+	// beside its attributes.bin. Empty when no pack is open.
+	std::string NewEventVaultPath(const Database& db, const std::string& name);
+	// The vault a new event vault takes its header fields from: an open event
+	// vault, else the database's vault. Null when no vault is open.
+	const Vault* EventVaultModel(const Database& db);
 
 	// Reorders a vault's exports so every collection comes after its parent when
 	// the parent is in the same vault (the game looks parents up as it loads).
