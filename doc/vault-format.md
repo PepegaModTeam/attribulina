@@ -307,9 +307,11 @@ World classes, the data and the code describe (`scripts/world/world_types.h`).
   `VaultSlotExport`. The model keeps it as read (`Vault::dataExports`), and a
   new collection goes before it. **V**
 - **`mLayoutCount`** isn't Undercover's rule in 49 of the final build's 113
-  classes, and nothing here derives it: `caraudio` lays out 32 fields and stores
-  61, `emitterdata` lays out 44 and stores 9. The writer writes it as read, for
-  every game, since nothing edits a class's fields. **V**
+  classes: `caraudio` lays out 32 fields and stores 61, `emitterdata` lays out
+  44 and stores 9, and 33 classes have a key shift. They size the class's layout
+  table, which grows as needed, so World's tool sized its tables larger. The
+  writer writes them as stored, and a class laid out again (`doc/classes.md`)
+  keeps them. **V**
 - **A stale layout slot.** One collection of `gpcore.bin` has `0x00120000` in
   its layout pointer's slot, which the fixup overwrites. The writer keeps it
   (`Collection::layoutSlotStored`). **V**
@@ -382,15 +384,14 @@ inside the class's nominal layout size.
 
 ```
 DatabaseLoadData (0x10) + u32 typeSize[mNumTypes]
-  u32 mNumClasses (214, unexplained, preserved); u32 mDefaultDataSize (0x558, preserved);
-  u32 mNumTypes; char* mTypenames
+  u32 mNumClasses (214); u32 mDefaultDataSize (0x558); u32 mNumTypes; char* mTypenames
 ClassLoadData (0x20)
   u32 mClass; u32 mCollectionReserve; u32 mNumDefinitions; Definition* mDefinitions;
   u32 mStaticSize; void* mStaticData; u32 mLayoutSize; u16 mLayoutKeyShift; u16 mLayoutCount
 Definition (0x10)
   u32 mKey; u32 mType (StringHash32 of the type name, not an index); u16 mOffset; u16 mSize;
   u16 mMaxCount; u8 mFlags; u8 mAlignment (log2)
-  flags: 1 array, 2 in layout, 4 bound, 8 not searchable, 16 static
+  flags: 1 array, 2 in layout, 4 bound, 8 not searchable, 16 static, 32 has handler (Undercover on)
 CollectionLoadData (0x20) + u32 typeHashes[mTypesLen] + AttribEntry[mNumEntries]
   u32 mKey; u32 mClass; u32 mParent; u32 mTableReserve; u32 mTableKeyShift; u32 mNumEntries;
   u16 mNumTypes; u16 mTypesLen (mNumTypes rounded up to even, zero padded); void* mLayout
@@ -398,15 +399,28 @@ AttribEntry (0xC)
   u32 mKey; u32 mData; u16 mType (index into typeHashes); u8 mNodeFlags; u8 mEntryFlags (0)
 ```
 
-Derived fields:
-- Definitions are sorted by key. **V**
-- `mLayoutCount` is the number of layout fields without the not-searchable flag,
-  up to Undercover; World's follows no rule found, and the writer keeps the stored
-  one everywhere. **V**
+Derived fields (`doc/classes.md` has the rules a new class is laid out by and
+what the games' code does with each):
+- Definitions are sorted by key (the game binary-searches them). **V**
+- `mLayoutCount` and `mLayoutKeyShift` size the class's layout table (the
+  searchable layout fields, found by key): the count of layout fields without
+  the not-searchable flag and 0, up to Undercover; World's are larger. The
+  table grows as needed. **V**
 - `mTableReserve` equals the entry count. **V**
-- `mLayoutSize = align(end of the last layout field, 1 << max alignment)`. **V**
+- `mLayoutSize = align(end of the last layout field, 1 << max alignment)`, left
+  unrounded in some PS2 and GameCube classes. **V**
 - `mCollectionReserve` is about 1.4 × the class's collections across the
-  game's packs. **I**: it is preserved.
+  game's packs, the starting size of its collection table, which grows. **V**
+  (the code) **I** (the factor); it is preserved.
+- `mNumClasses` is the starting size of the database's class table, about
+  1.5 × (classes + 2); it grows too. **V** `mDefaultDataSize` is the largest
+  layout or type size, and the game doesn't use it: its default data area is a
+  buffer of a size compiled into it. **V** Both are preserved, and grow when a
+  class is added.
+- Every field has the bound flag, which no code reads. Alignment is the type's
+  natural one, and HasHandler goes with the types the game gives a handler
+  (`NaturalAlignment`, `TypeHasHandler` in `ClassDesign.h`). **V** on every
+  retail definition.
 
 ## Values
 
@@ -417,7 +431,12 @@ An inline `Text` is a `char*`, so it carries a vlt-located fixup. **V**
 
 **Arrays.** The header is `{u16 mAlloc; u16 mCount; u16 mSize; u16 mEncodedTypePad}`.
 Elements start at +8, or at +16 when `mEncodedTypePad & 0x8000`, which the
-`Vector4` arrays use. In retail `mAlloc == mCount`, and no entry array's
+`Vector4` arrays use. In retail `mAlloc == mCount` (every entry array of
+every folder in `attrib/databases`, the re-saves included), and resizing an
+entry array keeps it so (`InsertElement`, `RemoveElement`). Earlier builds of
+the editor left `mAlloc` above the count when an array shrank; the writer writes
+the spare slots zeroed, so a zeroed tail reads as exactly writable, and only one
+holding data is a warning. No entry array's
 count goes past its definition's `mMaxCount` (Pro Street PC and PS2, Carbon
 PC, the 360 demo, Undercover Wii). The game reads an entry array by its own
 header, so the editor lets scripts, and the inspector with Edit > Allow Arrays

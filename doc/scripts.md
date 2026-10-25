@@ -57,6 +57,8 @@ Scripts are UTF-8 text. A statement ends at the end of the line or at `;`, and `
 | `move C to vault V` | Saves `C` in another vault. |
 | `create vault V in FILE` | A new, empty vault in an open pack such as `gameplay.lzc`. |
 | `delete vault V` | Removes an empty vault. |
+| `class C [in vault V] { fields }` | Makes class `C` if it's missing, or else lays it out again to these fields, its collections' values following (see Classes). A class of the game stays as it is: the statement applies only when it describes it as it is. |
+| `delete class C` | Deletes class `C` and every collection of it. Deleting one that is gone already is a note, not an error. |
 | `if ... { } else { }` | Runs one of the blocks, by option values. Works at the top and inside blocks. |
 | `echo value ...` | Prints its values, joined by spaces, to the Log (attribcli: standard output). `$option` prints the option's value. |
 | `echo warning value ...` | The same as a warning. |
@@ -76,6 +78,35 @@ Inside an `edit`, `create` or `collection` block:
 | `insert FIELD[0] = value` | Inserts an element (zero without `= value`). |
 | `remove FIELD[3]` | Removes an element. |
 | `echo value ...` | As at the top, and a word that names one of the collection's fields prints its value: `echo "horn was" HornType`. |
+
+## Classes
+
+A `class` statement lists its fields, one per line: where the value is kept, the field's name, and its type, a type of the game's type table by its full name or by the short name the editor shows when only one type has it (`Float`, `RefSpec`, `EA::Reflection::Float`, `Attrib::Types::Vector4`).
+
+```
+class mod_racer {
+    layout SPEED Float
+    layout TARGET RefSpec
+    layout WEIGHTS Float[4]        # four slots in every collection's layout
+    layout DEBUG_ONLY Bool unsearchable
+    entry COUNT Int32
+    entry NAMES StringKey[]        # as many as a collection sets
+    entry STAGES Float[8]          # at most 8
+}
+collection mod_racer/base under root {
+    SPEED = 1.5
+    NAMES = ["a", "b"]
+}
+```
+
+- `layout` fields are in every collection, at a fixed place in its layout block, in the order listed. `entry` fields are optional: a collection sets them or inherits them. `static` fields hold one value for the class, `static NAME TYPE = value`; only the game's own classes have them.
+- `[n]` after the type makes an array: a layout array's slots, an entry array's most elements (`[]`: no limit).
+- `unsearchable` keeps a layout field out of the class's layout table, so the game finds it through its compiled layout only, not by key.
+- The class goes in the database's vault (`db` in attributes.bin), where the game loads classes first. `in vault` names it; another vault is refused.
+- For a class that exists, the statement is its new design: fields keep their values in every collection when they keep their name and type, wherever they are kept now, and the others' values go. A class of the game (one the game's own files define, `doc/classes.md`) can't be changed: a statement that describes it as it is applies, any other stops the script.
+- Offsets, sizes and counts follow from the fields, by the rules the game's classes follow (`doc/classes.md`). A statement written from a game class keeps the few stored values those rules don't give, as words after the field or the class: `at 22`, `align 2`, `flags 0x0E`, `max 1`, `size 12`, `reserve 1273`, `layoutsize 96`, `layoutcount 61`, `keyshift 1`, `staticsize 1036`, and a last line `bytes "..."` holding the static block when bytes of it belong to no field (World's `gameplay`).
+
+The editor writes a `class` statement for a class from its menu (Add to Script > Class Definition), and a diff or the change recorder writes one for every class made or changed.
 
 ## Values
 
@@ -165,12 +196,12 @@ File > Apply Script... applies a file without opening it in the panel.
 
 A diff between two databases compares only packs that both have open. It gives, in this order:
 
-1. new vaults,
+1. new vaults, then classes made or changed,
 2. renames: a deleted and a new collection with the same values, vault and parent,
 3. new collections, as `collection` statements with all their values, layout fields included, parents first,
 4. moves to another parent or vault,
 5. changed values, as the smallest part that changed (`ENGINE.TORQUE[2] = ...`) with `was`. A changed array length sets the whole array.
-6. deletions, children first, and then removed vaults.
+6. deletions, children first, then deleted classes (their collections go with them), then removed vaults.
 
 ## Games and platforms
 
@@ -209,6 +240,7 @@ attribcli export GLOBAL pvehicle/911gt3 --children -o 911.amod
 attribcli export GLOBAL car --field isBoosterPack --edit
 attribcli get GLOBAL pvehicle/street [HornType ...]   # values as script text; inherited ones are marked
 attribcli list GLOBAL [pvehicle]                      # classes, or one class's collections as a tree
+attribcli header GLOBAL mod_racer -o mod_racer.h      # the class's Attrib::Gen header (doc/classes.md)
 attribcli info GLOBAL
 ```
 
