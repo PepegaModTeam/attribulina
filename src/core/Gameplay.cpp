@@ -439,6 +439,25 @@ namespace attrib
 		return out;
 	}
 
+	std::vector<Collection*> GameplayFolderContents(const GameplayModel& m, const GameplayModel::Node& folder)
+	{
+		std::vector<Collection*> out;
+		std::unordered_set<const Collection*> seen;
+		std::function<void(Collection*)> listed = [&](Collection* x)
+		{
+			if (!seen.insert(x).second) return;
+			out.push_back(x);
+			for (Collection* kid : m.listedChildren(x)) listed(kid);
+		};
+		std::function<void(const GameplayModel::Node&)> walk = [&](const GameplayModel::Node& n)
+		{
+			if (n.collection) listed(n.collection);
+			for (const GameplayModel::Node* k : n.children) walk(*k);
+		};
+		walk(folder);
+		return out;
+	}
+
 	std::string StorageVaultName(const GameplayModel& m, const Collection* owner)
 	{
 		return owner ? m.childrenVaultName(owner) : std::string();

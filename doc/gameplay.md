@@ -28,6 +28,8 @@ An element lists the elements under it in `Children` (`GCollectionKey[]`). 4802 
 
 Every element sets `Name` and `CollectionName` to its own path. Retail breaks this in a few places: `Name` is `character` on some characters, and 2 `CollectionName`s name another element. The editor keeps them as they are.
 
+Paths and `Children` lists mostly agree, but not always. `race_bin_exotic/4_5_2/shortcut06` lists the 46 checkpoints, triggers, start grid and finish line kept under `tracks/leipzig/leipzig_grip_1_gp`, and a few elements sit under a folder's path with no list naming them. So a folder's Add to Script > With Everything Under It (`GameplayFolderContents`) takes both: the elements under its path, then whatever their lists name. The script also makes the vaults they are kept in and sets the owner's `Children`, so it rebuilds the folder in a database without it (`doc/scripts.md`).
+
 ## gameplayvault
 
 `gameplayvault` (`Text`) names the vault that holds an element's children, and the game loads that vault by name. In retail, all 4802 listed children are stored in their owner's `gameplayvault` vault. For example, `tracks/autobahn_gd` (stored in `gpcore`) has `gameplayvault` `autobahn_gd`, and its layouts live in vault `autobahn_gd`. `tracks/autobahn_gd/autobahn_gd_grip_1` has `autobahn_gd_grip_1`, which holds its checkpoints, start grid and finish line.

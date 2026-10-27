@@ -7,6 +7,7 @@
 
 #include "Compression.h"
 #include "Curve.h"
+#include "Gameplay.h"
 #include "TypeLayouts.h"
 #include "Hash.h"
 #include "lua/Lua.h"
@@ -667,15 +668,57 @@ namespace attrib::script
 		return sc;
 	}
 
+	Statement CreateVaultStatement(const Vault& vault)
+	{
+		Statement s;
+		s.kind = K::CreateVault;
+		s.vault = vault.name;
+		if (vault.pack) s.word = FileName(vault.pack->path);
+		return s;
+	}
+
 	std::vector<Statement> Export(const Database& db, const std::vector<const Collection*>& collections, const ExportSettings& settings)
 	{
 		Gen gen(db);
 		std::vector<Statement> out;
-		for (const Collection* c : ParentsFirst(collections))
+		const std::vector<const Collection*> list = ParentsFirst(collections);
+		if (settings.vaults && !settings.editOnly)
+		{
+			std::vector<const Vault*> vaults;
+			for (const Collection* c : list)
+				if (c->vault && c->vault->pack && !c->vault->isDatabase && std::find(vaults.begin(), vaults.end(), c->vault) == vaults.end())
+					vaults.push_back(c->vault);
+			for (const Vault* v : vaults) out.push_back(CreateVaultStatement(*v));
+		}
+		for (const Collection* c : list)
 		{
 			Statement s = CollectionStatement(db, gen, *c, settings);
 			if (settings.editOnly && s.body.empty()) continue;
 			out.push_back(std::move(s));
+		}
+		return out;
+	}
+
+	std::vector<Statement> ExportGameplay(const Database& db, const GameplayModel& m, const std::vector<const Collection*>& elements)
+	{
+		ExportSettings st;
+		st.vaults = true;
+		std::vector<Statement> out = Export(db, elements, st);
+		// The game finds an element through its owner's Children: an owner left
+		// out keeps its whole list (as a diff writes a list that grew).
+		const std::unordered_set<const Collection*> in(elements.begin(), elements.end());
+		std::vector<const Collection*> owners;
+		for (const Collection* c : elements)
+		{
+			const Collection* o = m.owner(c);
+			if (!o || in.count(o) || std::find(owners.begin(), owners.end(), o) != owners.end()) continue;
+			const std::vector<Collection*> listed = m.listedChildren(o);
+			if (std::find(listed.begin(), listed.end(), c) != listed.end()) owners.push_back(o);
+		}
+		for (const Collection* o : owners)
+		{
+			Statement s = ExportValue(db, *o, StringHash32(gameplay::kChildren));
+			if (!s.body.empty()) out.push_back(std::move(s));
 		}
 		return out;
 	}
@@ -941,10 +984,9 @@ namespace attrib::script
 				{
 					return idsOf(*ov) == ids;
 				});
-				Statement s;
-				s.vault = v->name;
 				if (was != gone.end())
 				{
+					Statement s;
 					s.kind = K::RenameVault;
 					s.vault = (*was)->name;
 					s.word = v->name;
@@ -954,9 +996,7 @@ namespace attrib::script
 					vaultRenames.push_back(std::move(s));
 					continue;
 				}
-				s.kind = K::CreateVault;
-				s.word = FileName(pk->path);
-				vaults.push_back(std::move(s));
+				vaults.push_back(CreateVaultStatement(*v));
 			}
 		}
 		if (!vaults.empty())
@@ -1098,6 +1138,12 @@ namespace attrib::script
 			if (st.kind == K::Edit || st.kind == K::Collection)
 				for (Statement& s : script.statements)
 					if (s.kind == st.kind && s.target.text() == st.target.text()) into = &s;
+			if (st.kind == K::CreateVault &&
+				std::any_of(script.statements.begin(), script.statements.end(), [&](const Statement& s)
+				{
+					return s.kind == K::CreateVault && Lower(s.vault) == Lower(st.vault);
+				}))
+				continue;
 			if (!into)
 			{
 				script.statements.push_back(st);

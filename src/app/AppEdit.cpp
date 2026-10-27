@@ -513,7 +513,20 @@ namespace app
 			{
 				if (ImGui::MenuItem("This Collection")) addCollectionsToScript({ c }, false);
 				if (ImGui::IsItemHovered()) ImGui::SetTooltip("Its parent, vault and own values, as a script that makes it or updates it");
-				if (ImGui::MenuItem("With Everything Under It", nullptr, false, !c->children.empty())) addCollectionsToScript({ c }, true);
+				if (t.kind == Kind::Element && gameplay_)
+				{
+					// What the folder holds: elements under its path and in Children
+					// lists, not the elements made from it as a template. A race with
+					// nothing under it still needs its vault and its owner's list.
+					const GameplayModel::Node* n = gameplay_->nodeOf(c);
+					if (ImGui::MenuItem("With Everything Under It"))
+						addGameplayToScript(n ? GameplayFolderContents(*gameplay_, *n) : GameplaySubtree(*gameplay_, *c));
+					if (ImGui::IsItemHovered())
+						ImGui::SetTooltip("This element, the ones under its path and those their Children lists name, with\n"
+										  "the vaults they are in and its owner's Children list, so the game finds them");
+				}
+				else if (ImGui::MenuItem("With Everything Under It", nullptr, false, !c->children.empty()))
+					addCollectionsToScript({ c }, true);
 			}
 			else
 			{
@@ -1045,6 +1058,19 @@ namespace app
 		}
 		if (!deletable && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
 			ImGui::SetTooltip("It holds the database's classes.");
+		ImGui::Separator();
+		if (ImGui::BeginMenu("Add to Script"))
+		{
+			if (ImGui::MenuItem("This Vault", nullptr, false, !vault.isDatabase)) addVaultToScript(vault, false);
+			if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+				ImGui::SetTooltip(vault.isDatabase ? "The database's vault is always there."
+					: eventFile ? "A create vault statement: applying it makes this event vault file when it's missing"
+					: "A create vault statement: applying it makes the vault in this file when it's missing");
+			if (ImGui::MenuItem("With Its Collections", nullptr, false, !vault.collections.empty())) addVaultToScript(vault, true);
+			if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+				ImGui::SetTooltip("The vault, then each collection in it with its parent and own values");
+			ImGui::EndMenu();
+		}
 		ImGui::Separator();
 		if (ImGui::MenuItem("Copy Name")) ImGui::SetClipboardText(vault.name.c_str());
 	}

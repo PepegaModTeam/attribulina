@@ -7,6 +7,7 @@
 #include "core/Curve.h"
 #include "core/Edit.h"
 #include "core/Folder.h"
+#include "core/Gameplay.h"
 #include "core/Hash.h"
 #include "core/Script.h"
 #include "core/Writer.h"
@@ -1174,6 +1175,128 @@ TEST("script: Merge folds values into an existing edit") {
     e.body = {x, y};
     sc::Merge(s, {e});
     CHECK_EQ(sc::Print(s), std::string("attribulina 1\nedit a/b {\n    X = 2\n    Y = 2\n}\n"));
+
+    // A vault two additions both make is made once.
+    sc::Script v = sc::Parse("attribulina 1\ncreate vault my_vault in gameplay.lzc\n");
+    sc::Statement cv;
+    cv.kind = sc::Statement::Kind::CreateVault;
+    cv.vault = "MY_vault";
+    cv.word = "gameplay.lzc";
+    sc::Statement other = cv;
+    other.vault = "other";
+    sc::Merge(v, {cv, other});
+    CHECK_EQ(sc::Print(v), std::string("attribulina 1\ncreate vault my_vault in gameplay.lzc\ncreate vault other in gameplay.lzc\n"));
+}
+
+TEST("script: a vault written as a script, with its collections, is made again in a database without it") {
+    auto base = LoadAll();
+    auto cur = sc::CloneDatabase(*base);
+    {
+        GameplayModel m(*cur);
+        Collection& src = Col(*cur, "gameplay", "tracks/autobahn_gd/autobahn_gd_grip_1");
+        DuplicateGameplayElement(*cur, m, src, "tracks/autobahn_gd/autobahn_gd_grip_9", true);
+    }
+    Vault* made = FindVault(*cur, "autobahn_gd_grip_9");
+    CHECK(made && made->collections.size() > 10);
+
+    // `create vault`, then each collection in it.
+    std::vector<sc::Statement> st{sc::CreateVaultStatement(*made)};
+    const std::vector<sc::Statement> cols = sc::Export(*cur, std::vector<const Collection*>(made->collections.begin(), made->collections.end()));
+    st.insert(st.end(), cols.begin(), cols.end());
+    const std::string text = sc::Print(sc::NewScript(*cur, st));
+    CHECK(text.find("create vault autobahn_gd_grip_9 in gameplay.lzc\n") != std::string::npos);
+    CHECK(text.find("collection gameplay/tracks/autobahn_gd/autobahn_gd_grip_9/startgrid1 under ") != std::string::npos);
+
+    auto target = sc::CloneDatabase(*base);
+    const sc::ApplyReport r = sc::Apply(*target, sc::Parse(text, "vault.amod"));
+    CHECK_OK(r);
+    CHECK_EQ(r.warnings(), size_t(0));
+    Vault* again = FindVault(*target, "autobahn_gd_grip_9");
+    CHECK(again && again->pack == target->packs().back().get());
+    CHECK_EQ(again->collections.size(), made->collections.size());
+    for (const Collection* c : made->collections) {
+        const Collection* t = target->findCollection(c->classKey, c->key);
+        CHECK(t && t->vault == again);
+        if (t) CHECK(sc::DiffValues(*target, *t, *cur, *c).body.empty());
+    }
+    // Applied again, it finds the vault there.
+    const sc::ApplyReport twice = sc::Apply(*target, sc::Parse(text, "vault.amod"));
+    CHECK_OK(twice);
+    CHECK_EQ(twice.summary(), std::string("no changes"));
+}
+
+TEST("script: a gameplay folder written as a script makes it, its vaults and its place in its owner's Children") {
+    auto base = LoadAll();
+    auto cur = sc::CloneDatabase(*base);
+    {
+        // A copy of a race bin: new elements in new vaults, listed in prostreet_career/bins.
+        GameplayModel m(*cur);
+        Collection& bin = Col(*cur, "gameplay", "prostreet_career/bins/race_bin_an_2_1");
+        DuplicateGameplayElement(*cur, m, bin, "prostreet_career/bins/race_bin_an_2_9", true);
+    }
+    std::vector<std::string> newVaults;
+    for (const auto& v : cur->packs().back()->vaults)
+        if (!FindVault(*base, v->name)) newVaults.push_back(v->name);
+    CHECK(!newVaults.empty());
+
+    GameplayModel m(*cur);
+    const GameplayModel::Node* folder = m.node("prostreet_career/bins/race_bin_an_2_9");
+    CHECK(folder && folder->collection);
+    // Its elements are made from templates: none are made from it.
+    CHECK(folder->collection->children.empty());
+    const std::vector<Collection*> elements = GameplayFolderContents(m, *folder);
+    CHECK(elements.size() > 5);
+    CHECK(elements.front() == folder->collection);
+    const std::string text = sc::Print(
+        sc::NewScript(*cur, sc::ExportGameplay(*cur, m, std::vector<const Collection*>(elements.begin(), elements.end()))));
+    for (const std::string& v : newVaults) CHECK(text.find("create vault " + v + " in gameplay.lzc\n") != std::string::npos);
+    CHECK(text.find("collection gameplay/prostreet_career/bins/race_bin_an_2_9 under ") != std::string::npos);
+    // The bins folder lists the new bin; the bins themselves come with the folder.
+    CHECK(text.find("edit gameplay/prostreet_career/bins {\n    Children = [") != std::string::npos);
+    CHECK(text.find("edit gameplay/prostreet_career/bins/race_bin_an_2_9 {") == std::string::npos);
+    // Vaults first.
+    CHECK(text.find("create vault ") < text.find("collection gameplay/"));
+
+    // Applied to the database without it, the two match.
+    auto target = sc::CloneDatabase(*base);
+    const sc::ApplyReport r = sc::Apply(*target, sc::Parse(text, "bin.amod"));
+    CHECK_OK(r);
+    if (r.warnings()) std::fprintf(stderr, "%s", Messages(r).c_str());
+    CHECK_EQ(r.warnings(), size_t(0));
+    const sc::Script left = sc::Diff(*target, *cur);
+    if (Changes(left)) std::fprintf(stderr, "%s", sc::Print(left).substr(0, 4000).c_str());
+    CHECK_EQ(Changes(left), size_t(0));
+    const sc::ApplyReport twice = sc::Apply(*target, sc::Parse(text, "bin.amod"));
+    CHECK_OK(twice);
+    CHECK_EQ(twice.summary(), std::string("no changes"));
+
+    // A retail race lists its checkpoints, kept under its track's path: they come
+    // with it, and the script changes nothing in the database it came from.
+    GameplayModel bm(*base);
+    const GameplayModel::Node* race = bm.node("race_bin_exotic/4_5_2/shortcut06");
+    CHECK(race && race->collection && race->children.empty());
+    const std::vector<Collection*> withCheckpoints = GameplayFolderContents(bm, *race);
+    CHECK(std::find(withCheckpoints.begin(), withCheckpoints.end(),
+                    &Col(*base, "gameplay", "tracks/leipzig/leipzig_grip_1_gp/checkpoint1")) != withCheckpoints.end());
+    const std::string raceText = sc::Print(sc::NewScript(
+        *base, sc::ExportGameplay(*base, bm, std::vector<const Collection*>(withCheckpoints.begin(), withCheckpoints.end()))));
+    auto same = sc::CloneDatabase(*base);
+    const sc::ApplyReport none = sc::Apply(*same, sc::Parse(raceText, "race.amod"));
+    CHECK_OK(none);
+    CHECK_EQ(none.summary(), std::string("no changes"));
+    for (size_t i = 0; i < base->packs().size(); ++i) CHECK(WritePack(*same, *same->packs()[i]) == WritePack(*base, *base->packs()[i]));
+}
+
+TEST("script: create vault finds a vault of that name in another file, in any case") {
+    auto db = LoadAll();
+    const Vault* cars = FindVault(*db, "cars");
+    CHECK(cars && cars->pack != db->packs().back().get());
+    const size_t vaults = db->packs().back()->vaults.size();
+    const sc::ApplyReport r = Run(*db, "attribulina 1\ncreate vault CARS in gameplay.lzc\n");
+    CHECK_OK(r);
+    CHECK_EQ(r.summary(), std::string("no changes"));
+    CHECK(Messages(r).find("vault cars exists already in ") != std::string::npos);
+    CHECK_EQ(db->packs().back()->vaults.size(), vaults);
 }
 
 TEST("script: echo prints text, options and field values; echo error stops") {

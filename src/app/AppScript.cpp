@@ -165,6 +165,43 @@ namespace app
 			log(LogLevel::Info, "Added " + std::to_string(st.size()) + " collection" + (st.size() == 1 ? "" : "s") + " to the script");
 	}
 
+	void App::addVaultToScript(const Vault& vault, bool withCollections)
+	{
+		if (!db_) return;
+		std::vector<sc::Statement> st;
+		if (!vault.isDatabase) st.push_back(sc::CreateVaultStatement(vault));
+		size_t collections = 0;
+		if (withCollections)
+		{
+			const std::vector<sc::Statement> more =
+				sc::Export(*db_, std::vector<const Collection*>(vault.collections.begin(), vault.collections.end()));
+			collections = more.size();
+			st.insert(st.end(), more.begin(), more.end());
+		}
+		if (st.empty() || !addToScript(st)) return;
+		log(LogLevel::Info, "Added vault " + vault.name +
+			(withCollections ? " and its " + std::to_string(collections) + " collection" + (collections == 1 ? "" : "s") : std::string()) +
+			" to the script");
+	}
+
+	void App::addGameplayToScript(const std::vector<Collection*>& elements)
+	{
+		if (!db_ || !gameplay_ || elements.empty()) return;
+		const std::vector<sc::Statement> st =
+			sc::ExportGameplay(*db_, *gameplay_, std::vector<const Collection*>(elements.begin(), elements.end()));
+		size_t vaults = 0, owners = 0;
+		for (const sc::Statement& s : st)
+		{
+			vaults += s.kind == sc::Statement::Kind::CreateVault;
+			owners += s.kind == sc::Statement::Kind::Edit;
+		}
+		if (!addToScript(st)) return;
+		std::string what = "Added " + std::to_string(elements.size()) + " gameplay element" + (elements.size() == 1 ? "" : "s");
+		if (vaults) what += ", the " + std::to_string(vaults) + " vault" + (vaults == 1 ? "" : "s") + " they are in";
+		if (owners) what += std::string(vaults ? "," : "") + " and the Children list" + (owners == 1 ? "" : "s") + " naming them";
+		log(LogLevel::Info, what + " to the script");
+	}
+
 	bool App::requestApplyScript(const std::string& text, const std::string& source, const std::string& folder)
 	{
 		try

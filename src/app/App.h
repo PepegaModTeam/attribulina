@@ -389,6 +389,12 @@ namespace app
 		bool addToScript(const std::vector<attrib::script::Statement>& statements, bool show = true);
 		void addCollectionsToScript(const std::vector<attrib::Collection*>& roots, bool withChildren,
 									const attrib::script::ExportSettings& settings = {});
+		// `create vault` (not for the database's own vault), and with
+		// `withCollections` every collection in it.
+		void addVaultToScript(const attrib::Vault& vault, bool withCollections);
+		// Gameplay elements (GameplayFolderContents) with the vaults they are in
+		// and their owners' Children lists (script::ExportGameplay).
+		void addGameplayToScript(const std::vector<attrib::Collection*>& elements);
 		// Reads `text` and the scripts it includes (relative paths from `folder`)
 		// and opens the Apply Script prompt (its options, then Apply).
 		bool requestApplyScript(const std::string& text, const std::string& source, const std::string& folder = {});

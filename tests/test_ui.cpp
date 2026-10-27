@@ -2641,6 +2641,100 @@ TEST("ui: script: Add to Script and Export Changes fill the Script panel") {
     CHECK(probe.conflicts.empty());
 }
 
+TEST("ui: script: a gameplay folder and a vault go to the script from their menus, with the vaults they need") {
+    platform::HeadlessImGui imgui;
+    imgui.beforeFrame = ProbeBefore;
+    imgui.afterFrame = ProbeAfter;
+    test::UiProbe& probe = test::UiProbe::get();
+    probe.conflicts.clear();
+    platform::HeadlessHost host;
+    app::App a(host);
+    a.setup(1.0f, "");
+    a.setUserKeysPath("");
+    CHECK(a.open(ProStreetDir()));
+    Database* db = a.database();
+    imgui.run(a, 3);
+    auto has = [&](const std::string& text) {
+        const bool there = a.scriptText().find(text) != std::string::npos;
+        if (!there) std::printf("        not in the script: %s\n", text.c_str());
+        return there;
+    };
+    // Right-click `label` in `window`, then Add to Script > `item`.
+    auto addToScript = [&](const std::string& label, const char* window, const char* item) {
+        Rightclick(imgui, a, probe.find(label, window));
+        const test::ProbeItem* sub = probe.find("Add to Script", "##Popup");
+        CHECK(sub);
+        if (!sub) return;
+        ClickItem(imgui, a, *sub);
+        imgui.run(a, 1);
+        const test::ProbeItem* it = probe.find(item);
+        CHECK(it);
+        if (it) ClickItem(imgui, a, *it);
+        imgui.run(a, 2);
+    };
+
+    // A path no element has: its race, and the checkpoints the race lists under
+    // a track's path. (Revealing the race scrolls the tree to the folder.)
+    Collection* shortcut = db->findCollection(StringHash32("gameplay"), StringHash32("race_bin_exotic/4_5_2/shortcut06"));
+    CHECK(shortcut);
+    a.select(shortcut, true);
+    imgui.run(a, 3);
+    addToScript("race_bin_exotic", "##gameplay", "With Everything Under It");
+    CHECK(has("collection gameplay/race_bin_exotic/4_5_2/shortcut06 under "));
+    CHECK(has("collection gameplay/tracks/leipzig/leipzig_grip_1_gp/checkpoint1 under gameplay/checkpoint in vault "));
+
+    // A race bin: nothing is made from it as a template, and everything under it
+    // comes with the vaults it is kept in and the Children list naming it.
+    a.setScriptText({});
+    Collection* bin = db->findCollection(StringHash32("gameplay"), StringHash32("prostreet_career/bins/race_bin_an_2_1"));
+    CHECK(bin && bin->children.empty());
+    a.select(bin, true);
+    imgui.run(a, 3);
+    addToScript("race_bin_an_2_1", "##gameplay", "With Everything Under It");
+    CHECK(has("create vault race_bin_an_2_1 in gameplay.lzc\ncreate vault an_2_1_ss_1 in gameplay.lzc\n"));
+    CHECK(has("collection gameplay/prostreet_career/bins/race_bin_an_2_1/ss_1/sector1 under gameplay/sectortrigger in vault an_2_1_ss_1 {"));
+    CHECK(has("edit gameplay/prostreet_career/bins {\n    Children = ["));
+
+    // A race with nothing under it: itself, its vault and its bin's list.
+    a.setScriptText({});
+    Collection* race = db->findCollection(StringHash32("gameplay"), StringHash32("prostreet_career/bins/race_bin_an_2_1/gr_1"));
+    CHECK(race);
+    a.select(race, true);
+    imgui.run(a, 3);
+    addToScript("gr_1", "##gameplay", "With Everything Under It");
+    CHECK(has("create vault race_bin_an_2_1 in gameplay.lzc\n"
+              "collection gameplay/prostreet_career/bins/race_bin_an_2_1/gr_1 under gameplay/circuit in vault race_bin_an_2_1 {"));
+    CHECK(has("edit gameplay/prostreet_career/bins/race_bin_an_2_1 {\n    Children = ["));
+
+    // The Files tab: a vault's menu.
+    a.setScriptText({});
+    ClickItem(imgui, a, probe.find("Files", "Explorer"));
+    imgui.run(a, 2);
+    const LoadedPack* gp = nullptr;
+    for (const auto& pk : db->packs())
+        if (std::filesystem::path(pk->path).filename() == "gameplay.lzc") gp = pk.get();
+    CHECK(gp && gp->vaults.front()->name == "an_2_1_ss_1");
+    if (!gp) return;
+    ClickItem(imgui, a, probe.find("gameplay.lzc  (" + std::to_string(gp->vaults.size()) + " vaults)", "##files"));
+    imgui.run(a, 2);
+    const std::string vaultLabel = "an_2_1_ss_1  (" + std::to_string(gp->vaults.front()->collections.size()) + ")";
+    addToScript(vaultLabel, "##files", "With Its Collections");
+    // In the vault's order.
+    CHECK(has("create vault an_2_1_ss_1 in gameplay.lzc\ncollection gameplay/prostreet_career/bins/race_bin_an_2_1/ss_1/sector3 under "));
+    CHECK(has("collection gameplay/prostreet_career/bins/race_bin_an_2_1/ss_1/sector1 under gameplay/sectortrigger in vault an_2_1_ss_1 {"));
+    a.setScriptText({});
+    addToScript(vaultLabel, "##files", "This Vault");
+    CHECK_EQ(a.scriptText(), std::string("attribulina 1\ngame prostreet_pc\ncreate vault an_2_1_ss_1 in gameplay.lzc\n"));
+    // Added twice, it is there once.
+    addToScript(vaultLabel, "##files", "This Vault");
+    CHECK_EQ(a.scriptText(), std::string("attribulina 1\ngame prostreet_pc\ncreate vault an_2_1_ss_1 in gameplay.lzc\n"));
+
+    CHECK_EQ(Errors(a), size_t(0));
+    CHECK(!a.hasUnsavedChanges());
+    for (const auto& c : probe.conflicts) std::printf("        ID conflict: %s\n", c.c_str());
+    CHECK(probe.conflicts.empty());
+}
+
 TEST("ui: the code editor draws its coloured text where InputText draws text") {
     platform::HeadlessImGui imgui;
     ImGui::GetIO().IniFilename = nullptr; // no App to set it: keep ImGui from writing imgui.ini here

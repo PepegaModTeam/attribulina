@@ -354,18 +354,24 @@ namespace attrib::script
 					if (Glob(pat, Lower(names().format(c->key)))) out.push_back(c);
 				return out;
 			}
-			Vault& vaultNamed(const std::string& text)
+			// The vault of that name, else one whose name differs only in case.
+			Vault* findVault(const std::string& text)
 			{
 				const std::string n = NameOf(text).empty() ? text : NameOf(text);
 				Vault* loose = nullptr;
 				for (const auto& pk : db_.packs())
 					for (const auto& v : pk->vaults)
 					{
-						if (v->name == n) return *v;
+						if (v->name == n) return v.get();
 						if (!loose && Lower(v->name) == Lower(n)) loose = v.get();
 					}
-				if (!loose) fail("no vault " + n);
-				return *loose;
+				return loose;
+			}
+			Vault& vaultNamed(const std::string& text)
+			{
+				Vault* v = findVault(text);
+				if (!v) fail("no vault " + (NameOf(text).empty() ? text : NameOf(text)));
+				return *v;
 			}
 			Vault& defaultVault(ClassDef& cls, Collection* parent, Collection* like)
 			{
@@ -1652,9 +1658,17 @@ namespace attrib::script
 					if (Lower(fn) == file || Lower(pk->path) == file) pack = pk.get();
 				}
 				const std::string name = NameOf(s.vault).empty() ? s.vault : NameOf(s.vault);
-				if (pack && FindVault(*pack, name))
+				// In another file too: `in vault` puts collections in it all the same.
+				if (const Vault* v = findVault(s.vault))
 				{
-					info("vault " + name + " exists already");
+					std::string where;
+					if (v->pack && v->pack != pack)
+					{
+						where = v->pack->path;
+						if (const size_t slash = where.find_last_of("/\\"); slash != std::string::npos) where = where.substr(slash + 1);
+						where = " in " + where;
+					}
+					info("vault " + v->name + " exists already" + where);
 					return;
 				}
 				if (!pack)
@@ -1663,7 +1677,6 @@ namespace attrib::script
 					// x.bin` makes one in gc.vaults.
 					if (db_.target().game != Game::World) fail("no pack " + s.word + " is open");
 					if (file.size() < 5 || file.substr(file.size() - 4) != ".bin") fail("an event vault file's name ends in .bin, not " + s.word);
-					if (FindVault(db_, name)) fail("the database has a vault " + name + " already");
 					const Vault* like = EventVaultModel(db_);
 					if (!like) fail("no vault is open to copy the header from");
 					const std::string written = NameOf(s.word).empty() ? s.word : NameOf(s.word);

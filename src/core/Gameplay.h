@@ -195,6 +195,13 @@ namespace attrib
 	// Every collection under `c` by Children lists, depth first, `c` first.
 	std::vector<Collection*> GameplaySubtree(const GameplayModel& m, Collection& c);
 
+	// What a folder of the gameplay view holds, for a script that makes it: the
+	// elements under its path (the folder's own first) and everything their
+	// Children lists lead to. The two mostly agree, but a race can list
+	// checkpoints kept under its track's path, and some elements no owner lists.
+	// In path order, each element followed by what it lists.
+	std::vector<Collection*> GameplayFolderContents(const GameplayModel& m, const GameplayModel::Node& folder);
+
 	// --- messages and handlers ---------------------------------------------------
 
 	// A Hermes message a handler can answer. message_id = StringHash32(name); its

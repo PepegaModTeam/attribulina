@@ -290,9 +290,18 @@ namespace app
 			ImGui::Separator();
 			if (ImGui::MenuItem(isFavorite(c) ? "Remove from Favorites" : "Add to Favorites")) toggleFavorite(c);
 		}
-		else if (ImGui::MenuItem("Copy Path"))
+		else
 		{
-			ImGui::SetClipboardText(folder ? folder->path.c_str() : "");
+			// A path no element has: what is under it all the same.
+			if (folder && ImGui::BeginMenu("Add to Script"))
+			{
+				if (ImGui::MenuItem("With Everything Under It")) addGameplayToScript(GameplayFolderContents(*gameplay_, *folder));
+				if (ImGui::IsItemHovered())
+					ImGui::SetTooltip("The elements under this path and those their Children lists name, with the vaults\n"
+									  "they are in and their owners' Children lists, so the game finds them");
+				ImGui::EndMenu();
+			}
+			if (ImGui::MenuItem("Copy Path")) ImGui::SetClipboardText(folder ? folder->path.c_str() : "");
 		}
 		ImGui::EndPopup();
 	}

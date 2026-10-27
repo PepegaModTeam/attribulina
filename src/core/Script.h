@@ -39,6 +39,11 @@
 #include <string_view>
 #include <vector>
 
+namespace attrib
+{
+	class GameplayModel;
+}
+
 namespace attrib::script
 {
 
@@ -352,7 +357,14 @@ namespace attrib::script
 		bool exact = false;
 		// `edit` blocks (the collections must exist) instead of `collection`.
 		bool editOnly = false;
+		// Begin with `create vault` for each vault the collections are in (the
+		// database's own excepted), so applying makes the ones missing.
+		bool vaults = false;
 	};
+
+	// `create vault` for `vault`, in its pack's file (one of World's event vaults
+	// is a file of its own, which applying makes when it isn't there).
+	Statement CreateVaultStatement(const Vault& vault);
 
 	// An `edit` of `now` with what changed since `before` (the same collection in
 	// another database); its body is empty when nothing did.
@@ -363,6 +375,12 @@ namespace attrib::script
 	// way they do in `db`: parent, vault and own values.
 	std::vector<Statement> Export(const Database& db, const std::vector<const Collection*>& collections,
 								  const ExportSettings& settings = {});
+
+	// Statements that make gameplay elements (GameplayFolderContents, Gameplay.h)
+	// as `db` holds them, so the game finds them: `create vault` for the vaults
+	// they are in, the elements, then for each owner outside them that lists one
+	// in its `Children`, that whole list.
+	std::vector<Statement> ExportGameplay(const Database& db, const GameplayModel& m, const std::vector<const Collection*>& elements);
 
 	// `path = value` for a collection's own (or inherited) value at `path`.
 	Statement ExportValue(const Database& db, const Collection& c, uint32_t field);
@@ -382,7 +400,8 @@ namespace attrib::script
 
 	// Adds `edit` statements to `script`, merging them into an existing top-level
 	// edit of the same collection (a later Set of the same path replaces the
-	// earlier one, keeping its `was`). The editor's "Add to Script" uses it.
+	// earlier one, keeping its `was`). A `create vault` the script has already
+	// isn't added again. The editor's "Add to Script" uses it.
 	void Merge(Script& script, const std::vector<Statement>& statements);
 
 } // namespace attrib::script
