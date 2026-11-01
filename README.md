@@ -8,7 +8,7 @@ Tool for EA's AttribSys database in Black Box's Need for Speed games.
 - Friendly UI - multiple tabs, browser-like navigation, favorites, hotkeys, search, cross-reference...
 - nfsms script execution
 - Custom scripting format (.amod)
-- Sequence Builder replica - you can decompile, edit and compile new Lua code (supports 5.0.1 and 5.1.3)
+- State Graph Builder replica - you can decompile, edit and compile new Lua code (supports 5.0.1 and 5.1.3)
 - Class editing - you can create and/or remove classes and make your own types (with automatic C++ header generation)
 - Vault editing - you can add, remove and rename vaults
 
