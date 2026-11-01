@@ -69,17 +69,82 @@ namespace app
 
 
 
+	namespace
+	{
+		bool Has(const std::string& s, const char* part)
+		{
+			return s.find(part) != std::string::npos;
+		}
+		bool EndsWith(const std::string& s, std::string_view end)
+		{
+			return s.size() >= end.size() && s.compare(s.size() - end.size(), end.size(), end) == 0;
+		}
+
+		// "colour"/"color" in a name that isn't a curve of one.
+		bool SaysColour(const std::string& lower)
+		{
+			return (Has(lower, "colour") || Has(lower, "color")) && !Has(lower, "curve");
+		}
+
+		// The user's choice for this name: true colour, false numbers, or none.
+		const bool* ColourChoice(const EditEnv& env, const ValueType& vt)
+		{
+			if (!env.prefs) return nullptr;
+			auto it = env.prefs->colour.find(vt.name);
+			return it == env.prefs->colour.end() ? nullptr : &it->second;
+		}
+
+		// A value an integer colour editor can take: four bytes, not a bitfield, a key or hex.
+		bool PackableInteger(const ValueType& vt)
+		{
+			return vt.size == 4 && (vt.kind == TypeKind::UInt32 || vt.kind == TypeKind::Int32) &&
+				!(vt.member && vt.member->isBitfield()) && vt.hint != "hex";
+		}
+
+		// The colour a name says a 4-byte integer holds. A count (mNumColorSurfaces)
+		// or an index isn't one, and "tint" isn't enough (randompartrules'
+		// WINDOW_TINT_cost is a price).
+		PackedColour IntegerColourByName(const std::string& name)
+		{
+			const std::string n = ToLower(name);
+			if (Has(n, "num") || Has(n, "count") || Has(n, "index")) return PackedColour::None;
+			if (n == "crewcolor" || n == "rgb") return PackedColour::ARGB;
+			if (SaysColour(n) || EndsWith(n, "col") || Has(n, "rgb")) return PackedColour::RGBA;
+			return PackedColour::None;
+		}
+	} // namespace
+
 	bool ShowsAsColour(const EditEnv& env, const ValueType& vt)
 	{
+		if (PackableInteger(vt)) return IntegerColour(env, vt) != PackedColour::None;
 		if (vt.kind != TypeKind::Vector3 && vt.kind != TypeKind::Vector4) return false;
-		if (env.prefs)
-		{
-			auto it = env.prefs->colour.find(vt.name);
-			if (it != env.prefs->colour.end()) return it->second;
-		}
+		if (const bool* c = ColourChoice(env, vt)) return *c;
 		if (vt.hint == "colour") return true;
+		// Also tints, RGB(A) (render_param_car_lighting's DiffuseMaxRGBA) and
+		// visuallook's lights (SunLight, SkyLight, FELight, FESkyLight).
 		const std::string n = ToLower(vt.name);
-		return (n.find("colour") != std::string::npos || n.find("color") != std::string::npos) && n.find("curve") == std::string::npos;
+		return SaysColour(n) || Has(n, "tint") || Has(n, "rgb") || EndsWith(n, "light");
+	}
+
+	PackedColour IntegerColour(const EditEnv& env, const ValueType& vt)
+	{
+		if (!PackableInteger(vt)) return PackedColour::None;
+		const PackedColour byName = IntegerColourByName(vt.name);
+		if (const bool* c = ColourChoice(env, vt))
+		{
+			if (!*c) return PackedColour::None;
+			auto it = env.prefs->packing.find(vt.name);
+			if (it != env.prefs->packing.end() && it->second != PackedColour::None) return it->second;
+			return byName == PackedColour::None ? PackedColour::RGBA : byName;
+		}
+		return byName;
+	}
+
+	bool BytesColour(const EditEnv& env, const ValueType& element, uint32_t count)
+	{
+		if (count != 4 || element.kind != TypeKind::UInt8 || element.size != 1) return false;
+		if (const bool* c = ColourChoice(env, element)) return *c;
+		return SaysColour(ToLower(element.name));
 	}
 
 	// ----------------------------------------------------------------- helpers ---
@@ -503,8 +568,70 @@ namespace app
 			return changed;
 		}
 
+		// Where each channel of a 4-byte integer colour sits in the value.
+		struct ChannelShifts
+		{
+			int r, g, b, a;
+		};
+		ChannelShifts ShiftsOf(PackedColour order)
+		{
+			return order == PackedColour::ARGB ? ChannelShifts{ 16, 8, 0, 24 } : ChannelShifts{ 24, 16, 8, 0 };
+		}
+
+		uint8_t ColourByte(float f)
+		{
+			return uint8_t(std::lround(std::clamp(f, 0.0f, 1.0f) * 255.0f));
+		}
+
+		// Right-click on a 4-byte integer: read it as a colour in either order, or
+		// as a number. Kept per field or member name, like a vector's choice.
+		void PackedColourMenu(EditEnv& env, const ValueType& vt, PackedColour now)
+		{
+			if (!env.prefs || vt.name.empty() || !ImGui::BeginPopupContextItem("##packedctx")) return;
+			auto choose = [&](PackedColour order)
+			{
+				env.prefs->colour[vt.name] = order != PackedColour::None;
+				if (order != PackedColour::None) env.prefs->packing[vt.name] = order;
+			};
+			if (ImGui::MenuItem("Show as Colour (0xRRGGBBAA)", nullptr, now == PackedColour::RGBA)) choose(PackedColour::RGBA);
+			if (ImGui::MenuItem("Show as Colour (0xAARRGGBB)", nullptr, now == PackedColour::ARGB)) choose(PackedColour::ARGB);
+			if (ImGui::MenuItem("Show as Number", nullptr, now == PackedColour::None)) choose(PackedColour::None);
+			ImGui::EndPopup();
+		}
+
+		// A 4-byte integer colour (IntegerColour): the picker shows R, G, B and A
+		// as 0..255, and the tooltip the value.
+		bool EditPackedColour(EditEnv& env, DataBlock& b, uint32_t off, const ValueType& vt, PackedColour order)
+		{
+			const uint32_t v = uint32_t(ReadInteger(b, off, vt, env.endian));
+			const ChannelShifts s = ShiftsOf(order);
+			float c[4] = { float((v >> s.r) & 0xFF) / 255.0f, float((v >> s.g) & 0xFF) / 255.0f, float((v >> s.b) & 0xFF) / 255.0f,
+						   float((v >> s.a) & 0xFF) / 255.0f };
+			ImGui::SetNextItemWidth(-FLT_MIN);
+			const ImGuiColorEditFlags f = ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf |
+				ImGuiColorEditFlags_NoOptions | ImGuiColorEditFlags_NoTooltip;
+			bool changed = false;
+			if (ImGui::ColorEdit4("##packed", c, f))
+			{
+				const uint32_t now = uint32_t(ColourByte(c[0])) << s.r | uint32_t(ColourByte(c[1])) << s.g |
+					uint32_t(ColourByte(c[2])) << s.b | uint32_t(ColourByte(c[3])) << s.a;
+				if (now != v)
+				{
+					WriteInteger(b, off, vt, int64_t(now), env.endian);
+					changed = true;
+				}
+			}
+			if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip))
+				ImGui::SetTooltip("0x%08X (%u), read as %s\nRight-click to read it in the other order or as a number.", v, v,
+								  order == PackedColour::ARGB ? "0xAARRGGBB" : "0xRRGGBBAA");
+			PackedColourMenu(env, vt, order);
+			return changed;
+		}
+
 		bool EditInteger(EditEnv& env, DataBlock& b, uint32_t off, const ValueType& vt)
 		{
+			if (const PackedColour order = IntegerColour(env, vt); order != PackedColour::None)
+				return EditPackedColour(env, b, off, vt, order);
 			int64_t v = ReadInteger(b, off, vt, env.endian);
 			// A 32-bit value that is a known key (StringHash32, else bStringHash)
 			// shows its name.
@@ -562,6 +689,7 @@ namespace app
 				changed = ImGui::InputScalar("##int", ImGuiDataType_U64, &u);
 				v = int64_t(u);
 			}
+			if (PackableInteger(vt)) PackedColourMenu(env, vt, PackedColour::None);
 			if (known)
 			{
 				ImGui::SameLine();
@@ -786,6 +914,41 @@ namespace app
 			return changed;
 		}
 
+		// A vinyl layer's colour (VinylsAttrib::VinylColor): the same picker, its hue
+		// snapping to a car_paint_swatch/swatch colour; saturation and brightness
+		// are S and V in 255ths (Paint.h). Its three bytes stay editable below.
+		bool EditVinylColour(EditEnv& env, DataBlock& b, uint32_t off)
+		{
+			const PaintSwatches& sw = *env.swatches;
+			const PaintColour pc = ReadVinylColour(b, off, sw);
+			float hsv[3] = { pc.h, pc.s, pc.v };
+			const ImGuiColorEditFlags f = ImGuiColorEditFlags_InputHSV | ImGuiColorEditFlags_DisplayHSV |
+				ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoAlpha;
+			bool changed = false;
+			if (ImGui::ColorEdit3("##vinyl", hsv, f))
+			{
+				uint8_t* p = b.bytes.data() + off;
+				const uint8_t was[3] = { p[0], p[1], p[2] };
+				WriteVinylColour(b, off, hsv[0], std::clamp(hsv[1], 0.0f, 1.0f), std::clamp(hsv[2], 0.0f, 1.0f), sw);
+				changed = std::memcmp(was, p, 3) != 0;
+			}
+			ImGui::SameLine();
+			ImGui::AlignTextToFramePadding();
+			ImGui::TextDisabled("swatch %d  H %.0f  S %.2f  V %.2f", pc.step, pc.h * 360.0f, pc.s, pc.v);
+			if (ImGui::IsItemHovered())
+			{
+				if (size_t(pc.step) >= sw.rgb.size())
+					ImGui::SetTooltip("Swatch %d is past car_paint_swatch/swatch's %zu, so the game draws hue 0 (red).\n"
+									  "Retail leaves 255 in the colours a layer doesn't use. Picking a hue sets a swatch.",
+									  pc.step, sw.rgb.size());
+				else
+					ImGui::SetTooltip("Swatch %d of %zu in car_paint_swatch/swatch (rgb %06X)%s\n"
+									  "A hue picks the nearest swatch; S and V are saturation and brightness.",
+									  pc.step, sw.rgb.size(), sw.rgb[size_t(pc.step)] & 0xFFFFFFu, pc.hueKnown ? "" : ", a grey");
+			}
+			return changed;
+		}
+
 		// What a blob holds, worked out once per block (and again when its bytes change).
 		struct BlobView
 		{
@@ -946,6 +1109,28 @@ namespace app
 
 	// ----------------------------------------------------------------- editing ---
 
+	bool EditBytesColour(EditEnv& env, uint8_t* p, const ValueType& element)
+	{
+		float c[4] = { p[0] / 255.0f, p[1] / 255.0f, p[2] / 255.0f, p[3] / 255.0f };
+		ImGui::SetNextItemWidth(-FLT_MIN);
+		const ImGuiColorEditFlags f = ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf | ImGuiColorEditFlags_NoOptions;
+		bool changed = false;
+		if (ImGui::ColorEdit4("##bytes", c, f))
+			for (int i = 0; i < 4; ++i)
+			{
+				const uint8_t now = ColourByte(c[i]);
+				changed |= now != p[i];
+				p[i] = now;
+			}
+		if (env.prefs && !element.name.empty() && ImGui::BeginPopupContextItem("##bytesctx"))
+		{
+			if (ImGui::MenuItem("Show as Colour", nullptr, true)) env.prefs->colour[element.name] = true;
+			if (ImGui::MenuItem("Show as Numbers", nullptr, false)) env.prefs->colour[element.name] = false;
+			ImGui::EndPopup();
+		}
+		return changed;
+	}
+
 	bool EditValue(EditEnv& env, DataBlock& b, uint32_t off, const ValueType& vt, bool editable)
 	{
 		if (off + std::max<uint32_t>(vt.size, 1) > b.bytes.size())
@@ -1096,6 +1281,11 @@ namespace app
 					changed = EditSwatchPaint(env, b, off);
 					break;
 				}
+				if (vt.st && env.swatches && !env.swatches->empty() && IsVinylColour(*vt.st))
+				{
+					changed = EditVinylColour(env, b, off);
+					break;
+				}
 				// Expanded into member rows by the inspector; this is the summary.
 				ImGui::AlignTextToFramePadding();
 				ImGui::TextDisabled("%s", FormatValue(env.db, b, off, vt, e).c_str());
@@ -1209,6 +1399,13 @@ namespace app
 						const PaintColour pc = ReadSwatchPaint(b, off, sw, e);
 						std::snprintf(buf, sizeof(buf), "%s swatch %d H %.0f S %.2f V %.2f", PaintFinish(db.names(), load32(p + 8, e)).c_str(),
 									  pc.step, pc.h * 360.0f, pc.s, pc.v);
+						return buf;
+					}
+				if (IsVinylColour(*vt.st))
+					if (const PaintSwatches sw = ReadPaintSwatches(db); !sw.empty())
+					{
+						const PaintColour pc = ReadVinylColour(b, off, sw);
+						std::snprintf(buf, sizeof(buf), "swatch %d H %.0f S %.2f V %.2f", pc.step, pc.h * 360.0f, pc.s, pc.v);
 						return buf;
 					}
 				std::string s = "{ ";

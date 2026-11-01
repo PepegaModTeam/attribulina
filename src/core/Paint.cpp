@@ -78,6 +78,20 @@ namespace attrib
 			const float d = std::fabs(a - b);
 			return std::min(d, 1 - d);
 		}
+
+		// The swatch whose hue is nearest h (grey ones never), or -1.
+		int NearestSwatch(const PaintSwatches& sw, float h)
+		{
+			int best = -1;
+			for (size_t i = 0; i < sw.hue.size() && i < 256; ++i)
+				if (sw.hue[i] >= 0 && (best < 0 || HueDistance(h, sw.hue[i]) < HueDistance(h, sw.hue[size_t(best)]))) best = int(i);
+			return best;
+		}
+
+		uint8_t UnitByte(float f)
+		{
+			return uint8_t(std::lround(std::clamp(f, 0.0f, 1.0f) * 255.0f));
+		}
 	} // namespace
 
 	bool IsSwatchPaint(const StructDef& st)
@@ -125,14 +139,44 @@ namespace attrib
 		const PaintColour was = ReadSwatchPaint(b, offset, sw, e);
 		// Only a new hue picks a swatch, so changing S or V keeps the one stored.
 		if (HueDistance(h, was.h) > 1e-4f)
-		{
-			int best = -1;
-			for (size_t i = 0; i < sw.hue.size() && i < 256; ++i)
-				if (sw.hue[i] >= 0 && (best < 0 || HueDistance(h, sw.hue[i]) < HueDistance(h, sw.hue[size_t(best)]))) best = int(i);
-			if (best >= 0) p[kOffSwatchIndex] = uint8_t(best);
-		}
+			if (const int best = NearestSwatch(sw, h); best >= 0) p[kOffSwatchIndex] = uint8_t(best);
 		storef32(p + kOffSwatchSat, s, e);
 		storef32(p + kOffSwatchVar, v, e);
+	}
+
+	bool IsVinylColour(const StructDef& st)
+	{
+		if (st.name != "VinylsAttrib::VinylColor" || st.size != 3) return false;
+		const MemberDef* sw = st.member("swatch");
+		const MemberDef* sat = st.member("saturation");
+		const MemberDef* br = st.member("brightness");
+		return sw && sat && br && sw->offset == 0 && sat->offset == 1 && br->offset == 2;
+	}
+
+	PaintColour ReadVinylColour(const DataBlock& b, uint32_t offset, const PaintSwatches& sw)
+	{
+		PaintColour c;
+		if (offset + 3 > b.bytes.size()) return c;
+		const uint8_t* p = b.bytes.data() + offset;
+		c.step = p[0];
+		c.s = float(p[1]) / 255.0f;
+		c.v = float(p[2]) / 255.0f;
+		const bool inTable = size_t(c.step) < sw.hue.size();
+		c.hueKnown = inTable && sw.hue[size_t(c.step)] >= 0;
+		c.h = c.hueKnown ? sw.hue[size_t(c.step)] : 0.0f;
+		return c;
+	}
+
+	void WriteVinylColour(DataBlock& b, uint32_t offset, float h, float s, float v, const PaintSwatches& sw)
+	{
+		if (offset + 3 > b.bytes.size()) return;
+		uint8_t* p = b.bytes.data() + offset;
+		h -= std::floor(h);
+		const PaintColour was = ReadVinylColour(b, offset, sw);
+		if (HueDistance(h, was.h) > 1e-4f)
+			if (const int best = NearestSwatch(sw, h); best >= 0) p[0] = uint8_t(best);
+		p[1] = UnitByte(s);
+		p[2] = UnitByte(v);
 	}
 
 	std::string PaintFinish(const KeyNames& names, uint32_t groupKey)

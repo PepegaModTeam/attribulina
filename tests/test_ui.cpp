@@ -368,6 +368,76 @@ TEST("ui: colour fields pick the colour editor; the choice is per name") {
     CHECK(!app::ShowsAsColour(env, v));
 }
 
+TEST("ui: tints, RGB(A) and lights are colours too, and so are integers and four bytes that say so, each in the game's order") {
+    Database db;
+    app::DisplayPrefs prefs;
+    app::EditEnv env{db, Endian::Little, nullptr, {}, {}, &prefs};
+    app::ValueType v;
+    v.kind = TypeKind::Vector4;
+    for (const char* name : {"Tint", "EnvMapTint", "DiffuseMaxRGBA", "SunLight", "FESkyLight"}) {
+        v.name = name;
+        CHECK(app::ShowsAsColour(env, v));
+    }
+    v.kind = TypeKind::Vector3;
+    v.name = "SpecularMinRGB";
+    CHECK(app::ShowsAsColour(env, v));
+    v.name = "IdleCameraEyeOffset";
+    CHECK(!app::ShowsAsColour(env, v));
+
+    // 4-byte integers: the emitters' and the rest are 0xRRGGBBAA, CrewColor and
+    // a paint swatch's rgb 0xAARRGGBB.
+    using app::PackedColour;
+    auto order = [&](TypeKind k, const char* name) {
+        app::ValueType t;
+        t.kind = k;
+        t.size = 4;
+        t.name = name;
+        return app::IntegerColour(env, t);
+    };
+    for (const char* name : {"Color1", "Color4", "ColourStart", "ColourEnd", "FogColour", "LensFlareCol"})
+        CHECK(order(TypeKind::UInt32, name) == PackedColour::RGBA);
+    CHECK(order(TypeKind::Int32, "CrewColor") == PackedColour::ARGB);
+    CHECK(order(TypeKind::UInt32, "rgb") == PackedColour::ARGB);
+    CHECK(order(TypeKind::UInt32, "mNumColorSurfaces") == PackedColour::None); // a count
+    CHECK(order(TypeKind::Int32, "WINDOW_TINT_cost") == PackedColour::None);   // a price
+    CHECK(order(TypeKind::UInt32, "NumParticles") == PackedColour::None);
+    CHECK(order(TypeKind::UInt16, "Color1") == PackedColour::None);
+    CHECK(order(TypeKind::Float, "Color1") == PackedColour::None);
+    app::ValueType hex;
+    hex.kind = TypeKind::UInt32;
+    hex.size = 4;
+    hex.name = "Color1";
+    hex.hint = "hex";
+    CHECK(app::IntegerColour(env, hex) == PackedColour::None);
+    // The user's choice wins: a number, or a colour in the order picked.
+    prefs.colour["Color1"] = false;
+    CHECK(order(TypeKind::UInt32, "Color1") == PackedColour::None);
+    prefs.colour["Color1"] = true;
+    prefs.packing["Color1"] = PackedColour::ARGB;
+    CHECK(order(TypeKind::UInt32, "Color1") == PackedColour::ARGB);
+    prefs.colour["Seed"] = true; // no order picked: RGBA
+    CHECK(order(TypeKind::UInt32, "Seed") == PackedColour::RGBA);
+    v = {};
+    v.kind = TypeKind::UInt32;
+    v.size = 4;
+    v.name = "Seed";
+    CHECK(app::ShowsAsColour(env, v));
+
+    // Four bytes R, G, B, A: Undercover's frontend damageColor0 (UInt8[4]).
+    app::ValueType u8;
+    u8.kind = TypeKind::UInt8;
+    u8.size = 1;
+    u8.name = "damageColor0";
+    CHECK(app::BytesColour(env, u8, 4));
+    CHECK(!app::BytesColour(env, u8, 3));
+    u8.name = "flashColor";
+    CHECK(app::BytesColour(env, u8, 4));
+    u8.name = "Bytes";
+    CHECK(!app::BytesColour(env, u8, 4));
+    prefs.colour["Bytes"] = true;
+    CHECK(app::BytesColour(env, u8, 4));
+}
+
 TEST("ui: favourites, colour choices, open panels and the window placement persist") {
     namespace fs = std::filesystem;
     const fs::path dir = fs::temp_directory_path() / "attribulina_ini_test";
@@ -387,6 +457,8 @@ TEST("ui: favourites, colour choices, open panels and the window placement persi
         a->select(sun);
         a->toggleFavorite(sun);
         a->displayPrefs().colour["VelocityStart"] = true;
+        a->displayPrefs().colour["Seed"] = true;
+        a->displayPrefs().packing["Seed"] = app::PackedColour::ARGB;
         a->setOpenPanels("Explorer,Search,Script");
         a->setWindowPlacement("0,10,20,810,620");
         a->setDetectTarget(false);
@@ -411,6 +483,8 @@ TEST("ui: favourites, colour choices, open panels and the window placement persi
         Collection* sun = a.database()->findCollection(StringHash32("pvehicle"), StringHash32("default"));
         CHECK(a.isFavorite(sun));
         CHECK(a.displayPrefs().colour.count("VelocityStart") && a.displayPrefs().colour.at("VelocityStart"));
+        CHECK(a.displayPrefs().colour.count("Seed") && a.displayPrefs().colour.at("Seed"));
+        CHECK(a.displayPrefs().packing.count("Seed") && a.displayPrefs().packing.at("Seed") == app::PackedColour::ARGB);
         // The panels that were open, and where the window was.
         CHECK_EQ(a.openPanels(), std::string("Explorer,Search,Script"));
         CHECK_EQ(a.windowPlacement(), std::string("0,10,20,810,620"));
@@ -967,6 +1041,18 @@ TEST("ui: current-gen Undercover's paints get a colour picker while car_paint_sw
     const std::string summary = app::FormatValue(*a.database(), paints->data, 0, TypeOfAttribute(*paints, "Paints"), Endian::Big);
     CHECK(summary.find("swatch 46 H 216 S 1.00 V 0.59") != std::string::npos);
 
+    // A vinyl layer's colours read the same table (racer_072's first: swatch 33).
+    {
+        const Attribute* layers = a.database()->findCollection(StringHash32("presetride"), StringHash32("racer_072"))
+                                      ->find(StringHash32("VinylLayers"));
+        const ValueType lt = TypeOfAttribute(*layers, "VinylLayers");
+        const MemberDef* colors = lt.st ? lt.st->member("colors") : nullptr;
+        CHECK(colors);
+        if (colors)
+            CHECK_EQ(app::FormatValue(*a.database(), layers->data, colors->offset, TypeOfMember(*colors), Endian::Big),
+                     std::string("swatch 33 H 138 S 0.25 V 0.04")); // 00FF4D
+    }
+
     // Without the swatches the paints are their members only.
     CHECK(a.runConsole("delete car_paint_swatch/swatch"));
     a.select(ride(), true);
@@ -975,6 +1061,94 @@ TEST("ui: current-gen Undercover's paints get a colour picker while car_paint_sw
     CHECK(app::FormatValue(*a.database(), paints->data, 0, TypeOfAttribute(*paints, "Paints"), Endian::Big).find("swatch 46") ==
           std::string::npos);
     CHECK_EQ(Errors(a), size_t(0));
+    CHECK(probe.conflicts.empty());
+}
+
+TEST("ui: emitter colours, a paint swatch's rgb and the damage bar's bytes get pickers that write the game's order") {
+    platform::HeadlessImGui imgui;
+    imgui.beforeFrame = ProbeBefore;
+    imgui.afterFrame = ProbeAfter;
+    test::UiProbe& probe = test::UiProbe::get();
+    probe.conflicts.clear();
+    platform::HeadlessHost host;
+    app::App a(host);
+    a.setup(1.0f, "");
+    a.setUserKeysPath("");
+    CHECK(a.open(test::DataPath("attrib/databases/360/undercover-vanilla")));
+    if (!a.database()) return;
+    a.viewOptions() = app::ViewOptions{true, true, true};
+    Database& db = *a.database();
+    // Shows one field of a collection (rows below the fold aren't drawn).
+    auto show = [&](const char* cls, const char* name, const char* field) -> Attribute* {
+        Collection* c = db.findCollection(StringHash32(cls), StringHash32(name));
+        CHECK(c);
+        if (!c) return nullptr;
+        a.select(c, true);
+        imgui.run(a, 2);
+        ClickItem(imgui, a, probe.find("##fieldfilter", "Collection"));
+        imgui.key(a, ImGuiKey_A | ImGuiMod_Ctrl);
+        imgui.type(a, field);
+        imgui.run(a, 2);
+        return c->find(StringHash32(field));
+    };
+    // Ctrl+click turns a picker's channel (##X red, ##Y green, ##Z blue, ##W
+    // alpha) into a text box; the first one drawn takes `value`.
+    auto setChannel = [&](const char* channel, const char* value) {
+        const test::ProbeItem* it = probe.find(channel, "Collection");
+        CHECK(it);
+        if (!it) return;
+        ImGuiIO& io = ImGui::GetIO();
+        io.AddKeyEvent(ImGuiMod_Ctrl, true);
+        ClickItem(imgui, a, *it);
+        io.AddKeyEvent(ImGuiMod_Ctrl, false);
+        imgui.run(a, 1);
+        imgui.type(a, value);
+        imgui.key(a, ImGuiKey_Enter);
+        imgui.run(a, 2);
+    };
+
+    // emitterdata's Color1 is 0xRRGGBBAA: red is the top byte.
+    Attribute* color1 = show("emitterdata", "emfe_glare", "Color1");
+    CHECK(color1);
+    if (!color1) return;
+    CHECK_EQ(load32(color1->data.bytes.data(), Endian::Big), 0xFF8C4CFFu);
+    CHECK(probe.find("##X", "Collection") && !probe.find("##int", "Collection"));
+    setChannel("##X", "18");
+    CHECK_EQ(load32(color1->data.bytes.data(), Endian::Big), 0x128C4CFFu);
+    // Its menu reads it as a number, then as a colour in the other order.
+    Rightclick(imgui, a, probe.find("##X", "Collection"));
+    ClickItem(imgui, a, probe.find("Show as Number"));
+    imgui.run(a, 1);
+    CHECK(probe.find("##int", "Collection") && !probe.find("##X", "Collection"));
+    CHECK(a.displayPrefs().colour.count("Color1") && !a.displayPrefs().colour.at("Color1"));
+    Rightclick(imgui, a, probe.find("##int", "Collection"));
+    ClickItem(imgui, a, probe.find("Show as Colour (0xAARRGGBB)"));
+    imgui.run(a, 1);
+    CHECK(probe.find("##X", "Collection"));
+    CHECK(a.displayPrefs().colour.at("Color1"));
+    CHECK(a.displayPrefs().packing.count("Color1") && a.displayPrefs().packing.at("Color1") == app::PackedColour::ARGB);
+    setChannel("##X", "0"); // red is now the second byte
+    CHECK_EQ(load32(color1->data.bytes.data(), Endian::Big), 0x12004CFFu);
+
+    // A paint swatch's rgb is 0xAARRGGBB: swatch 0 is FFFF0000, and green is the third byte.
+    Attribute* swatch = show("car_paint_swatch", "swatch", "swatch");
+    CHECK(swatch && swatch->count == 70);
+    if (!swatch) return;
+    CHECK_EQ(load32(swatch->data.bytes.data(), Endian::Big), 0xFFFF0000u);
+    setChannel("##Y", "128");
+    CHECK_EQ(load32(swatch->data.bytes.data(), Endian::Big), 0xFFFF8000u);
+
+    // The damage bar's colours are four bytes, R, G, B, A.
+    Attribute* damage = show("frontend", "huddamgebarcolor", "damageColor0");
+    CHECK(damage && damage->count == 4 && damage->data.bytes.size() >= 4);
+    if (!damage || damage->data.bytes.size() < 4) return;
+    auto rgba = [&]() { return Bytes(damage->data.bytes.begin(), damage->data.bytes.begin() + 4); };
+    CHECK(rgba() == Bytes({165, 255, 25, 255}));
+    setChannel("##X", "200");
+    CHECK(rgba() == Bytes({200, 255, 25, 255}));
+
+    CHECK_EQ(Errors(a), size_t(0));
+    for (const auto& c : probe.conflicts) std::printf("        ID conflict: %s\n", c.c_str());
     CHECK(probe.conflicts.empty());
 }
 
@@ -1098,7 +1272,7 @@ TEST("ui: gameplay view: folders, references with Go, new element") {
     CHECK(probe.conflicts.empty());
 }
 
-TEST("ui: sequence builder: decompile a handler, edit its transition, compile, add a handler") {
+TEST("ui: state graph builder: decompile a handler, edit its transition, compile, add a handler") {
     platform::HeadlessImGui imgui;
     imgui.beforeFrame = ProbeBefore;
     imgui.afterFrame = ProbeAfter;
@@ -1136,19 +1310,19 @@ TEST("ui: sequence builder: decompile a handler, edit its transition, compile, a
     CHECK(lua::Decompile(chunk).source.find("\"done\"") != std::string::npos);
 
     // The game's functions, listed beside the code (data/lua).
-    const test::ProbeItem* fn = probe.find("Functions", "Sequence Builder");
+    const test::ProbeItem* fn = probe.find("Functions", "State Graph Builder");
     CHECK(fn);
     ClickItem(imgui, a, *fn);
     imgui.run(a, 2);
-    const test::ProbeItem* filter = probe.find("##filter", "Sequence Builder");
+    const test::ProbeItem* filter = probe.find("##filter", "State Graph Builder");
     CHECK(filter);
     ClickItem(imgui, a, *filter);
     imgui.type(a, "print");
     imgui.run(a, 2);
-    CHECK(probe.find("Debug.Print (text: string)", "Sequence Builder"));
-    CHECK(probe.find("print", "Sequence Builder")); // listed, as missing in the game
-    CHECK(probe.find("Your Functions...", "Sequence Builder"));
-    ClickItem(imgui, a, probe.find("Functions", "Sequence Builder")); // closed again, and the keyboard leaves the filter
+    CHECK(probe.find("Debug.Print (text: string)", "State Graph Builder"));
+    CHECK(probe.find("print", "State Graph Builder")); // listed, as missing in the game
+    CHECK(probe.find("Your Functions...", "State Graph Builder"));
+    ClickItem(imgui, a, probe.find("Functions", "State Graph Builder")); // closed again, and the keyboard leaves the filter
     imgui.run(a, 2);
 
     // A compile error marks its line and says why.
@@ -1177,7 +1351,7 @@ TEST("ui: sequence builder: decompile a handler, edit its transition, compile, a
 
     // New Handler... in the racing state, for MNotifyEscaped: it gets the
     // next free name and a compiled stub defining its function.
-    const test::ProbeItem* nh = probe.find("New Handler...", "Sequence Builder");
+    const test::ProbeItem* nh = probe.find("New Handler...", "State Graph Builder");
     CHECK(nh);
     ClickItem(imgui, a, *nh);
     imgui.run(a, 2);
@@ -1226,7 +1400,7 @@ std::pair<Collection*, std::vector<Collection*>> ParentWithLeaves(Database& db) 
 std::string Clipboard() { return ImGui::GetClipboardText() ? ImGui::GetClipboardText() : ""; }
 } // namespace
 
-TEST("ui: sequence builder: the graph runs top to bottom from initial; Carbon's career_game shows the initial it runs from career") {
+TEST("ui: state graph builder: the graph runs top to bottom from initial; Carbon's career_game shows the initial it runs from career") {
     namespace fs = std::filesystem;
     const std::string dir = test::DataPath("attrib/databases/pc/carbon-vanilla");
     if (!fs::exists(dir)) return;
@@ -3767,7 +3941,7 @@ TEST("ui: data/lua: every list reads as the user's file must; Carbon and Underco
     CHECK(!find("Camera.ActivateDefectorCamera"));
 }
 
-TEST("ui: sequence builder: a Most Wanted handler compiles under the handler's own name; its functions are Most Wanted's") {
+TEST("ui: state graph builder: a Most Wanted handler compiles under the handler's own name; its functions are Most Wanted's") {
     platform::HeadlessImGui imgui;
     imgui.beforeFrame = ProbeBefore;
     imgui.afterFrame = ProbeAfter;
@@ -3850,7 +4024,7 @@ TEST("ui: sequence builder: a Most Wanted handler compiles under the handler's o
     CHECK_EQ(Errors(a), size_t(0));
 }
 
-TEST("ui: sequence builder: Undercover's 360 handlers edit and compile in Lua 5.1, its Wii version's in Lua 5.0") {
+TEST("ui: state graph builder: Undercover's 360 handlers edit and compile in Lua 5.1, its Wii version's in Lua 5.0") {
     for (const auto& [folder, version] : std::vector<std::pair<std::string, lua::Version>>{
              {"360/undercover-vanilla", lua::Version::Lua51}, {"wii/undercover-vanilla", lua::Version::Lua50}}) {
         if (!std::filesystem::exists(test::DataPath("attrib/databases/" + folder))) continue;

@@ -83,6 +83,22 @@ namespace attrib
 	// differs from the current swatch's.
 	void WriteSwatchPaint(DataBlock& b, uint32_t offset, float h, float s, float v, const PaintSwatches& sw, Endian e);
 
+	// Current-gen Undercover's (and World's) vinyl colour, VinylsAttrib::VinylColor
+	// (3 bytes: u8 swatch, u8 saturation, u8 brightness; presetride's VinylLayers
+	// and DecalLayers). The game's BuildColor (the 360 debug build's 0x82D72F60)
+	// takes the hue of car_paint_swatch/swatch[swatch].rgb, through RGB2HSV, and
+	// returns HSV2RGB(hue, saturation / 255, brightness / 255) with alpha 255. An
+	// index past the table reads a swatch of rgb 0, and RGB2HSV gives a grey hue 0,
+	// so those draw red at their S and V. Retail stores 255 in the colours a layer
+	// doesn't use.
+	bool IsVinylColour(const StructDef& st);
+	// step is the swatch index; hueKnown is false when it is past the table or the
+	// swatch is grey (hue 0 then, as the game has it).
+	PaintColour ReadVinylColour(const DataBlock& b, uint32_t offset, const PaintSwatches& sw);
+	// Sets saturation and brightness, and the swatch to the one nearest a hue that
+	// differs from the current one's.
+	void WriteVinylColour(DataBlock& b, uint32_t offset, float h, float s, float v, const PaintSwatches& sw);
+
 	// "gloss", "metallic", ... from the finish part's name
 	// (generic_body_paint_group_gloss), or the name itself when it doesn't follow
 	// that pattern; empty when unset.

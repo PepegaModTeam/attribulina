@@ -36,11 +36,26 @@ namespace app
 		void rebuild(const attrib::Database& db, uint64_t modelVersion);
 	};
 
+	// How a 4-byte integer holds a colour, as a value (so either byte order reads
+	// the same). The emitters' Color1..4 are 0xRRGGBBAA (GetFloatColor in Pro
+	// Street's 360 milestone and Carbon's PS3 build takes red from the top byte);
+	// gameplay's CrewColor and Undercover's CarPaintSwatch rgb are 0xAARRGGBB,
+	// the front end's order.
+	enum class PackedColour : uint8_t
+	{
+		None,
+		RGBA, // 0xRRGGBBAA
+		ARGB, // 0xAARRGGBB
+	};
+
 	// Per-name choices the user made about how to show a value.
 	struct DisplayPrefs
 	{
 		// Field or member name -> show as a colour (true) or as numbers (false).
 		std::unordered_map<std::string, bool> colour;
+		// Field or member name -> the order a 4-byte integer colour is read in,
+		// when the user picked one.
+		std::unordered_map<std::string, PackedColour> packing;
 	};
 
 	struct EditEnv
@@ -79,8 +94,19 @@ namespace app
 	using attrib::WriteInteger;
 
 	// Shown as a colour picker: the user's choice for this name, else the hint,
-	// else a colour-sounding name on a vector type.
+	// else a colour-sounding name on a vector type, a 4-byte integer
+	// (IntegerColour) or four bytes (BytesColour).
 	bool ShowsAsColour(const EditEnv& env, const ValueType& vt);
+	// The colour a 4-byte integer holds, None when it shows as a number: the
+	// user's choice for this name, else by name (Color1, ColourStart, FogColour,
+	// LensFlareCol: RGBA; CrewColor, rgb: ARGB).
+	PackedColour IntegerColour(const EditEnv& env, const ValueType& vt);
+	// Four u8 elements shown as one colour, R, G, B, A (Undercover's frontend
+	// damageColor0, flashColor): a colour-sounding name, or the user's choice.
+	bool BytesColour(const EditEnv& env, const ValueType& element, uint32_t count);
+	// The picker for four bytes R, G, B, A at `p`, with the menu that switches
+	// the name between colour and numbers.
+	bool EditBytesColour(EditEnv& env, uint8_t* p, const ValueType& element);
 
 	// Draws the one-row editor for the value at `offset` in `b`. Returns true
 	// when it changed. `editable` false draws it disabled (inherited values).

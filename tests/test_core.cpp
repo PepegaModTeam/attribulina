@@ -394,3 +394,53 @@ TEST("paint: current-gen Undercover's paints read their hue from car_paint_swatc
     ps.loadPack(PS("ATTRIBUTES.BIN"));
     CHECK(ReadPaintSwatches(ps).empty());
 }
+
+TEST("paint: current-gen Undercover's vinyl colours take a swatch's hue, with saturation and brightness in 255ths") {
+    for (const char* folder : {"360/undercover-vanilla", "pc/undercover-vanilla"}) {
+        Database db;
+        db.addTypeSchema(TypeSchema::Load(test::DataPath("data/schema/undercover_pc.txt")));
+        db.loadPack(test::DataPath(std::string("attrib/databases/") + folder + "/ATTRIBUTES.BIN"));
+        const PaintSwatches sw = ReadPaintSwatches(db);
+        CHECK_EQ(sw.rgb.size(), size_t(70));
+        if (sw.rgb.size() != 70) continue;
+        Collection* ride = db.findCollection(StringHash32("presetride"), StringHash32("racer_072"));
+        Attribute* layers = ride ? ride->find(StringHash32("VinylLayers")) : nullptr;
+        CHECK(layers && layers->count > 0);
+        if (!layers || !layers->count) continue;
+        const ValueType vt = TypeOfAttribute(*layers, "VinylLayers");
+        const MemberDef* colors = vt.st ? vt.st->member("colors") : nullptr;
+        CHECK(colors && colors->count == 4 && colors->st && IsVinylColour(*colors->st));
+        if (!colors || !colors->st) continue;
+        // The first layer's first colour is swatch 33, saturation 64, brightness 9;
+        // the other three are 255, colours the layer doesn't use.
+        DataBlock b = layers->data;
+        const uint32_t at = colors->offset;
+        const PaintColour pc = ReadVinylColour(b, at, sw);
+        CHECK_EQ(pc.step, 33);
+        CHECK(pc.hueKnown);
+        CHECK(std::abs(pc.h - sw.hue[33]) < 1e-6f);
+        CHECK(std::abs(pc.s - 64 / 255.0f) < 1e-6f && std::abs(pc.v - 9 / 255.0f) < 1e-6f);
+
+        // The same colour writes back unchanged; S and V alone keep the swatch.
+        const Bytes before = b.bytes;
+        WriteVinylColour(b, at, pc.h, pc.s, pc.v, sw);
+        CHECK(b.bytes == before);
+        WriteVinylColour(b, at, pc.h, 0.5f, 1.0f, sw);
+        CHECK_EQ(int(b.bytes[at]), 33);
+        CHECK_EQ(int(b.bytes[at + 1]), 128);
+        CHECK_EQ(int(b.bytes[at + 2]), 255);
+        // A hue picks the nearest swatch: 200 degrees is 43's 197.9, not 44's 204.
+        WriteVinylColour(b, at, 200.0f / 360.0f, 0.5f, 1.0f, sw);
+        CHECK_EQ(int(b.bytes[at]), 43);
+
+        // 255 is past the table: hue 0, as the game's RGB2HSV gives the black it
+        // reads there, and kept while only S and V change.
+        const PaintColour unused = ReadVinylColour(b, at + 3, sw);
+        CHECK_EQ(unused.step, 255);
+        CHECK(!unused.hueKnown);
+        CHECK(unused.h == 0.0f);
+        WriteVinylColour(b, at + 3, unused.h, 0.5f, 0.5f, sw);
+        CHECK_EQ(int(b.bytes[at + 3]), 255);
+        CHECK(std::equal(b.bytes.begin() + at + 6, b.bytes.end(), before.begin() + at + 6)); // the rest stays
+    }
+}

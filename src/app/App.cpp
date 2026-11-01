@@ -176,6 +176,10 @@ namespace app
 				if (!v.empty()) 
 					self->prefs_.colour[v] = k == "ShowAsColour";
 			}
+			else if (k == "ColourRGBA" || k == "ColourARGB")
+			{
+				if (!v.empty()) self->prefs_.packing[v] = k == "ColourARGB" ? PackedColour::ARGB : PackedColour::RGBA;
+			}
 			// Older versions kept the recent files here; recent_files.txt wins once it exists.
 			else if (k == "Recent" && !v.empty() && self->settings_.recent.size() < kMaxRecent) self->settings_.recent.push_back(v);
 			else if (k == "LightTheme") self->lightTheme_ = v == "1";
@@ -206,6 +210,8 @@ namespace app
 			if (!self->settings_.windowPlacement.empty()) out->appendf("WindowPlacement=%s\n", self->settings_.windowPlacement.c_str());
 			for (const auto& [name, colour] : self->prefs_.colour)
 				out->appendf("%s=%s\n", colour ? "ShowAsColour" : "ShowAsNumbers", name.c_str());
+			for (const auto& [name, order] : self->prefs_.packing)
+				if (order != PackedColour::None) out->appendf("%s=%s\n", order == PackedColour::ARGB ? "ColourARGB" : "ColourRGBA", name.c_str());
 			out->append("\n");
 		};
 		ImGui::AddSettingsHandler(&h);
@@ -2999,51 +3005,69 @@ namespace app
 		ImGui::TableSetColumnIndex(1);
 		const uint32_t maxN = MaxElements(a, arraysPastLimit_);
 		const uint32_t limit = ElementLimit(a);
-		if (editable)
+		// Four bytes R, G, B, A (Undercover's frontend damageColor0, flashColor): one
+		// picker in place of the count; the elements stay below.
+		const bool fourBytes = vt.kind == TypeKind::UInt8 && a.count == 4 && a.elemSize == 1 && a.data.bytes.size() >= 4;
+		if (fourBytes && BytesColour(env, vt, a.count))
 		{
-			uint32_t n = a.count;
-			const std::string tip =
-				a.inLayout ? "At most " + std::to_string(maxN) + ", the space the layout has for it."
-				: !limit ? "At most " + std::to_string(maxN) + "."
-				: arraysPastLimit_ ? "Its definition allows " + std::to_string(limit) + "; more are kept, with a warning."
-				: "At most " + std::to_string(limit) +
-				", the count its definition allows. Edit > Allow Arrays Past Their Limit lets it hold more.";
-			const uint32_t before = a.count;
-			if (CountInput(n, maxN, tip) && selected_)
-			{
-				// What shrinking takes off the end comes back when it grows again.
-				ArrayTail& t = arrayTails_["a" + std::to_string(selected_->classKey) + ":" + std::to_string(selected_->key) + ":" +
-					std::to_string(a.key)];
-				if (t.countAfter != a.count) t.removed.clear();
-				while (a.count > n)
-				{
-					t.removed.push_back(CopyElement(a.data, a.count - 1, a.elemSize));
-					RemoveElement(a, a.count - 1);
-				}
-				while (a.count < n)
-				{
-					InsertElement(a, a.count);
-					if (!t.removed.empty())
-					{
-						PutElement(a.data, a.count - 1, a.elemSize, t.removed.back());
-						t.removed.pop_back();
-					}
-				}
-				t.countAfter = a.count;
-				changed = true;
-				// Warn once, as the count goes past the limit; the row keeps showing it.
-				if (limit && before <= limit && a.count > limit) log(LogLevel::Warning, ElementLimitWarning(a, a.count, label));
-			}
-			ImGui::SameLine();
+			if (!editable) ImGui::BeginDisabled();
+			changed = EditBytesColour(env, a.data.bytes.data(), vt);
+			if (!editable) ImGui::EndDisabled();
 		}
-		ImGui::AlignTextToFramePadding();
-		if (editable) ImGui::TextDisabled(a.count == 1 ? "element" : "elements");
-		else ImGui::TextDisabled("%u element%s", a.count, a.count == 1 ? "" : "s");
-		if (limit && a.count > limit)
+		else
 		{
-			ImGui::SameLine();
-			ImGui::TextColored(ImVec4(1.0f, 0.7f, 0.2f, 1.0f), "over the limit of %u", limit);
-			if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", ElementLimitWarning(a, a.count, label).c_str());
+			if (editable)
+			{
+				uint32_t n = a.count;
+				const std::string tip =
+					a.inLayout ? "At most " + std::to_string(maxN) + ", the space the layout has for it."
+					: !limit ? "At most " + std::to_string(maxN) + "."
+					: arraysPastLimit_ ? "Its definition allows " + std::to_string(limit) + "; more are kept, with a warning."
+					: "At most " + std::to_string(limit) +
+					", the count its definition allows. Edit > Allow Arrays Past Their Limit lets it hold more.";
+				const uint32_t before = a.count;
+				if (CountInput(n, maxN, tip) && selected_)
+				{
+					// What shrinking takes off the end comes back when it grows again.
+					ArrayTail& t = arrayTails_["a" + std::to_string(selected_->classKey) + ":" + std::to_string(selected_->key) + ":" +
+						std::to_string(a.key)];
+					if (t.countAfter != a.count) t.removed.clear();
+					while (a.count > n)
+					{
+						t.removed.push_back(CopyElement(a.data, a.count - 1, a.elemSize));
+						RemoveElement(a, a.count - 1);
+					}
+					while (a.count < n)
+					{
+						InsertElement(a, a.count);
+						if (!t.removed.empty())
+						{
+							PutElement(a.data, a.count - 1, a.elemSize, t.removed.back());
+							t.removed.pop_back();
+						}
+					}
+					t.countAfter = a.count;
+					changed = true;
+					// Warn once, as the count goes past the limit; the row keeps showing it.
+					if (limit && before <= limit && a.count > limit) log(LogLevel::Warning, ElementLimitWarning(a, a.count, label));
+				}
+				ImGui::SameLine();
+			}
+			ImGui::AlignTextToFramePadding();
+			if (editable) ImGui::TextDisabled(a.count == 1 ? "element" : "elements");
+			else ImGui::TextDisabled("%u element%s", a.count, a.count == 1 ? "" : "s");
+			if (fourBytes && ImGui::BeginPopupContextItem("##bytesctx"))
+			{
+				if (ImGui::MenuItem("Show as Colour", nullptr, false)) prefs_.colour[vt.name] = true;
+				if (ImGui::MenuItem("Show as Numbers", nullptr, true)) prefs_.colour[vt.name] = false;
+				ImGui::EndPopup();
+			}
+			if (limit && a.count > limit)
+			{
+				ImGui::SameLine();
+				ImGui::TextColored(ImVec4(1.0f, 0.7f, 0.2f, 1.0f), "over the limit of %u", limit);
+				if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", ElementLimitWarning(a, a.count, label).c_str());
+			}
 		}
 
 		ImGui::TableSetColumnIndex(2);
