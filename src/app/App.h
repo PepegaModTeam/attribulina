@@ -277,10 +277,10 @@ namespace app
 		{
 			return gameplay_.get();
 		}
-		// Shows the Sequence Builder on the state graph `c` belongs to (an
+		// Shows the State Graph Builder on the state graph `c` belongs to (an
 		// activity template, one of its states or a message handler).
-		void openSequenceBuilder(attrib::Collection* c);
-		// Sequence Builder state, for tests.
+		void openStateGraphBuilder(attrib::Collection* c);
+		// State Graph Builder state, for tests.
 		attrib::Collection* sequenceActivity() const
 		{
 			return sbActivity_;
@@ -318,7 +318,7 @@ namespace app
 			return messages_;
 		}
 
-		// The Lua functions the Sequence Builder lists and colours, for the open
+		// The Lua functions the State Graph Builder lists and colours, for the open
 		// database's game: the user's own (user_lua_<game>.txt beside the program)
 		// first, then the game's list (data/lua/<game>_<platform>.txt: this
 		// platform's, else the PC's, else any of the game's). A user entry
@@ -649,8 +649,8 @@ namespace app
 		void drawGameplayModals();
 		void requestGameplayNew(attrib::Collection* owner, attrib::Collection* templ);
 
-		// Sequence Builder (SequenceBuilder.cpp).
-		void drawSequenceBuilder();
+		// State Graph Builder (StateGraphBuilder.cpp).
+		void drawStateGraphBuilder();
 		void chooseLuaFunctions(); // luaApi_ for the open game (frame() calls it when the game changes)
 		void drawUserLuaWindow();
 		void drawStateGraph(const std::vector<attrib::Collection*>& states);
@@ -984,7 +984,7 @@ namespace app
 		attrib::LoadedPack* pendingPack_ = nullptr; // New Vault's pack
 		std::string pendingPath_;
 		std::string nameInput_;
-		// Sequence Builder.
+		// State Graph Builder.
 		std::vector<attrib::MessageDef> messages_;
 		ImFont* codeFont_ = nullptr;
 		attrib::Collection* sbActivity_ = nullptr;

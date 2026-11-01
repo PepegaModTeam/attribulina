@@ -57,7 +57,7 @@ namespace app
 		// Set for gameplay collections in the gameplay view: GCollectionKey and
 		// path Text fields become references to elements.
 		const attrib::GameplayModel* gameplay = nullptr;
-		// Set for message handlers: opens their Lua in the Sequence Builder.
+		// Set for message handlers: opens their Lua in the State Graph Builder.
 		std::function<void()> openScript = nullptr;
 		// Current-gen Undercover's car_paint_swatch/swatch colours, which its
 		// PresetRidePaint picker snaps to; without them (none, or empty) its

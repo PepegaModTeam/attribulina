@@ -1402,7 +1402,7 @@ namespace app
 		add(showLog_, "Log");
 		add(showSearch_, "Search");
 		add(showScript_, "Script");
-		add(showSequence_, "SequenceBuilder");
+		add(showSequence_, "StateGraphBuilder");
 		add(showNfsms_, "NfsmsScript");
 		return s;
 	}
@@ -1420,7 +1420,7 @@ namespace app
 		showLog_ = has("Log");
 		showSearch_ = has("Search");
 		showScript_ = has("Script");
-		showSequence_ = has("SequenceBuilder");
+		showSequence_ = has("StateGraphBuilder");
 		showNfsms_ = has("NfsmsScript");
 		panelsSeen_ = openPanels();
 	}
@@ -1458,7 +1458,7 @@ namespace app
 		drawSearch();
 		drawScriptPanel();
 		drawNfsmsPanel();
-		drawSequenceBuilder();
+		drawStateGraphBuilder();
 		drawClassDesigner();
 		drawUserLuaWindow();
 		if (showDemo_) ImGui::ShowDemoWindow(&showDemo_);
@@ -1827,7 +1827,7 @@ namespace app
 			ImGui::MenuItem(kWindowInspector, nullptr, &showInspector_);
 			ImGui::MenuItem(kWindowClass, nullptr, &showClass_);
 			ImGui::MenuItem(kWindowLog, nullptr, &showLog_);
-			ImGui::MenuItem("Sequence Builder", nullptr, &showSequence_);
+			ImGui::MenuItem("State Graph Builder", nullptr, &showSequence_);
 			if (ImGui::MenuItem("Class Designer", nullptr, designer_.open, db_ && db_->hasSchema()))
 			{
 				if (designer_.open) designer_.open = false;
@@ -2372,7 +2372,7 @@ namespace app
 		if (view_.gameplayView && isGameplay(c)) env.gameplay = gameplay_.get();
 		if (isGameplay(c) && c->find(StringHash32("stateref"))) env.openScript = [this, c]()
 		{
-			openSequenceBuilder(c);
+			openStateGraphBuilder(c);
 		};
 		return env;
 	}

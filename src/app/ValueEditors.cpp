@@ -864,7 +864,7 @@ namespace app
 			if (env.openScript && v.lua)
 			{
 				ImGui::SameLine();
-				if (ImGui::SmallButton("Sequence Builder")) env.openScript();
+				if (ImGui::SmallButton("State Graph Builder")) env.openScript();
 			}
 			if (!v.error.empty()) ImGui::TextColored(ImVec4(1.0f, 0.42f, 0.38f, 1.0f), "%s", v.error.c_str());
 			if (!ImGui::TreeNodeEx("contents", ImGuiTreeNodeFlags_SpanAvailWidth)) return false;

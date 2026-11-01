@@ -127,7 +127,7 @@ Values are typed when they are applied, by the field they go into. `a/b` is a re
 | vectors, colours | `(x, y, z, w)`. A colour's four bytes are given in memory order, `(a, r, g, b)`. |
 | matrix | Four rows: `((1, 0, 0, 0), (0, 1, 0, 0), ...)`. |
 | curve | `{ xMin = 0, xMax = 100, yMin = 0, yMax = 1, X = [0, 0.5, 1], Y = [0, 0.8, 1] }`, with X and Y normalised to 0..1 the way they are stored. Y2 is recomputed unless the curve gives `Y2 = [...]`. Undercover's curves have a `graphScale` too. |
-| blob | `lua """source"""`: a handler's Lua, compiled with Lua 5.0 and packed the way the Sequence Builder does it. `bytes "0a 0b ..."` for other blobs, `null` for none. |
+| blob | `lua """source"""`: a handler's Lua, compiled with Lua 5.0 and packed the way the State Graph Builder does it. `bytes "0a 0b ..."` for other blobs, `null` for none. |
 | struct | `{ member = value, ... }`. Members it doesn't list keep their values. |
 | arrays | `[a, b, c]` sets the length and the elements. A struct's fixed-size array needs exactly its length. |
 | anything | `bytes "..."`: the value's exact bytes. |

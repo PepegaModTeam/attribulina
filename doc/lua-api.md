@@ -1,6 +1,6 @@
 # The Pro Street gameplay Lua API
 
-This is a reference for people who write gameplay message handlers in the Sequence Builder. It covers Need for Speed Pro Street on PC, Lua 5.0. It says what a handler receives, which globals the game provides, what each function takes and returns, and where the game's code does something you would not expect.
+This is a reference for people who write gameplay message handlers in the State Graph Builder. It covers Need for Speed Pro Street on PC, Lua 5.0. It says what a handler receives, which globals the game provides, what each function takes and returns, and where the game's code does something you would not expect.
 
 It comes from three sources:
 
@@ -25,11 +25,11 @@ The 251 retail handlers use 303 distinct global names, functions and methods:
 
 They also read 84 fields of `self`, 27 fields of `message` and 93 fields of `vars`, and write 111 fields of `vars`. `vars` belongs to the scripts, so its fields are listed only where they hold constants.
 
-`data/lua/prostreet_pc.txt` has every name in one line each. The Sequence Builder's Lua editor colours them and shows the line on hover.
+`data/lua/prostreet_pc.txt` has every name in one line each. The State Graph Builder's Lua editor colours them and shows the line on hover.
 
 ## The runtime
 
-The game links the Lua 5.0 virtual machine, the binary chunk loader and part of the auxiliary library. It has no Lua parser. The error strings of the lexer and parser, such as `<eof>` and `unexpected symbol`, are absent, while those of the chunk loader, such as `bad signature in %s` and `unexpected end of file in %s`, are present. Handlers must be compiled before they go into the database. The Sequence Builder does that.
+The game links the Lua 5.0 virtual machine, the binary chunk loader and part of the auxiliary library. It has no Lua parser. The error strings of the lexer and parser, such as `<eof>` and `unexpected symbol`, are absent, while those of the chunk loader, such as `bad signature in %s` and `unexpected end of file in %s`, are present. Handlers must be compiled before they go into the database. The State Graph Builder does that.
 
 The game opens none of the standard libraries. The state is created at `0x6F5AC0`: `lua_open`, a panic function, and a metatable on the globals table whose `__index` is the game's global lookup. There is no `luaopen_*` call, and none of the library names exist as strings in the executable. So these are all missing:
 
@@ -111,7 +111,7 @@ ChangeState("done")
 
 If no state has that name, `GetStateByName` returns null, and `ChangeState` then calls `Attrib::GetCollectionKey` on address 4. That reads a bad pointer and almost certainly crashes the game. Spell state names exactly.
 
-The `transitionlist` field of a handler lists the states it can switch to. The Sequence Builder fills it from the `ChangeState` calls. The game's code that reads `transitionlist` was not traced.
+The `transitionlist` field of a handler lists the states it can switch to. The State Graph Builder fills it from the `ChangeState` calls. The game's code that reads `transitionlist` was not traced.
 
 Retail scripts call `ChangeState` 139 times in 117 handlers.
 

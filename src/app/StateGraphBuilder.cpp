@@ -1,8 +1,7 @@
-// The Sequence Builder: an activity's state graph (its `state` collections and
+// The State Graph Builder: an activity's state graph (its `state` collections and
 // the transitions their message handlers make), the handlers of a state, and
 // each handler's Lua, decompiled for editing and compiled back into its
-// bytecode blob. Named after Black Box's tool for authoring these graphs; the
-// TransitionGenerator markers in World's lithium.lua come from it.
+// bytecode blob. The TransitionGenerator markers in World's lithium.lua come from it.
 
 #include "App.h"
 
@@ -63,7 +62,7 @@ namespace app
 
 	// ------------------------------------------------------------------ setup ---
 
-	void App::openSequenceBuilder(Collection* c)
+	void App::openStateGraphBuilder(Collection* c)
 	{
 		if (!c || !gameplay_) return;
 		const uint32_t gp = gameplay_->cls()->key;
@@ -107,7 +106,7 @@ namespace app
 		sbHandler_ = handler;
 		if (sbActivity_ && !sbState_) sbState_ = stateNamed("initial");
 		showSequence_ = true;
-		ImGui::SetWindowFocus("Sequence Builder");
+		ImGui::SetWindowFocus("State Graph Builder");
 	}
 
 	std::string App::stateShortName(const Collection* state) const
@@ -128,11 +127,11 @@ namespace app
 
 	// ----------------------------------------------------------------- window ---
 
-	void App::drawSequenceBuilder()
+	void App::drawStateGraphBuilder()
 	{
 		if (!showSequence_) return;
 		ImGui::SetNextWindowSize(ImVec2(ImGui::GetFontSize() * 70, ImGui::GetFontSize() * 40), ImGuiCond_FirstUseEver);
-		if (!ImGui::Begin("Sequence Builder", &showSequence_))
+		if (!ImGui::Begin("State Graph Builder", &showSequence_))
 		{
 			ImGui::End();
 			return;
