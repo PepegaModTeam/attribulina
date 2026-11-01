@@ -1115,7 +1115,7 @@ TEST("ui: sequence builder: decompile a handler, edit its transition, compile, a
     CHECK(h);
     CHECK(!a.messages().empty());
 
-    a.openSequenceBuilder(h);
+    a.openStateGraphBuilder(h);
     imgui.run(a, 3);
     CHECK(a.sequenceActivity() == db->findCollection(gp, StringHash32("basicrace")));
     CHECK(a.sequenceState() == db->findCollection(gp, StringHash32("stategraph_basicrace_racing")));
@@ -1246,7 +1246,7 @@ TEST("ui: sequence builder: the graph runs top to bottom from initial; Carbon's 
     Collection* initial = db->findCollection(gp, StringHash32("stategraph_career_game_initial"));
     Collection* monitor = db->findCollection(gp, StringHash32("stategraph_career_game_monitor"));
     CHECK(game && initial && monitor);
-    a.openSequenceBuilder(game);
+    a.openStateGraphBuilder(game);
     imgui.run(a, 3);
     CHECK(a.sequenceActivity() == game);
     CHECK(a.sequenceState() == initial);
@@ -1267,7 +1267,7 @@ TEST("ui: sequence builder: the graph runs top to bottom from initial; Carbon's 
     imgui.run(a, 1);
     CHECK(a.sequenceState() == monitor);
     // Opened from the state itself, it shows the activity its name gives, not career (its templateref).
-    a.openSequenceBuilder(initial);
+    a.openStateGraphBuilder(initial);
     imgui.run(a, 2);
     CHECK(a.sequenceActivity() == game);
     CHECK_EQ(a.sequenceGraph().size(), size_t(5));
@@ -3785,7 +3785,7 @@ TEST("ui: sequence builder: a Most Wanted handler compiles under the handler's o
     Collection* h = db->findCollection(StringHash32("gameplay"), StringHash32(name));
     CHECK(h);
     if (!h) return;
-    a.openSequenceBuilder(h);
+    a.openStateGraphBuilder(h);
     imgui.run(a, 3);
     CHECK(a.sequenceHandler() == h);
     CHECK(a.sequenceStatus().find("same bytecode") != std::string::npos);
@@ -3835,7 +3835,7 @@ TEST("ui: sequence builder: a Most Wanted handler compiles under the handler's o
     Collection* dh = db->findCollection(StringHash32("gameplay"), StringHash32(demoName));
     CHECK(dh);
     if (!dh) return;
-    a.openSequenceBuilder(dh);
+    a.openStateGraphBuilder(dh);
     imgui.run(a, 3);
     CHECK(a.sequenceHandler() == dh);
     CHECK(a.sequenceStatus().find("same bytecode") != std::string::npos);
@@ -3873,7 +3873,7 @@ TEST("ui: sequence builder: Undercover's 360 handlers edit and compile in Lua 5.
         CHECK(h);
         if (!h) continue;
         CHECK(lua::DetectVersion(HandlerChunk(*h)) == version);
-        a.openSequenceBuilder(h);
+        a.openStateGraphBuilder(h);
         imgui.run(a, 3);
         CHECK(a.sequenceHandler() == h);
         CHECK(a.sequenceStatus().find("same bytecode") != std::string::npos);
