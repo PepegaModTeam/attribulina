@@ -1,4 +1,5 @@
 #include "Schema.h"
+#include "Hash.h"
 
 #include <charconv>
 
@@ -107,6 +108,12 @@ namespace attrib
 		return it == enumByName_.end() ? nullptr : it->second;
 	}
 
+	const EnumDef* TypeSchema::fieldEnum(uint32_t classKey, uint32_t fieldKey) const
+	{
+		auto it = fieldEnums_.find(uint64_t(classKey) << 32 | fieldKey);
+		return it == fieldEnums_.end() ? nullptr : it->second;
+	}
+
 	std::shared_ptr<TypeSchema> TypeSchema::Load(const std::string& path)
 	{
 		const Bytes data = ReadFile(path);
@@ -120,6 +127,12 @@ namespace attrib
 		StructDef* curStruct = nullptr;
 		EnumDef* curEnum = nullptr;
 		size_t lineNo = 0;
+		struct FieldLine
+		{
+			std::string cls, field, en;
+			size_t line;
+		};
+		std::vector<FieldLine> fieldLines; // resolved once every enum is read
 		auto fail = [&](const std::string& msg) -> FormatError
 		{
 			return FormatError(source + ":" + std::to_string(lineNo) + ": " + msg);
@@ -211,6 +224,11 @@ namespace attrib
 				s->enumByName_[e->name] = e.get();
 				s->enums_.push_back(std::move(e));
 			}
+			else if (tok[0] == "field")
+			{
+				if (tok.size() != 4) throw fail("field needs a class, a field and an enum");
+				fieldLines.push_back({ std::string(tok[1]), std::string(tok[2]), std::string(tok[3]), lineNo });
+			}
 			else if (tok[0] == "struct")
 			{
 				if (tok.size() < 4) throw fail("struct needs a name, a size and an alignment");
@@ -236,6 +254,13 @@ namespace attrib
 			// An older header: the game from the file name, <game>_<platform>.txt.
 			const std::string stem = source.substr(source.find_last_of("/\\") + 1);
 			s->game = GameById(stem.substr(0, stem.find('_')));
+		}
+
+		for (const FieldLine& f : fieldLines)
+		{
+			const EnumDef* e = s->findEnum(f.en);
+			if (!e) throw FormatError(source + ":" + std::to_string(f.line) + ": " + f.cls + "." + f.field + " names unknown enum " + f.en);
+			s->fieldEnums_[uint64_t(StringHash32(f.cls)) << 32 | StringHash32(f.field)] = e;
 		}
 
 		// Resolve member types now that every name is known.

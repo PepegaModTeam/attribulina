@@ -147,6 +147,14 @@ namespace app
 		return SaysColour(ToLower(element.name));
 	}
 
+	bool ShowsAsGraph(const EditEnv& env, const ValueType& vt)
+	{
+		if (vt.kind != TypeKind::Matrix || vt.member) return false; // a struct's matrix is a transform
+		if (env.prefs && !vt.name.empty())
+			if (auto it = env.prefs->graph.find(vt.name); it != env.prefs->graph.end()) return it->second;
+		return true;
+	}
+
 	// ----------------------------------------------------------------- helpers ---
 
 	namespace
@@ -862,6 +870,183 @@ namespace app
 			return changed || points;
 		}
 
+		// A Matrix holding a cubic curve (Curve.h): the curve the game makes of it,
+		// over a grid, with its four points to drag. YOverT reads only the Y
+		// column, so its points sit at t = 0, 1/3, 2/3 and 1 (where the handles of
+		// the same curve as a Bezier are) and move up and down; the stored X stays.
+		// The view is held still while a point is dragged.
+		bool EditMatrixCurve(EditEnv& env, uint8_t* p, const ValueType& vt, bool editable)
+		{
+			const Endian e = env.endian;
+			const CurvePoints c = ReadCurvePoints(p, e);
+			const std::string cls = env.classKey ? env.db.names().format(env.classKey) : std::string();
+			const MatrixCurveInfo info = MatrixCurveOf(cls, vt.name);
+			const bool yOverT = info.read == MatrixCurveRead::YOverT;
+			auto pointX = [&](int i)
+			{
+				return yOverT ? float(i) / 3.0f : c.x[i];
+			};
+
+			constexpr int kSamples = 96;
+			ImVec2 curve[kSamples + 1];
+			for (int k = 0; k <= kSamples; ++k)
+			{
+				const float t = float(k) / kSamples;
+				if (yOverT) curve[k] = ImVec2(t, CurveYAt(c, t));
+				else CurvePointAt(c, t, curve[k].x, curve[k].y);
+			}
+
+			ImGuiStorage* st = ImGui::GetStateStorage();
+			const ImGuiID dragKey = ImGui::GetID("##drag");
+			const ImGuiID viewKey[4] = { ImGui::GetID("##vx0"), ImGui::GetID("##vx1"), ImGui::GetID("##vy0"), ImGui::GetID("##vy1") };
+			// Where on the point it was grabbed, so it doesn't jump to the cursor.
+			const ImGuiID grabKey[2] = { ImGui::GetID("##gx"), ImGui::GetID("##gy") };
+			int drag = st->GetInt(dragKey, -1);
+
+			// The view: 0..1 both ways, grown to hold the curve and the points.
+			float v[4] = { 0.0f, 1.0f, 0.0f, 1.0f };
+			if (drag >= 0)
+			{
+				for (int k = 0; k < 4; ++k) v[k] = st->GetFloat(viewKey[k]);
+			}
+			else
+			{
+				auto grow = [&](float x, float y)
+				{
+					if (!std::isfinite(x) || !std::isfinite(y)) return;
+					v[0] = std::min(v[0], x); v[1] = std::max(v[1], x);
+					v[2] = std::min(v[2], y); v[3] = std::max(v[3], y);
+				};
+				for (const ImVec2& q : curve) grow(q.x, q.y);
+				for (int i = 0; i < 4; ++i) grow(pointX(i), c.y[i]);
+				const float px = (v[1] - v[0]) * 0.04f, py = (v[3] - v[2]) * 0.06f;
+				v[0] -= px; v[1] += px; v[2] -= py; v[3] += py;
+			}
+
+			const float font = ImGui::GetFontSize();
+			const float w = std::max(ImGui::GetContentRegionAvail().x, font * 8.0f);
+			const float h = std::clamp(w * 0.45f, font * 6.0f, font * 12.0f);
+			const ImVec2 a = ImGui::GetCursorScreenPos(), b(a.x + w, a.y + h);
+			const float inset = 6.0f;
+			auto toScreen = [&](float x, float y)
+			{
+				return ImVec2(a.x + inset + (x - v[0]) / (v[1] - v[0]) * (w - 2 * inset),
+					b.y - inset - (y - v[2]) / (v[3] - v[2]) * (h - 2 * inset));
+			};
+			auto fromScreen = [&](ImVec2 s)
+			{
+				return ImVec2(v[0] + (s.x - a.x - inset) / (w - 2 * inset) * (v[1] - v[0]),
+					v[2] + (b.y - inset - s.y) / (h - 2 * inset) * (v[3] - v[2]));
+			};
+
+			ImGui::InvisibleButton("##curve", ImVec2(w, h));
+			const ImVec2 mouse = ImGui::GetIO().MousePos;
+			// Disabled (inherited) values are never hovered: the readout goes by the rect.
+			const bool over = ImGui::IsMouseHoveringRect(a, b) && ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
+			int near = -1;
+			if (over)
+			{
+				float best = 9.0f * 9.0f;
+				for (int i = 0; i < 4; ++i)
+				{
+					const ImVec2 q = toScreen(pointX(i), c.y[i]);
+					const float d = (q.x - mouse.x) * (q.x - mouse.x) + (q.y - mouse.y) * (q.y - mouse.y);
+					if (d < best)
+					{
+						best = d;
+						near = i;
+					}
+				}
+			}
+			bool changed = false;
+			if (editable && ImGui::IsItemActivated() && near >= 0)
+			{
+				drag = near;
+				st->SetInt(dragKey, drag);
+				for (int k = 0; k < 4; ++k) st->SetFloat(viewKey[k], v[k]);
+				const ImVec2 q = toScreen(pointX(drag), c.y[drag]);
+				st->SetFloat(grabKey[0], mouse.x - q.x);
+				st->SetFloat(grabKey[1], mouse.y - q.y);
+			}
+			if (drag >= 0 && !ImGui::IsItemActive())
+			{
+				drag = -1;
+				st->SetInt(dragKey, -1);
+			}
+			// Nothing is written until the mouse moves: a click leaves the point as stored.
+			const ImVec2 moved = ImGui::GetMouseDragDelta(ImGuiMouseButton_Left, 0.0f);
+			if (drag >= 0 && (moved.x != 0.0f || moved.y != 0.0f))
+			{
+				const ImVec2 q = fromScreen(ImVec2(mouse.x - st->GetFloat(grabKey[0]), mouse.y - st->GetFloat(grabKey[1])));
+				const float nx = yOverT ? c.x[drag] : q.x, ny = q.y;
+				if (nx != c.x[drag] || ny != c.y[drag])
+				{
+					WriteCurvePoint(p, drag, nx, ny, e);
+					changed = true;
+				}
+			}
+			const CurvePoints now = changed ? ReadCurvePoints(p, e) : c;
+			if (changed)
+				for (int k = 0; k <= kSamples; ++k)
+				{
+					const float t = float(k) / kSamples;
+					if (yOverT) curve[k] = ImVec2(t, CurveYAt(now, t));
+					else CurvePointAt(now, t, curve[k].x, curve[k].y);
+				}
+
+			ImDrawList* dl = ImGui::GetWindowDrawList();
+			const ImU32 frame = ImGui::GetColorU32(ImGuiCol_FrameBg);
+			const ImU32 grid = ImGui::GetColorU32(ImGuiCol_Border, 0.6f), axis = ImGui::GetColorU32(ImGuiCol_Border, 1.0f);
+			const ImU32 handle = ImGui::GetColorU32(ImGuiCol_TextDisabled);
+			const ImU32 line = ImGui::GetColorU32(ImGuiCol_PlotLines), hot = ImGui::GetColorU32(ImGuiCol_PlotLinesHovered);
+			dl->AddRectFilled(a, b, frame, ImGui::GetStyle().FrameRounding);
+			dl->PushClipRect(a, b, true);
+			for (int k = 0; k <= 4; ++k)
+			{
+				const float g = float(k) * 0.25f;
+				const ImU32 col = k == 0 || k == 4 ? axis : grid;
+				const ImVec2 gx = toScreen(g, 0.0f), gy = toScreen(0.0f, g);
+				dl->AddLine(ImVec2(gx.x, a.y), ImVec2(gx.x, b.y), col);
+				dl->AddLine(ImVec2(a.x, gy.y), ImVec2(b.x, gy.y), col);
+			}
+			auto at = [&](int i)
+			{
+				return toScreen(yOverT ? float(i) / 3.0f : now.x[i], now.y[i]);
+			};
+			dl->AddLine(at(0), at(1), handle);
+			dl->AddLine(at(3), at(2), handle);
+			ImVec2 screen[kSamples + 1];
+			for (int k = 0; k <= kSamples; ++k) screen[k] = toScreen(curve[k].x, curve[k].y);
+			dl->AddPolyline(screen, kSamples + 1, line, ImDrawFlags_None, 2.0f);
+			for (int i = 0; i < 4; ++i)
+			{
+				const ImU32 col = i == drag || (drag < 0 && i == near) ? hot : line;
+				if (i == 0 || i == 3) dl->AddCircleFilled(at(i), 4.0f, col);
+				else dl->AddCircle(at(i), 4.0f, col, 0, 1.5f);
+			}
+			dl->PopClipRect();
+
+			if (over || drag >= 0)
+			{
+				ImGui::BeginTooltip();
+				const int i = drag >= 0 ? drag : near;
+				if (i >= 0)
+				{
+					if (yOverT) ImGui::Text("Point %d: y %.4g at t %.3g. Stored x %.4g, which the game ignores.", i, now.y[i], float(i) / 3.0f, now.x[i]);
+					else ImGui::Text("Point %d: x %.4g, y %.4g", i, now.x[i], now.y[i]);
+				}
+				else
+				{
+					const float x = yOverT ? std::clamp(fromScreen(mouse).x, 0.0f, 1.0f) : fromScreen(mouse).x;
+					ImGui::Text("%s %.3g: y %.4g", yOverT ? "t" : "x", x, MatrixCurveValue(now, info.read, x));
+				}
+				ImGui::TextDisabled("%s", info.reader ? info.reader : "No code that reads this field was found. It is drawn as the Bezier through its points.");
+				if (editable) ImGui::TextDisabled("Drag a point to move it. Right-click to show the rows only.");
+				ImGui::EndTooltip();
+			}
+			return changed;
+		}
+
 		// A car paint (PresetRidePaint) as a colour: the swatch opens an HSV picker
 		// whose hue snaps to the paint chooser's 90 steps. The members (finish,
 		// swatch, kit, ...) stay editable below.
@@ -1258,12 +1443,28 @@ namespace app
 			case TypeKind::Quaternion: changed = EditVector(env, p, vt, 4); break;
 			case TypeKind::Matrix:
 			{
+				// A field's matrix holds a curve (Curve.h): its graph over the rows.
+				const bool graph = ShowsAsGraph(env, vt);
+				if (graph) changed |= EditMatrixCurve(env, p, vt, editable);
+				const bool menu = env.prefs && !vt.member && !vt.name.empty();
+				if (graph && menu && ImGui::BeginPopupContextItem("##curvectx"))
+				{
+					if (ImGui::MenuItem("Show as Graph", nullptr, true)) env.prefs->graph[vt.name] = true;
+					if (ImGui::MenuItem("Show as Rows", nullptr, false)) env.prefs->graph[vt.name] = false;
+					ImGui::EndPopup();
+				}
 				static const char* const kXYZW[] = { "X", "Y", "Z", "W" };
 				for (int r = 0; r < 4; ++r)
 				{
 					ImGui::PushID(r);
 					changed |= EditComponents(p + r * 16, 4, kXYZW, e);
 					ImGui::PopID();
+				}
+				if (!graph && menu && ImGui::BeginPopupContextItem("##rowsctx"))
+				{
+					if (ImGui::MenuItem("Show as Graph", nullptr, false)) env.prefs->graph[vt.name] = true;
+					if (ImGui::MenuItem("Show as Rows", nullptr, true)) env.prefs->graph[vt.name] = false;
+					ImGui::EndPopup();
 				}
 				break;
 			}

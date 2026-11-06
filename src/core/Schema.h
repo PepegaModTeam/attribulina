@@ -12,6 +12,7 @@
 //   struct <Name> <size> <align> [hint=<word>]
 //     <member> <type> <offset> [n=<count>] [bits=<offset>:<size>] [ptr=<target>] [count=<member>] [hint=<word>]
 //   end
+//   field <class> <field> <Enum>
 // <game> and the platforms are ids from Game.h (prostreet; pc, x360, ps2): the
 // game whose types it lays out, and every platform that lays them out this
 // way. A header without the game (older files) takes it from the file name.
@@ -19,6 +20,10 @@
 // double char, bool32 (a bool in 4 bytes, as the PS2 and GameCube compilers
 // make it), cstr (char* into the string table), ptr (any other pointer, with
 // ptr= and optionally count=), or a struct/enum defined in the same file.
+// A `field` line names the enum a class's field holds when the type table
+// gives it a plain integer type: light_flares_cg's flare_texture is an
+// EA::Reflection::UInt32 the game copies into eLightFlareParams::TextureID,
+// an eLightFlareTextures. The enum is defined in the same file.
 
 #include "Bytes.h"
 #include "Game.h"
@@ -103,6 +108,13 @@ namespace attrib
 
 		const StructDef* findStruct(std::string_view name) const;
 		const EnumDef* findEnum(std::string_view name) const;
+		// The enum a `field` line gives the class's field (both keys are
+		// StringHash32 of the names), or nullptr.
+		const EnumDef* fieldEnum(uint32_t classKey, uint32_t fieldKey) const;
+		size_t fieldEnumCount() const
+		{
+			return fieldEnums_.size();
+		}
 		size_t structCount() const
 		{
 			return structs_.size();
@@ -117,6 +129,7 @@ namespace attrib
 		std::vector<std::unique_ptr<EnumDef>> enums_;
 		std::unordered_map<std::string, const StructDef*> structByName_;
 		std::unordered_map<std::string, const EnumDef*> enumByName_;
+		std::unordered_map<uint64_t, const EnumDef*> fieldEnums_; // class key << 32 | field key
 	};
 
 } // namespace attrib

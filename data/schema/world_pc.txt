@@ -4844,6 +4844,15 @@ enum Sound::SirenState 4
   SIREN_DIE 3
 end
 
+enum eLightFlareTextures 4
+  ESLF_TEX_HEADLIGHT_INNER 0
+  ESLF_TEX_HEADLIGHT_OUTER 1
+  ESLF_TEX_HEADLIGHT_GLOW 2
+  ESLF_TEX_CATSEYE 3
+  ESLF_TEX_LAMPPOSTFLARE 4
+  ESLF_NUM_TEXTURES 5
+end
+
 # source: SpeedDebugOpt-enUS.h (natural PC layout; size matches the PC type table)
 struct VariableArray 8 4
   mArray ptr 0 ptr=float count=mLength
@@ -5568,4 +5577,8 @@ struct GBarrierInfo 4 2
   mPrefixIdx uint8 1
   mIndex uint16 2
 end
+
+# light_flares_cg.flare_texture: UpdateLightFlareParameters copies it into eLightFlareParams::TextureID (MW GameCube 0x800fa1a0),
+# which picks a texture from eLightFlareTextureNameHashes.
+field light_flares_cg flare_texture eLightFlareTextures
 

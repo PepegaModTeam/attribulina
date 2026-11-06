@@ -2331,6 +2331,22 @@ enum STICH_WHOOSH_TYPE 4
   WHSH_TunOut_Fast_03 89
 end
 
+# source: undercover_wii_types.h
+enum eLightFlareTextures 4
+  ESLF_TEX_HEADLIGHT_INNER 0
+  ESLF_TEX_HEADLIGHT_OUTER 1
+  ESLF_TEX_HEADLIGHT_GLOW 2
+  ESLF_TEX_CATSEYE 3
+  ESLF_TEX_LAMPPOSTFLARE 4
+  ESLF_TEX_SUNCENTER 5
+  ESLF_TEX_SUNCOMBINED 6
+  ESLF_TEX_SUNHALO 7
+  ESLF_TEX_SUNMINORRAYS 8
+  ESLF_TEX_SUNMAJORRAYS 9
+  ESLF_TEX_SUNRING 10
+  ESLF_NUM_TEXTURES 11
+end
+
 struct Attrib::Blob 8 4
   mSize uint32 0
   mData ptr 4 ptr=uint8 count=mSize
@@ -2698,4 +2714,8 @@ struct CollisionStream 16 4
   StreamMoment Attrib::RefSpec 0
   Threshold uint8 12
 end
+
+# light_flares_cg.flare_texture: UpdateLightFlareParameters copies it into eLightFlareParams::TextureID (MW GameCube 0x800fa1a0),
+# which picks a texture from eLightFlareTextureNameHashes.
+field light_flares_cg flare_texture eLightFlareTextures
 

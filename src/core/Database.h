@@ -124,6 +124,10 @@ namespace attrib
 		uint16_t maxCount = 0;
 		uint8_t flags = 0;
 		uint8_t alignment = 0; // log2
+		// The enum the type schema's `field` line gives this field of its class,
+		// when its type is an integer of that size (Database::fieldEnumFor):
+		// light_flares_cg's UInt32 flare_texture is an eLightFlareTextures.
+		const EnumDef* fieldEnum = nullptr;
 
 		bool isArray() const
 		{
@@ -396,6 +400,9 @@ namespace attrib
 			return classes_;
 		}
 		ClassDef* findClass(uint32_t key) const;
+		// The enum the type schema gives a class's field (Schema.h, `field`), when
+		// the field's type is an integer as wide as the enum; else nullptr.
+		const EnumDef* fieldEnumFor(uint32_t classKey, const FieldDef& f) const;
 		// Last loaded wins when two vaults define the same collection.
 		Collection* findCollection(uint32_t classKey, uint32_t key) const;
 

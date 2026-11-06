@@ -497,6 +497,20 @@ namespace attrib
 				if (t.kind == TypeKind::Unknown) t.kind = TypeKind::Enum;
 			}
 		}
+		for (auto& c : classes_)
+			for (FieldDef& f : c->fields) f.fieldEnum = fieldEnumFor(c->key, f);
+	}
+
+	const EnumDef* Database::fieldEnumFor(uint32_t classKey, const FieldDef& f) const
+	{
+		const EnumDef* en = typeSchema_ ? typeSchema_->fieldEnum(classKey, f.key) : nullptr;
+		if (!en || !f.type || f.type->size != en->size) return nullptr;
+		switch (f.type->kind)
+		{
+			case TypeKind::Int8: case TypeKind::UInt8: case TypeKind::Int16: case TypeKind::UInt16:
+			case TypeKind::Int32: case TypeKind::UInt32: case TypeKind::Int64: case TypeKind::UInt64: return en;
+			default: return nullptr;
+		}
 	}
 
 	const TypeInfo* Database::typeByHash(uint32_t hash) const
@@ -838,6 +852,7 @@ namespace attrib
 				f.flags = br.u8(d + at + 6);
 				f.alignment = br.u8(d + at + 7);
 				f.type = typeByHash(f.typeHash);
+				f.fieldEnum = fieldEnumFor(cls->key, f);
 				if (!f.type)
 				{
 					vault.warnings.push_back("field " + names_.format(f.key) + " of " + names_.format(cls->key) + " has unknown type " +

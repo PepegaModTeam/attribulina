@@ -56,6 +56,8 @@ namespace app
 		// Field or member name -> the order a 4-byte integer colour is read in,
 		// when the user picked one.
 		std::unordered_map<std::string, PackedColour> packing;
+		// Field name -> show a Matrix as a curve's graph (true) or as rows (false).
+		std::unordered_map<std::string, bool> graph;
 	};
 
 	struct EditEnv
@@ -82,6 +84,9 @@ namespace app
 		// with the text before it; set, it remembers the name instead once the
 		// box is left (App::commitTypedName), unless it holds the text it started with.
 		std::function<void(const std::string& before, const std::string& now)> typingName = nullptr;
+		// The class of the collection being edited (0 if none): how the game reads
+		// a Matrix curve goes by class and field (MatrixCurveOf).
+		uint32_t classKey = 0;
 	};
 
 	using attrib::ExpandsIntoMembers;
@@ -104,6 +109,10 @@ namespace app
 	// Four u8 elements shown as one colour, R, G, B, A (Undercover's frontend
 	// damageColor0, flashColor): a colour-sounding name, or the user's choice.
 	bool BytesColour(const EditEnv& env, const ValueType& element, uint32_t count);
+	// A Matrix field's value shown as a curve's graph (Curve.h, MatrixCurveOf):
+	// the user's choice for this name, else every Matrix that isn't a struct's
+	// member (all of the supported games' Matrix fields hold curves).
+	bool ShowsAsGraph(const EditEnv& env, const ValueType& vt);
 	// The picker for four bytes R, G, B, A at `p`, with the menu that switches
 	// the name between colour and numbers.
 	bool EditBytesColour(EditEnv& env, uint8_t* p, const ValueType& element);

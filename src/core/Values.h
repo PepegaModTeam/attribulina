@@ -25,11 +25,14 @@ namespace attrib
 	};
 
 	// The type of an attribute's elements (`fieldName` drives name-based choices
-	// such as colours).
+	// such as colours). A field the type schema gives an enum (FieldDef::fieldEnum)
+	// is that enum.
 	ValueType TypeOfAttribute(const Attribute& a, const std::string& fieldName);
-	// The same for one value of `type` (a class's static value); `size` stands
-	// in for a type the table doesn't list.
+	// The same for one value of `type`; `size` stands in for a type the table
+	// doesn't list.
 	ValueType TypeOfType(const TypeInfo* type, uint32_t size, const std::string& fieldName);
+	// A class's static value of field `f`.
+	ValueType TypeOfStatic(const FieldDef& f, const std::string& fieldName);
 	// The type of one element of a struct member.
 	ValueType TypeOfMember(const MemberDef& m);
 	// The type of a nested array element, by its type name ("float", a struct).

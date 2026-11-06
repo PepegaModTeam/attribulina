@@ -1620,7 +1620,7 @@ namespace attrib::script
 					if (!def || !def->isStatic()) fail(f.pos, "only a static field takes a value here: collections hold the others");
 					if (cls->staticData.bytes.size() < uint32_t(def->offset) + def->size) cls->staticData.bytes.resize(uint32_t(def->offset) + def->size, 0);
 					const DataBlock before = cls->staticData;
-					assignValue(cls->staticData, def->offset, TypeOfType(def->type, def->size, names().format(def->key)), *f.value);
+					assignValue(cls->staticData, def->offset, TypeOfStatic(*def, names().format(def->key)), *f.value);
 					if (cls->staticData.bytes != before.bytes || cls->staticData.ptrs.size() != before.ptrs.size())
 					{
 						++rep_.valuesSet;

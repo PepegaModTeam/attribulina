@@ -180,6 +180,10 @@ namespace app
 			{
 				if (!v.empty()) self->prefs_.packing[v] = k == "ColourARGB" ? PackedColour::ARGB : PackedColour::RGBA;
 			}
+			else if (k == "ShowAsGraph" || k == "ShowAsRows")
+			{
+				if (!v.empty()) self->prefs_.graph[v] = k == "ShowAsGraph";
+			}
 			// Older versions kept the recent files here; recent_files.txt wins once it exists.
 			else if (k == "Recent" && !v.empty() && self->settings_.recent.size() < kMaxRecent) self->settings_.recent.push_back(v);
 			else if (k == "LightTheme") self->lightTheme_ = v == "1";
@@ -212,6 +216,8 @@ namespace app
 				out->appendf("%s=%s\n", colour ? "ShowAsColour" : "ShowAsNumbers", name.c_str());
 			for (const auto& [name, order] : self->prefs_.packing)
 				if (order != PackedColour::None) out->appendf("%s=%s\n", order == PackedColour::ARGB ? "ColourARGB" : "ColourRGBA", name.c_str());
+			for (const auto& [name, graph] : self->prefs_.graph)
+				out->appendf("%s=%s\n", graph ? "ShowAsGraph" : "ShowAsRows", name.c_str());
 			out->append("\n");
 		};
 		ImGui::AddSettingsHandler(&h);
@@ -2354,6 +2360,7 @@ namespace app
 	EditEnv App::editEnv(Collection* c)
 	{
 		EditEnv env{ *db_, c && c->vault ? c->vault->raw.endian : Endian::Little, &index_, {}, {}, nullptr };
+		env.classKey = c ? c->classKey : 0;
 		env.navigate = [this](Collection* t, bool newTab)
 		{
 			if (newTab) openInNewTab(t, false);
@@ -3131,7 +3138,7 @@ namespace app
 			ImGui::TextDisabled("not set");
 			ImGui::TableSetColumnIndex(2);
 			ImGui::AlignTextToFramePadding();
-			ImGui::TextDisabled("%s%s", TypeLabel(f.type).c_str(), f.isArray() ? "[]" : "");
+			ImGui::TextDisabled("%s%s", f.fieldEnum ? f.fieldEnum->name.c_str() : TypeLabel(f.type).c_str(), f.isArray() ? "[]" : "");
 			ImGui::SameLine();
 			if (ImGui::SmallButton("Set")) pendingEdit_ = { PendingEdit::Kind::Set, &f, f.key, 0 };
 			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Give this collection a value for %s", name.c_str());

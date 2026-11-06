@@ -15,6 +15,7 @@
 
 #include "Bytes.h"
 
+#include <string>
 #include <vector>
 
 namespace attrib
@@ -68,5 +69,56 @@ namespace attrib
 	// Element `index` of a Curve attribute.
 	CurveValue ReadCurve(const Attribute& a, uint32_t index, Endian e);
 	void WriteCurve(Attribute& a, uint32_t index, const CurveValue& c, Endian e);
+
+	// ------------------------------------------------ curves in a matrix ---
+	//
+	// Every Attrib::Types::Matrix field of the supported games holds a cubic
+	// Bezier curve: four rows of (x, y, 0, 0) control points, P0 and P3 its ends
+	// and P1 and P2 its handles. Attribulator edited them in a graph; the stored
+	// values are pixel fractions (0.4485981 is 48/107, 0.9827586 is 57/58). The
+	// games read them in one of two ways.
+
+	enum class MatrixCurveRead : uint8_t
+	{
+		// GetValueFromSpline(t, m): the cubic Bernstein polynomial of the y column
+		// at t in 0..1; the x column is ignored. As a graph, the Bezier whose
+		// handles sit at t = 1/3 and 2/3.
+		YOverT,
+		// The Bezier through all four points, (x(t), y(t)), sampled and read as y
+		// over x: SplineMap (64 points at t = i/63, linear between them, the end
+		// values past them), FillGraphFromSpline.
+		Bezier,
+	};
+
+	struct MatrixCurveInfo
+	{
+		MatrixCurveRead read = MatrixCurveRead::Bezier;
+		// What reads it in the game, for the editor's tooltip; nullptr for a field
+		// no code was found for (drawn as the Bezier, as Attribulator drew it).
+		const char* reader = nullptr;
+	};
+	// How the game reads class `cls`'s Matrix field `field`.
+	MatrixCurveInfo MatrixCurveOf(const std::string& cls, const std::string& field);
+
+	// The x and y columns of a 64-byte matrix.
+	struct CurvePoints
+	{
+		float x[4] = {}, y[4] = {};
+	};
+	CurvePoints ReadCurvePoints(const uint8_t* m, Endian e);
+	// Sets row i's x and y, leaving its z and w as they are.
+	void WriteCurvePoint(uint8_t* m, int i, float x, float y, Endian e);
+
+	// GetValueFromSpline: (1-t)^3 y0 + 3t(1-t)^2 y1 + 3t^2(1-t) y2 + t^3 y3.
+	float CurveYAt(const CurvePoints& c, float t);
+	// The Bezier's point at t.
+	void CurvePointAt(const CurvePoints& c, float t, float& x, float& y);
+	// SplineMap::GetMapValue after SplineMap::Update: y at x on the Bezier sampled
+	// at 64 points, the first segment holding x from the start, the end values
+	// before the first point and past the last. 0 when no segment holds x, as the
+	// game returns.
+	float SplineMapValue(const CurvePoints& c, float x);
+	// What the game makes of the curve at x (for YOverT x is t; clamped to 0..1).
+	float MatrixCurveValue(const CurvePoints& c, MatrixCurveRead r, float x);
 
 } // namespace attrib

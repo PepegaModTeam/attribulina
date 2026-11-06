@@ -131,4 +131,97 @@ namespace attrib
 		WriteCurve(a.data, index * a.elemSize, c, e, a.elemSize);
 	}
 
+	// ------------------------------------------------ curves in a matrix ---
+
+	MatrixCurveInfo MatrixCurveOf(const std::string& cls, const std::string& field)
+	{
+		using R = MatrixCurveRead;
+		struct Rule
+		{
+			const char* cls;
+			const char* field; // nullptr: every Matrix field of the class
+			R read;
+			const char* reader;
+		};
+		static const Rule kRules[] = {
+			// Most Wanted's bloom curves, baked into a lookup texture: on PC 256
+			// texels at t = i/255 (0x6C3B20, GetValueFromSpline at 0x73DAB0; black
+			// bloom in red, colour bloom in green, the detail map curve in blue,
+			// which no shader reads), on the GameCube 64 entries
+			// (IVisualTreatmentPlat::UpdateIndirectTexture).
+			{ "visuallook", "BlackBloomCurve", R::YOverT, "The game evaluates the Y column at evenly spaced t with GetValueFromSpline, for the bloom lookup texture." },
+			{ "visuallook", "ColourBloomCurve", R::YOverT, "The game evaluates the Y column at evenly spaced t with GetValueFromSpline, for the bloom lookup texture." },
+			{ "visuallook", "DetailMapCurve", R::YOverT, "Most Wanted PC evaluates the Y column at evenly spaced t into the lookup texture's blue channel, which no visual treatment shader reads." },
+			// Carbon's colour curves (IVisualTreatmentPlat's SplineMaps, built from
+			// visuallook/colorcurves); the later games' are inferred from the same
+			// fields and SplineMap in their headers.
+			{ "visuallook", nullptr, R::Bezier, "The game samples the Bezier in X and Y at 64 points and looks Y up by X, in SplineMap." },
+			// VisualLookEffect::UpdateActive: elapsed time over length is t, the
+			// value times magnitude.
+			{ "visuallookeffect", "graph", R::YOverT, "The game evaluates the Y column at t = elapsed time / length and multiplies it by magnitude." },
+			// SFXCTL_Physics::UpdateParams (Most Wanted GameCube, Carbon Wii).
+			{ "engineaudio", "PhysicsRPM_Map", R::YOverT, "The game evaluates the Y column at evenly spaced t with GetValueFromSpline." },
+			// SFXCTL_Shifting (Most Wanted GameCube): FillGraphFromSpline samples the
+			// Bezier into a graph of (x, y) points.
+			{ "shiftpattern", nullptr, R::Bezier, "The game samples the Bezier in X and Y into a graph of points, in FillGraphFromSpline." },
+		};
+		for (const Rule& r : kRules)
+			if (cls == r.cls && (!r.field || field == r.field)) return { r.read, r.reader };
+		return {};
+	}
+
+	CurvePoints ReadCurvePoints(const uint8_t* m, Endian e)
+	{
+		CurvePoints c;
+		for (int i = 0; i < 4; ++i)
+		{
+			c.x[i] = loadf32(m + i * 16, e);
+			c.y[i] = loadf32(m + i * 16 + 4, e);
+		}
+		return c;
+	}
+
+	void WriteCurvePoint(uint8_t* m, int i, float x, float y, Endian e)
+	{
+		storef32(m + i * 16, x, e);
+		storef32(m + i * 16 + 4, y, e);
+	}
+
+	namespace
+	{
+		float Bernstein(const float v[4], float t)
+		{
+			const float u = 1.0f - t;
+			return u * u * u * v[0] + 3.0f * t * u * u * v[1] + 3.0f * t * t * u * v[2] + t * t * t * v[3];
+		}
+	} // namespace
+
+	float CurveYAt(const CurvePoints& c, float t)
+	{
+		return Bernstein(c.y, t);
+	}
+
+	void CurvePointAt(const CurvePoints& c, float t, float& x, float& y)
+	{
+		x = Bernstein(c.x, t);
+		y = Bernstein(c.y, t);
+	}
+
+	float SplineMapValue(const CurvePoints& c, float x)
+	{
+		float mx[64], my[64];
+		for (int i = 0; i < 64; ++i) CurvePointAt(c, float(i) * (1.0f / 63.0f), mx[i], my[i]);
+		if (x < mx[0]) return my[0];
+		if (x > mx[63]) return my[63];
+		for (int i = 0; i < 63; ++i)
+			if (mx[i] <= x && x <= mx[i + 1])
+				return mx[i + 1] == mx[i] ? my[i] : my[i] + (x - mx[i]) * (my[i + 1] - my[i]) / (mx[i + 1] - mx[i]);
+		return 0.0f;
+	}
+
+	float MatrixCurveValue(const CurvePoints& c, MatrixCurveRead r, float x)
+	{
+		return r == MatrixCurveRead::YOverT ? CurveYAt(c, std::clamp(x, 0.0f, 1.0f)) : SplineMapValue(c, x);
+	}
+
 } // namespace attrib

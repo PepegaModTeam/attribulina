@@ -407,6 +407,7 @@ namespace attrib
 			f.key = fd.key;
 			f.typeHash = fd.typeHash;
 			f.type = t;
+			f.fieldEnum = db.fieldEnumFor(out.key, f);
 			f.size = fd.size ? *fd.size : uint16_t(t->size);
 			f.alignment = fd.alignment ? *fd.alignment : t ? NaturalAlignment(*t) : 2;
 			uint8_t flags = DefFlag::IsBound;

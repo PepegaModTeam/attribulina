@@ -1421,6 +1421,13 @@ enum STICH_WHOOSH_TYPE 4
   WHSH_TunOut_Fast_03 89
 end
 
+enum eLightFlareTextures 4
+  ESLF_TEX_HEADLIGHT_INNER 0
+  ESLF_TEX_HEADLIGHT_OUTER 1
+  ESLF_TEX_HEADLIGHT_GLOW 2
+  ESLF_NUM_TEXTURES 3
+end
+
 struct Attrib::StringKey 16 8
   mHash64 uint64 0
   mHash32 uint32 8 hint=key
@@ -1596,4 +1603,8 @@ struct CollisionStream 32 8
   StreamMoment Attrib::RefSpec 0
   Threshold uint8 24
 end
+
+# light_flares_cg.flare_texture: UpdateLightFlareParameters copies it into eLightFlareParams::TextureID (MW GameCube 0x800fa1a0),
+# which picks a texture from eLightFlareTextureNameHashes.
+field light_flares_cg flare_texture eLightFlareTextures
 

@@ -205,10 +205,11 @@ namespace app
 			}
 
 			// The field name only steers how a value is shown (colours), so one
-			// ValueType serves every field of a type.
+			// ValueType serves every field of a type, but for a field the schema
+			// gives an enum of its own (FieldDef::fieldEnum).
 			const ValueType& attributeType(const Attribute& a)
 			{
-				auto& slot = a.type ? byType_[a.type] : bySize_[a.elemSize];
+				auto& slot = a.def && a.def->fieldEnum ? byField_[a.def] : a.type ? byType_[a.type] : bySize_[a.elemSize];
 				if (!slot)
 				{
 					static const std::string kNoName;
@@ -364,6 +365,7 @@ namespace app
 
 			const Database& db_;
 			std::unordered_map<const TypeInfo*, std::unique_ptr<ValueType>> byType_;
+			std::unordered_map<const FieldDef*, std::unique_ptr<ValueType>> byField_;
 			std::unordered_map<uint32_t, std::unique_ptr<ValueType>> bySize_;
 			std::unordered_map<const StructDef*, std::unique_ptr<StructPlan>> plans_;
 			std::vector<Step> steps_;

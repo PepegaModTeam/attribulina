@@ -130,9 +130,30 @@ namespace attrib
 
 	} // namespace
 
+	namespace
+	{
+		// An integer field the type schema gives an enum (Schema.h, `field`).
+		void ApplyFieldEnum(ValueType& vt, const FieldDef* f)
+		{
+			if (!f || !f->fieldEnum || vt.size != f->fieldEnum->size) return;
+			vt.kind = TypeKind::Enum;
+			vt.en = f->fieldEnum;
+			vt.typeName = f->fieldEnum->name;
+		}
+	} // namespace
+
 	ValueType TypeOfAttribute(const Attribute& a, const std::string& fieldName)
 	{
-		return TypeOfType(a.type, a.elemSize, fieldName);
+		ValueType vt = TypeOfType(a.type, a.elemSize, fieldName);
+		ApplyFieldEnum(vt, a.def);
+		return vt;
+	}
+
+	ValueType TypeOfStatic(const FieldDef& f, const std::string& fieldName)
+	{
+		ValueType vt = TypeOfType(f.type, f.size, fieldName);
+		ApplyFieldEnum(vt, &f);
+		return vt;
 	}
 
 	ValueType TypeOfType(const TypeInfo* type, uint32_t size, const std::string& fieldName)

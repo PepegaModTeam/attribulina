@@ -2018,7 +2018,19 @@ namespace attrib::nfsms
 								props.push_back(st.member);
 							}
 						}
-						value("update_field " + head, field, props, *b.value, b.path.steps.empty() || !b.path.steps[0].member.empty());
+						// NFS-VltEd reads a field the schema gives an enum (FieldDef::fieldEnum)
+						// as the integer its type is: the value's number, not its name.
+						const sc::Value* v = b.value.get();
+						sc::ValuePtr number;
+						if (f && f->fieldEnum && v->kind == sc::Value::Kind::Word)
+							for (const auto& [n, val] : f->fieldEnum->values)
+								if (n == v->text)
+								{
+									number = sc::MakeNumber(std::to_string(val));
+									v = number.get();
+									break;
+								}
+						value("update_field " + head, field, props, *v, b.path.steps.empty() || !b.path.steps[0].member.empty());
 						break;
 					}
 					case K::Revert: out.push_back("delete_field " + head + " " + Token(nameOf(b.path.field))); break;

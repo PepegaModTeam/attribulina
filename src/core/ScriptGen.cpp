@@ -805,7 +805,7 @@ namespace attrib::script
 			const FieldDef* def = cls.field(fd.key);
 			// Index tables follow the class's collections (UpdateIndexTables).
 			if (values && def && def->isStatic() && !(t && t->name == kIndexTableType) && uint32_t(def->offset) + def->size <= cls.staticData.bytes.size())
-				f.value = gen.value(cls.staticData, def->offset, TypeOfType(def->type, def->size, gen.name(def->key)), e);
+				f.value = gen.value(cls.staticData, def->offset, TypeOfStatic(*def, gen.name(def->key)), e);
 			s.body.push_back(std::move(f));
 		}
 		// Static bytes no static field covers (World's gameplay keeps 8 nonzero ones).
