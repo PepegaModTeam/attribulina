@@ -14,8 +14,10 @@ namespace cli
 
 	struct Env
 	{
-		std::string exeDir;  // data/ and user_keys.txt are looked for beside the program
+		std::string exeDir;  // data/ is looked for beside the program
 		std::string dataDir; // instead of <exeDir>/data (or ./data)
+		// user_keys.txt's folder, the editor's (core/UserFolder.h); empty: exeDir
+		std::string userDir;
 		std::istream* in = nullptr; // for a script named "-"
 	};
 

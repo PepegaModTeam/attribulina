@@ -583,8 +583,8 @@ namespace app
 			ImGui::InputTextWithHint("##filter", "filter, e.g. Racer or EStart", &sbFunctionFilter_);
 			if (ImGui::SmallButton("Your Functions...")) openUserLuaFunctions();
 			if (ImGui::IsItemHovered())
-				ImGui::SetTooltip("Functions you add for %s, such as ones your own code hooks bind.\nSaved in user_lua_%s.txt beside the program.",
-								  InfoOf(db_->target().game).name, InfoOf(db_->target().game).id);
+				ImGui::SetTooltip("Functions you add for %s, such as ones your own code hooks bind.\nSaved in %s.",
+								  InfoOf(db_->target().game).name, userLuaPath(db_->target().game).c_str());
 			const std::string f = ToLower(sbFunctionFilter_);
 			const std::optional<Target> listed = ParseTarget(luaList_);
 			if (luaList_.empty())
@@ -673,7 +673,7 @@ namespace app
 		if (!userLuaErrors_.empty())
 			ImGui::TextColored(kWarn, "%zu line(s) can't be read and are left out; hover their numbers", userLuaErrors_.size());
 		else
-			ImGui::TextDisabled("user_lua_%s.txt beside the program", InfoOf(userLuaGame_).id);
+			ImGui::TextDisabled("%s", userLuaPath(userLuaGame_).c_str());
 		ImGui::End();
 	}
 

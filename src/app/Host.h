@@ -29,6 +29,13 @@ namespace app
 														  const std::vector<FileFilter>& filters) = 0;
 
 		virtual std::string executableDirectory() = 0;
+		// Where the user's own files go (core/UserFolder.h: the program's folder
+		// in portable mode, else the per-user one). The host chooses it before
+		// App::setup, which takes the settings file's path from it too.
+		virtual std::string userFolder()
+		{
+			return executableDirectory();
+		}
 		virtual void setWindowTitle(const std::string& title) = 0;
 		// Ends the main loop after the current frame.
 		virtual void quit() = 0;

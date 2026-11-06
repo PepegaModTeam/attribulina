@@ -298,7 +298,7 @@ which decides how values read; lines that fail come out as comments.
 				};
 				names(ToUtf8(dataDir_ / "attrib_keys.txt"), true);
 				for (const std::string& f : filesIn(dataDir_ / "bin_keys")) db->binNames().loadFile(f);
-				names(ToUtf8(FromUtf8(env_.exeDir) / "user_keys.txt"), true);
+				if (const std::string uk = userKeysFile(); !uk.empty()) names(uk, true);
 				for (const std::string& f : filesIn(dataDir_ / "messages"))
 					for (const MessageDef& m : LoadMessages(f)) db->names().add(m.name);
 				return db;
@@ -436,25 +436,39 @@ which decides how values read; lines that fail come out as comments.
 				}
 			}
 
+			// The editor's user_keys.txt: in its user folder, else beside the program.
+			std::string userKeysFile() const
+			{
+				const std::string& dir = env_.userDir.empty() ? env_.exeDir : env_.userDir;
+				return dir.empty() ? std::string() : ToUtf8(FromUtf8(dir) / "user_keys.txt");
+			}
+
 			// Names a script gave new collections and keys: the packs store only
-			// hashes, so they go to user_keys.txt beside the program, as names typed
-			// in the editor do.
+			// hashes, so they go to user_keys.txt, as names typed in the editor do.
 			void rememberNames(const std::vector<std::string>& names)
 			{
-				if (names.empty() || env_.exeDir.empty()) return;
-				const fs::path file = FromUtf8(env_.exeDir) / "user_keys.txt";
+				const std::string path = userKeysFile();
+				if (names.empty() || path.empty()) return;
+				const fs::path file = FromUtf8(path);
 				std::set<std::string> known;
+				bool newline = false; // a file edited by hand may end without one
 				{
 					std::ifstream in(file, std::ios::binary);
 					for (std::string l; std::getline(in, l);)
 					{
+						newline = in.eof() && !l.empty();
 						if (!l.empty() && l.back() == '\r') l.pop_back();
 						known.insert(l);
 					}
 				}
 				std::ofstream out(file, std::ios::binary | std::ios::app);
 				for (const std::string& n : names)
-					if (known.insert(n).second) out << n << "\n";
+					if (known.insert(n).second)
+					{
+						if (newline) out << "\n";
+						newline = false;
+						out << n << "\n";
+					}
 			}
 
 			std::map<std::string, std::string> optionValues(const Args& a)

@@ -40,6 +40,24 @@ namespace app
 			return std::string(u.begin(), u.end());
 		}
 
+		// The lines of a name list (attrib_keys.txt, user_keys.txt), without
+		// empty ones and line ends. Throws when the file can't be read.
+		std::vector<std::string> ReadNameLines(const std::string& path)
+		{
+			const Bytes data = ReadFile(path);
+			std::vector<std::string> lines;
+			size_t start = 0;
+			for (size_t i = 0; i <= data.size(); ++i)
+			{
+				if (i < data.size() && data[i] != '\n') continue;
+				size_t end = i;
+				if (end > start && data[end - 1] == '\r') --end;
+				if (end > start) lines.emplace_back(reinterpret_cast<const char*>(data.data()) + start, end - start);
+				start = i + 1;
+			}
+			return lines;
+		}
+
 		// A path the way the recent list keeps it: absolute, without "." or ".."
 		// and without a trailing separator.
 		std::string NormalPath(const std::string& path)
@@ -164,7 +182,7 @@ namespace app
 			const auto eq = l.find('=');
 			if (eq == std::string::npos) return;
 			const std::string k = l.substr(0, eq), v = l.substr(eq + 1);
-			if (k == "KeysFile") self->settings_.keysFile = v;
+			if (k == "KeysFile") self->settings_.oldKeysFile = v;
 			else if (k == "Favorite")
 			{
 				unsigned ck = 0, key = 0;
@@ -202,7 +220,6 @@ namespace app
 		{
 			auto* self = static_cast<App*>(hh->UserData);
 			out->appendf("[%s][Settings]\n", hh->TypeName);
-			out->appendf("KeysFile=%s\n", self->settings_.keysFile.c_str());
 			out->appendf("LightTheme=%d\n", self->lightTheme_ ? 1 : 0);
 			out->appendf("GameplayView=%d\n", self->view_.gameplayView ? 1 : 0);
 			out->appendf("DetectGame=%d\n", self->detectTarget_ ? 1 : 0);
@@ -255,21 +272,25 @@ namespace app
 		if (!codeFont_) 
 			codeFont_ = font ? io.Fonts->AddFontDefaultVector() : nullptr;
 
-		// Key names: the configured file, else attrib_keys.txt beside the program.
-		if (settings_.keysFile.empty())
+		// Where the user's own files are (UserFolder.h).
+		const fs::path userDir = FromUtf8(host_.userFolder());
+		if (std::error_code ec; userDir == exe || fs::equivalent(userDir, exe, ec))
+			log(LogLevel::Info, "Settings and your names stay beside the program, in portable mode.");
+		else
+			log(LogLevel::Info, "Settings and your names go to " + ToUtf8(userDir) +
+				". To keep them beside the program, put an attribulina.ini there.");
+
+		// Key names: attrib_keys.txt beside the program, else in its data folder.
+		for (const fs::path& p : { exe / "attrib_keys.txt", exe / "data" / "attrib_keys.txt" })
 		{
-			//const fs::path exe = FromUtf8(host_.executableDirectory());
-			for (const fs::path& p : { exe / "attrib_keys.txt", exe / "data" / "attrib_keys.txt" })
+			std::error_code ec;
+			if (fs::exists(p, ec))
 			{
-				std::error_code ec;
-				if (fs::exists(p, ec))
-				{
-					settings_.keysFile = ToUtf8(p);
-					break;
-				}
+				keysFile_ = ToUtf8(p);
+				break;
 			}
 		}
-		if (settings_.keysFile.empty())
+		if (keysFile_.empty())
 			log(LogLevel::Warning, "No attrib_keys.txt found; names will show as hashes until you load one (File > Load Key Names).");
 
 		// Type schemas (data/schema/*.txt): layouts of the game's structs and enums.
@@ -359,36 +380,45 @@ namespace app
 				for (std::string line; std::getline(in, line);)
 					if (auto le = ParseLuaLine(std::move(line))) list.push_back(std::move(*le));
 			}
-			if (userLuaDir_.empty()) userLuaDir_ = host_.executableDirectory();
+			if (userLuaDir_.empty()) userLuaDir_ = ToUtf8(userDir);
 			luaChosenFor_ = "?";
 		}
 
 		// Names the user has typed before.
-		userKeysPath_ = ToUtf8(FromUtf8(host_.executableDirectory()) / "user_keys.txt");
+		userKeysPath_ = ToUtf8(userDir / "user_keys.txt");
 		if (std::error_code ec; fs::exists(FromUtf8(userKeysPath_), ec))
 		{
 			try
 			{
-				const Bytes data = ReadFile(userKeysPath_);
-				std::string line;
-				for (size_t i = 0; i <= data.size(); ++i)
-				{
-					if (i == data.size() || data[i] == '\n')
-					{
-						if (!line.empty() && line.back() == '\r') line.pop_back();
-						if (!line.empty()) userNames_.insert(line);
-						line.clear();
-					}
-					else
-					{
-						line.push_back(char(data[i]));
-					}
-				}
+				for (std::string& n : ReadNameLines(userKeysPath_)) userNames_.insert(std::move(n));
 			}
 			catch (const std::exception& e)
 			{
 				log(LogLevel::Warning, std::string("User key names: ") + e.what());
 			}
+		}
+		// An older version kept the list File > Load Key Names chose in the .ini,
+		// in place of attrib_keys.txt. Its names join user_keys.txt.
+		if (!settings_.oldKeysFile.empty())
+		{
+			std::error_code ec;
+			const fs::path old = FromUtf8(settings_.oldKeysFile);
+			const bool program = !keysFile_.empty() && fs::equivalent(old, FromUtf8(keysFile_), ec);
+			if (!program && fs::is_regular_file(old, ec))
+			{
+				try
+				{
+					const size_t n = keepUserNames(ReadNameLines(settings_.oldKeysFile));
+					log(LogLevel::Info, "Added " + std::to_string(n) + " names to user_keys.txt from " + settings_.oldKeysFile +
+						", the key names file an earlier version read in place of attrib_keys.txt. File > Load Key Names now adds to user_keys.txt, and attrib_keys.txt is always read.");
+				}
+				catch (const std::exception& e)
+				{
+					log(LogLevel::Warning, std::string("Key names: ") + e.what());
+				}
+			}
+			settings_.oldKeysFile.clear();
+			ImGui::MarkIniSettingsDirty();
 		}
 		updateTitle();
 	}
@@ -435,10 +465,54 @@ namespace app
 			db_->binNames().add(name);
 		}
 		if (userKeysPath_.empty() || !userNames_.insert(name).second) return;
-		std::ofstream out(FromUtf8(userKeysPath_), std::ios::app | std::ios::binary);
-		out << name << "\n";
-		if (!out)
-			log(LogLevel::Warning, "Could not save the name '" + name + "' to " + userKeysPath_);
+		appendUserKeys(name + "\n");
+	}
+
+	void App::appendUserKeys(const std::string& lines)
+	{
+		if (userKeysPath_.empty() || lines.empty()) return;
+		const fs::path file = FromUtf8(userKeysPath_);
+		bool newline = false; // a file edited by hand may end without one
+		if (std::ifstream in(file, std::ios::binary | std::ios::ate); in && in.tellg() > 0)
+		{
+			in.seekg(-1, std::ios::end);
+			newline = in.get() != '\n';
+		}
+		std::ofstream out(file, std::ios::app | std::ios::binary);
+		if (newline) out << "\n";
+		out << lines;
+		if (!out) log(LogLevel::Warning, "Could not save names to " + userKeysPath_);
+	}
+
+	size_t App::keepUserNames(const std::vector<std::string>& names)
+	{
+		std::unordered_set<std::string> program;
+		if (!keysFile_.empty())
+		{
+			try
+			{
+				for (std::string& n : ReadNameLines(keysFile_)) program.insert(std::move(n));
+			}
+			catch (const std::exception&)
+			{
+			}
+		}
+		std::string lines;
+		size_t added = 0;
+		for (const std::string& n : names)
+		{
+			if (db_)
+			{
+				db_->names().add(n);
+				db_->binNames().add(n);
+			}
+			if (program.count(n) || !userNames_.insert(n).second) continue;
+			lines += n;
+			lines += '\n';
+			++added;
+		}
+		appendUserKeys(lines);
+		return added;
 	}
 
 	void App::ensureDatabase()
@@ -454,14 +528,14 @@ namespace app
 			db_->binNames().add(n);
 		}
 		for (const MessageDef& m : messages_) db_->names().add(m.name);
-		if (!settings_.keysFile.empty())
+		if (!keysFile_.empty())
 		{
 			try
 			{
-				const size_t n = db_->names().loadFile(settings_.keysFile);
+				const size_t n = db_->names().loadFile(keysFile_);
 				// Some bStringHash values are hashes of the same names.
-				db_->binNames().loadFile(settings_.keysFile);
-				log(LogLevel::Info, "Loaded " + std::to_string(n) + " key names from " + settings_.keysFile);
+				db_->binNames().loadFile(keysFile_);
+				log(LogLevel::Info, "Loaded " + std::to_string(n) + " key names from " + keysFile_);
 			}
 			catch (const std::exception& e)
 			{
@@ -488,25 +562,22 @@ namespace app
 
 	bool App::loadKeyNames(const std::string& path)
 	{
+		std::vector<std::string> names;
 		try
 		{
-			size_t n = 0;
-			if (db_)
-			{
-				n = db_->names().loadFile(path);
-				db_->binNames().loadFile(path);
-			}
-			settings_.keysFile = path;
-			ImGui::MarkIniSettingsDirty();
-			log(LogLevel::Info, "Key names file set to " + path + (db_ ? " (" + std::to_string(n) + " names)" : std::string()));
-			structureChanged();
-			return true;
+			names = ReadNameLines(path);
 		}
 		catch (const std::exception& e)
 		{
 			log(LogLevel::Error, std::string("Key names: ") + e.what());
 			return false;
 		}
+		const size_t added = keepUserNames(names);
+		log(LogLevel::Info, "Read " + std::to_string(names.size()) + " names from " + path +
+			(userKeysPath_.empty() ? ". The " + std::to_string(added) + " new ones are kept for this session only."
+								   : " and added the " + std::to_string(added) + " new ones to " + userKeysPath_ + "."));
+		structureChanged();
+		return true;
 	}
 
 	bool App::open(const std::string& path)
@@ -2023,10 +2094,12 @@ namespace app
 		}
 		else if (ImGui::BeginTabBar("##explorer"))
 		{
+			// A reveal (Back, Forward, a link, Show in Explorer) brings its tree to
+			// the front: a gameplay element's in the gameplay view, else Classes.
 			const int want = explorerTabRequest_;
 			explorerTabRequest_ = 0;
 			const bool gameplayTab = view_.gameplayView && gameplay_;
-			if (ImGui::BeginTabItem("Classes", nullptr, want == 1 && !gameplayTab ? ImGuiTabItemFlags_SetSelected : 0))
+			if (ImGui::BeginTabItem("Classes", nullptr, want == 1 ? ImGuiTabItemFlags_SetSelected : 0))
 			{
 				drawClassTree();
 				ImGui::EndTabItem();

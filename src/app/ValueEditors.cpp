@@ -7,6 +7,7 @@
 #include "core/lua/Lua.h"
 
 #include "imgui.h"
+#include "imgui_internal.h"
 #include "imgui_stdlib.h"
 
 #include <algorithm>
@@ -502,6 +503,26 @@ namespace app
 		}
 
 		// Labelled float boxes (X [..] Y [..] Z [..]) across the row.
+		// The right-click menu that picks how a value shows (colour or numbers,
+		// graph or rows). Call it right after the value's widgets, or after the
+		// EndGroup() of a group holding them, so a right-click anywhere on the
+		// value opens it. An inherited value is drawn disabled, and its menu
+		// opens all the same with its items enabled: how a value shows isn't an
+		// edit of it.
+		template <class Items>
+		void ShowMenu(const char* id, Items&& items)
+		{
+			if (ImGui::IsMouseReleased(ImGuiMouseButton_Right) &&
+				ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled | ImGuiHoveredFlags_AllowWhenBlockedByPopup))
+				ImGui::OpenPopup(id);
+			if (!ImGui::BeginPopup(id)) return;
+			const bool reenable = (GImGui->CurrentItemFlags & ImGuiItemFlags_Disabled) != 0;
+			if (reenable) ImGui::BeginDisabledOverrideReenable();
+			items();
+			if (reenable) ImGui::EndDisabledOverrideReenable();
+			ImGui::EndPopup();
+		}
+
 		bool EditComponents(uint8_t* p, int n, const char* const* labels, Endian e)
 		{
 			float v[4];
@@ -538,6 +559,7 @@ namespace app
 			static const char* const kXYZW[] = { "X", "Y", "Z", "W" };
 			static const char* const kABCD[] = { "A", "B", "C", "D" };
 			const bool colour = ShowsAsColour(env, vt);
+			ImGui::BeginGroup(); // the menu below opens on every component
 			if (colour)
 			{
 				float c[4] = { 0, 0, 0, 1 };
@@ -567,12 +589,13 @@ namespace app
 			{
 				changed = EditComponents(p, n, kXYZW, env.endian);
 			}
-			if (env.prefs && !vt.name.empty() && ImGui::BeginPopupContextItem("##vecctx"))
-			{
-				if (ImGui::MenuItem("Show as Colour", nullptr, colour)) env.prefs->colour[vt.name] = true;
-				if (ImGui::MenuItem("Show as Numbers", nullptr, !colour)) env.prefs->colour[vt.name] = false;
-				ImGui::EndPopup();
-			}
+			ImGui::EndGroup();
+			if (env.prefs && !vt.name.empty())
+				ShowMenu("##vecctx", [&]
+				{
+					if (ImGui::MenuItem("Show as Colour", nullptr, colour)) env.prefs->colour[vt.name] = true;
+					if (ImGui::MenuItem("Show as Numbers", nullptr, !colour)) env.prefs->colour[vt.name] = false;
+				});
 			return changed;
 		}
 
@@ -595,16 +618,18 @@ namespace app
 		// as a number. Kept per field or member name, like a vector's choice.
 		void PackedColourMenu(EditEnv& env, const ValueType& vt, PackedColour now)
 		{
-			if (!env.prefs || vt.name.empty() || !ImGui::BeginPopupContextItem("##packedctx")) return;
+			if (!env.prefs || vt.name.empty()) return;
 			auto choose = [&](PackedColour order)
 			{
 				env.prefs->colour[vt.name] = order != PackedColour::None;
 				if (order != PackedColour::None) env.prefs->packing[vt.name] = order;
 			};
-			if (ImGui::MenuItem("Show as Colour (0xRRGGBBAA)", nullptr, now == PackedColour::RGBA)) choose(PackedColour::RGBA);
-			if (ImGui::MenuItem("Show as Colour (0xAARRGGBB)", nullptr, now == PackedColour::ARGB)) choose(PackedColour::ARGB);
-			if (ImGui::MenuItem("Show as Number", nullptr, now == PackedColour::None)) choose(PackedColour::None);
-			ImGui::EndPopup();
+			ShowMenu("##packedctx", [&]
+			{
+				if (ImGui::MenuItem("Show as Colour (0xRRGGBBAA)", nullptr, now == PackedColour::RGBA)) choose(PackedColour::RGBA);
+				if (ImGui::MenuItem("Show as Colour (0xAARRGGBB)", nullptr, now == PackedColour::ARGB)) choose(PackedColour::ARGB);
+				if (ImGui::MenuItem("Show as Number", nullptr, now == PackedColour::None)) choose(PackedColour::None);
+			});
 		}
 
 		// A 4-byte integer colour (IntegerColour): the picker shows R, G, B and A
@@ -653,6 +678,7 @@ namespace app
 			const float suffix = known ? ImGui::CalcTextSize(known->c_str()).x + ImGui::CalcTextSize("= ").x + ImGui::GetStyle().ItemSpacing.x : 0.0f;
 			ImGui::SetNextItemWidth(std::max(60.0f, ImGui::GetContentRegionAvail().x - suffix));
 			bool changed;
+			ImGui::BeginGroup(); // with the name after it, for the menu
 			if (vt.hint == "hex" && vt.size == 4)
 			{
 				// Shown as 0x1234ABCD; typed as 0x and hex digits, or as a decimal
@@ -697,12 +723,13 @@ namespace app
 				changed = ImGui::InputScalar("##int", ImGuiDataType_U64, &u);
 				v = int64_t(u);
 			}
-			if (PackableInteger(vt)) PackedColourMenu(env, vt, PackedColour::None);
 			if (known)
 			{
 				ImGui::SameLine();
 				ImGui::TextDisabled("= %s", known->c_str());
 			}
+			ImGui::EndGroup();
+			if (PackableInteger(vt)) PackedColourMenu(env, vt, PackedColour::None);
 			if (changed) WriteInteger(b, off, vt, v, env.endian);
 			return changed;
 		}
@@ -1041,7 +1068,8 @@ namespace app
 					ImGui::Text("%s %.3g: y %.4g", yOverT ? "t" : "x", x, MatrixCurveValue(now, info.read, x));
 				}
 				ImGui::TextDisabled("%s", info.reader ? info.reader : "No code that reads this field was found. It is drawn as the Bezier through its points.");
-				if (editable) ImGui::TextDisabled("Drag a point to move it. Right-click to show the rows only.");
+				if (editable) ImGui::TextDisabled(env.prefs ? "Drag a point to move it. Right-click to show the rows only." : "Drag a point to move it.");
+				else if (env.prefs) ImGui::TextDisabled("Right-click to show the rows only.");
 				ImGui::EndTooltip();
 			}
 			return changed;
@@ -1307,12 +1335,12 @@ namespace app
 				changed |= now != p[i];
 				p[i] = now;
 			}
-		if (env.prefs && !element.name.empty() && ImGui::BeginPopupContextItem("##bytesctx"))
-		{
-			if (ImGui::MenuItem("Show as Colour", nullptr, true)) env.prefs->colour[element.name] = true;
-			if (ImGui::MenuItem("Show as Numbers", nullptr, false)) env.prefs->colour[element.name] = false;
-			ImGui::EndPopup();
-		}
+		if (env.prefs && !element.name.empty())
+			ShowMenu("##bytesctx", [&]
+			{
+				if (ImGui::MenuItem("Show as Colour", nullptr, true)) env.prefs->colour[element.name] = true;
+				if (ImGui::MenuItem("Show as Numbers", nullptr, false)) env.prefs->colour[element.name] = false;
+			});
 		return changed;
 	}
 
@@ -1445,14 +1473,8 @@ namespace app
 			{
 				// A field's matrix holds a curve (Curve.h): its graph over the rows.
 				const bool graph = ShowsAsGraph(env, vt);
+				ImGui::BeginGroup(); // graph and rows: the menu opens on either
 				if (graph) changed |= EditMatrixCurve(env, p, vt, editable);
-				const bool menu = env.prefs && !vt.member && !vt.name.empty();
-				if (graph && menu && ImGui::BeginPopupContextItem("##curvectx"))
-				{
-					if (ImGui::MenuItem("Show as Graph", nullptr, true)) env.prefs->graph[vt.name] = true;
-					if (ImGui::MenuItem("Show as Rows", nullptr, false)) env.prefs->graph[vt.name] = false;
-					ImGui::EndPopup();
-				}
 				static const char* const kXYZW[] = { "X", "Y", "Z", "W" };
 				for (int r = 0; r < 4; ++r)
 				{
@@ -1460,12 +1482,13 @@ namespace app
 					changed |= EditComponents(p + r * 16, 4, kXYZW, e);
 					ImGui::PopID();
 				}
-				if (!graph && menu && ImGui::BeginPopupContextItem("##rowsctx"))
-				{
-					if (ImGui::MenuItem("Show as Graph", nullptr, false)) env.prefs->graph[vt.name] = true;
-					if (ImGui::MenuItem("Show as Rows", nullptr, true)) env.prefs->graph[vt.name] = false;
-					ImGui::EndPopup();
-				}
+				ImGui::EndGroup();
+				if (env.prefs && !vt.member && !vt.name.empty())
+					ShowMenu("##curvectx", [&]
+					{
+						if (ImGui::MenuItem("Show as Graph", nullptr, graph)) env.prefs->graph[vt.name] = true;
+						if (ImGui::MenuItem("Show as Rows", nullptr, !graph)) env.prefs->graph[vt.name] = false;
+					});
 				break;
 			}
 			case TypeKind::Blob: changed = EditBlob(env, b, off); break;

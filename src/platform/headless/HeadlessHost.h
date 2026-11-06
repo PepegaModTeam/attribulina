@@ -14,6 +14,7 @@ namespace platform
 		std::optional<std::string> nextOpenFile, nextOpenFolder, nextSaveFile;
 		std::string title;
 		std::string exeDir = ".";
+		std::string userDir; // the user's files; empty: exeDir (portable)
 		bool quitRequested = false;
 
 		std::optional<std::string> openFileDialog(const std::string&, const std::vector<app::FileFilter>&) override;
@@ -22,6 +23,10 @@ namespace platform
 		std::string executableDirectory() override
 		{
 			return exeDir;
+		}
+		std::string userFolder() override
+		{
+			return userDir.empty() ? exeDir : userDir;
 		}
 		void setWindowTitle(const std::string& t) override
 		{

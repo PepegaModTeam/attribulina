@@ -156,9 +156,13 @@ namespace app
 		// After a value of `c` changed: its pack needs saving (and the recorder notes it).
 		void markDirty(attrib::Collection* c);
 		void closeAll();
+		// File > Load Key Names: adds the file's names to the open database and
+		// to user_keys.txt (those it lacks that the program's attrib_keys.txt
+		// doesn't have), so later sessions know them too. The program's list
+		// stays as it is.
 		bool loadKeyNames(const std::string& path);
-		// Adds a name the user typed to the dictionary and to user_keys.txt
-		// beside the program, so it is known again next time.
+		// Adds a name the user typed to the dictionary and to user_keys.txt in
+		// the user's folder (Host::userFolder), so it is known again next time.
 		void rememberName(const std::string& name);
 		const std::string& userKeysPath() const
 		{
@@ -319,7 +323,7 @@ namespace app
 		}
 
 		// The Lua functions the State Graph Builder lists and colours, for the open
-		// database's game: the user's own (user_lua_<game>.txt beside the program)
+		// database's game: the user's own (user_lua_<game>.txt in the user's folder)
 		// first, then the game's list (data/lua/<game>_<platform>.txt: this
 		// platform's, else the PC's, else any of the game's). A user entry
 		// replaces a listed one of the same name.
@@ -339,7 +343,8 @@ namespace app
 		{
 			return luaList_;
 		} // "prostreet_pc", "" for none
-// Where the user's files go; the program's folder unless set (tests point it elsewhere).
+		// Where user_lua_<game>.txt goes: the user's folder (Host::userFolder)
+		// unless set (tests point it elsewhere).
 		void setUserLuaFolder(const std::string& dir)
 		{
 			userLuaDir_ = dir;
@@ -509,7 +514,10 @@ namespace app
 	private:
 		struct Settings
 		{
-			std::string keysFile;
+			// KeysFile= from an older version: the list File > Load Key Names
+			// chose, which then replaced attrib_keys.txt. setup moves its names
+			// to user_keys.txt, and it isn't written again.
+			std::string oldKeysFile;
 			std::vector<std::string> recent;
 			// Favorite= lines from an older version, which kept one list for
 			// every database; moved to favorites.txt (moveOldFavorites).
@@ -782,6 +790,13 @@ namespace app
 		std::vector<bool> recentThere_; // per recent file, checked when the File menu opens
 		std::string userKeysPath_;
 		std::unordered_set<std::string> userNames_;
+		std::string keysFile_; // the program's list: attrib_keys.txt beside it or in data/
+		// Adds names to the open database's dictionaries, and to user_keys.txt
+		// those it doesn't hold and keysFile_ doesn't have. Returns how many went
+		// to the file.
+		size_t keepUserNames(const std::vector<std::string>& names);
+		// Appends lines to user_keys.txt, after a newline if its last line has none.
+		void appendUserKeys(const std::string& lines);
 		float dpiScale_ = 1.0f;
 
 		// Edit commands.

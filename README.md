@@ -64,6 +64,14 @@ These games/platforms should be implicitly supported (currently untested, may be
 | Ctrl+PgDn, Ctrl+PgUp           | next tab, previous tab                                         |
 | Ctrl+Shift+N                   | new window                                                     |
 
+## Portable mode
+
+By default, Attribulina runs with per-user specific settings.
+
+If you want to run Attribulina in a portable fashion, simply place/create a "attribulina.ini" file next to the executable.
+
+Please note that attribcli mentioned below is always portable, so you will need to place your keys and data right next to it.
+
 ## attribcli
 
 `attribcli.exe` builds next to the editor and does the same with mod scripts from a console or a batch file:

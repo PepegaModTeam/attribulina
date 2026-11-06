@@ -1,6 +1,7 @@
 // attribcli's entry point: arguments in UTF-8 (wmain on Windows), then Cli.cpp.
 
 #include "Cli.h"
+#include "core/UserFolder.h"
 
 #include <filesystem>
 #include <iostream>
@@ -34,6 +35,8 @@ int Main(const std::vector<std::string>& args, const char* argv0) {
     std::ios::sync_with_stdio(false);
     cli::Env env;
     env.exeDir = ExeDir(argv0);
+    // The editor's: portable with an attribulina.ini beside the program, else per user.
+    env.userDir = attrib::ChooseUserFolder(env.exeDir, attrib::PerUserFolder()).path;
     env.in = &std::cin;
     const int code = cli::Run(args, std::cout, std::cerr, env);
     std::cout.flush();
