@@ -3246,6 +3246,79 @@ TEST("ui: the log is a read-only text box: its coloured rows wrap where ImGui wr
     CHECK(probe.conflicts.empty());
 }
 
+TEST("ui: a log or code editor whose box is out of view leaves its text box's last window alone") {
+    // A panel too short for its text box (the Log tab with its dock node dragged
+    // down to the tab bar) puts the box below the window, and InputTextMultiline
+    // returns without beginning its child window. Found by name, the child is then
+    // an earlier frame's, and ImGui frees the draw list of a window unused for
+    // io.ConfigMemoryCompactTimer seconds: drawing into it read CmdBuffer[-1]
+    // (crashdumps/crash3, the Log panel of a Most Wanted database).
+    platform::HeadlessImGui imgui;
+    ImGui::GetIO().IniFilename = nullptr;
+    float pad = 0; // what is above the boxes: past the window's bottom, they are out of view
+    std::string log = "first line\nsecond line\n";
+    const std::vector<uint8_t> levels = {0, 1};
+    const ImU32 colours[2] = {IM_COL32_WHITE, IM_COL32(255, 200, 0, 255)};
+    app::LogView view;
+    std::string code = "edit pvehicle/default\n";
+    app::CodeEditor ed(app::CodeLanguage::Amod);
+    auto frame = [&]() {
+        ImGui_ImplNullPlatform_NewFrame();
+        ImGui_ImplNullRender_NewFrame();
+        ImGui::NewFrame();
+        ImGui::SetNextWindowPos(ImVec2(20, 30));
+        ImGui::SetNextWindowSize(ImVec2(400, 250));
+        ImGui::Begin("Out of view");
+        ImGui::SmallButton("Clear"); // as in the Log panel: it takes the window's first nav focus, which ImGui never clips
+        ImGui::Dummy(ImVec2(10, pad));
+        view.draw("##log", log, levels, colours, ImVec2(-FLT_MIN, 60));
+        ed.draw("##code", code, ImVec2(-FLT_MIN, 60));
+        ImGui::End();
+        ImGui::Render();
+        ImGui_ImplNullRender_RenderDrawData(ImGui::GetDrawData());
+    };
+    auto window = [](const char* prefix) -> ImGuiWindow* {
+        for (ImGuiWindow* w : ImGui::GetCurrentContext()->Windows)
+            if (std::string(w->Name).rfind(prefix, 0) == 0) return w;
+        return nullptr;
+    };
+    auto glyphs = [](const ImGuiWindow* w) { // InputText draws none: its text colour is transparent
+        const ImVec2 white = ImGui::GetIO().Fonts->TexUvWhitePixel;
+        int n = 0;
+        for (const ImDrawVert& v : w->DrawList->VtxBuffer) n += v.uv.x != white.x || v.uv.y != white.y;
+        return n;
+    };
+    for (int i = 0; i < 3; ++i) frame();
+    ImGuiWindow* logBox = window("Out of view/##log_");
+    ImGuiWindow* codeBox = window("Out of view/##code_");
+    CHECK(logBox && codeBox);
+    if (!logBox || !codeBox) return;
+    CHECK(logBox->Active && codeBox->Active);
+    CHECK(glyphs(logBox) > 0 && glyphs(codeBox) > 0);
+
+    // Out of view: the boxes' windows aren't begun, and their draw lists keep
+    // what the last frame that began them left.
+    pad = 1000;
+    const int logVerts = logBox->DrawList->VtxBuffer.Size, codeVerts = codeBox->DrawList->VtxBuffer.Size;
+    for (int i = 0; i < 3; ++i) frame();
+    CHECK(!logBox->Active && !codeBox->Active);
+    CHECK_EQ(logBox->DrawList->VtxBuffer.Size, logVerts);
+    CHECK_EQ(codeBox->DrawList->VtxBuffer.Size, codeVerts);
+
+    // ImGui frees their draw lists (at once with a timer of 0), and drawing goes on.
+    ImGui::GetIO().ConfigMemoryCompactTimer = 0.0f;
+    for (int i = 0; i < 3; ++i) frame();
+    CHECK(logBox->MemoryCompacted && codeBox->MemoryCompacted);
+    CHECK_EQ(logBox->DrawList->CmdBuffer.Size, 0);
+
+    // Back in view, both draw their text again.
+    ImGui::GetIO().ConfigMemoryCompactTimer = 60.0f;
+    pad = 0;
+    for (int i = 0; i < 3; ++i) frame();
+    CHECK(logBox->Active && codeBox->Active && !logBox->MemoryCompacted);
+    CHECK(glyphs(logBox) > 0 && glyphs(codeBox) > 0);
+}
+
 TEST("ui: the log's caret waits on an empty last line and new lines take it and the view along; put elsewhere, it stays") {
     platform::HeadlessImGui imgui;
     ImGuiIO& io = ImGui::GetIO();

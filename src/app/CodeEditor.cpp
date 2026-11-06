@@ -763,7 +763,12 @@ namespace app
 		char name[512];
 		std::snprintf(name, sizeof(name), "%s/%s_%08X", parent->Name, label, id);
 		ImGuiWindow* child = ImGui::FindWindowByName(name);
-		if (!child) return;
+		// InputText doesn't begin its child window while the box is out of view (a
+		// panel too short to show it), and the window found is then an earlier
+		// frame's. ImGui frees the draw list of a window unused for a minute
+		// (io.ConfigMemoryCompactTimer), so only a child begun this frame is drawn
+		// into (crashdumps/crash3).
+		if (!child || !child->Active) return;
 		// The width ImGui wraps at: what is left of the row after the frame padding,
 		// less a scrollbar's width while there is none (it keeps room for one).
 		const float avail = child->WorkRect.Max.x - (child->Pos.x + style.FramePadding.x);
@@ -1233,7 +1238,9 @@ namespace app
 		}
 		if (active_) cursorLine_ = lineOf(cursor_);
 
-		if (!child || lines_.empty()) return edited;
+		// Not begun this frame (the box is out of view): its draw list is an earlier
+		// frame's, or freed (LogView::draw says why).
+		if (!child || !child->Active || lines_.empty()) return edited;
 		const ImVec2 origin(child->Pos.x + style.FramePadding.x - scrollX_, child->Pos.y + style.FramePadding.y - child->Scroll.y);
 		if (scrollLine_)
 		{
