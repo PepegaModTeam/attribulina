@@ -475,7 +475,7 @@ namespace app
 		ImGui::EndDisabled();
 		ImGui::SameLine();
 		bool record = recordAmod_;
-		if (ImGui::Checkbox("Record changes", &record)) setRecording(record, recordNfsms_);
+		if (Checkbox("Record changes", &record)) setRecording(record, recordNfsms_);
 		if (ImGui::IsItemHovered())
 			ImGui::SetTooltip("Adds what you change in the editor to this script as you go: values, new, renamed, moved and deleted collections");
 		ImGui::SameLine();
@@ -664,7 +664,7 @@ namespace app
 					case sc::OptionDef::Type::Bool:
 					{
 						bool on = v == "true";
-						if (ImGui::Checkbox(label.c_str(), &on)) v = on ? "true" : "false";
+						if (Checkbox(label.c_str(), &on)) v = on ? "true" : "false";
 						break;
 					}
 					case sc::OptionDef::Type::Number:
@@ -726,7 +726,7 @@ namespace app
 				ImGui::PopID();
 			}
 			ImGui::Spacing();
-			ImGui::Checkbox("Stop when a value isn't what the script expects", &scriptStrict_);
+			Checkbox("Stop when a value isn't what the script expects", &scriptStrict_);
 			if (ImGui::IsItemHovered())
 				ImGui::SetTooltip("Values written as `x = new was old` warn when this database doesn't have the old value; with this on, they stop the script.");
 			if (!scriptApplyError_.empty())
@@ -783,10 +783,10 @@ namespace app
 			ImGui::Spacing();
 			ImGui::TextUnformatted("Changes since");
 			int which = exportOriginals_ ? 1 : 0;
-			ImGui::RadioButton("the files were saved", &which, 0);
-			ImGui::RadioButton("the originals (the .bak files the first save kept)", &which, 1);
+			RadioButton("the files were saved", &which, 0);
+			RadioButton("the originals (the .bak files the first save kept)", &which, 1);
 			exportOriginals_ = which == 1;
-			ImGui::Checkbox("Record the old values (was)", &exportWas_);
+			Checkbox("Record the old values (was)", &exportWas_);
 			if (ImGui::IsItemHovered())
 				ImGui::SetTooltip("Applying the script then warns where a database doesn't have the value this one had.");
 			ImGui::Spacing();
@@ -815,9 +815,9 @@ namespace app
 			const KeyNames& names = db_->names();
 			ImGui::Text("Every %s collection (%zu), with", names.format(cls->key).c_str(), cls->collections.size());
 			const bool all = exportFields_.empty();
-			if (ImGui::RadioButton("all its own values", all)) exportFields_.clear();
+			if (RadioButton("all its own values", all)) exportFields_.clear();
 			ImGui::SameLine();
-			ImGui::RadioButton("only these fields:", !all);
+			RadioButton("only these fields:", !all);
 			if (ImGui::IsWindowAppearing()) exportFilter_.clear();
 			ImGui::SetNextItemWidth(em * 22);
 			ImGui::InputTextWithHint("##fieldfilter", "filter fields", &exportFilter_);
@@ -830,7 +830,7 @@ namespace app
 					if (!f.empty() && ToLower(n).find(f) == std::string::npos) continue;
 					bool on = exportFields_.count(fd->key) != 0;
 					ImGui::PushID(fd);
-					if (ImGui::Checkbox(n.c_str(), &on))
+					if (Checkbox(n.c_str(), &on))
 					{
 						if (on) exportFields_.insert(fd->key);
 						else exportFields_.erase(fd->key);
@@ -840,9 +840,9 @@ namespace app
 			}
 			ImGui::EndChild();
 			ImGui::BeginDisabled(!exportFields_.empty());
-			ImGui::Checkbox("Exact: applying it reverts own values it doesn't list", &exportExact_);
+			Checkbox("Exact: applying it reverts own values it doesn't list", &exportExact_);
 			ImGui::EndDisabled();
-			ImGui::Checkbox("Edits only (the collections must exist where it's applied)", &exportEditOnly_);
+			Checkbox("Edits only (the collections must exist where it's applied)", &exportEditOnly_);
 			ImGui::Spacing();
 			bool go = ImGui::Button("Add to Script");
 			ImGui::SameLine();

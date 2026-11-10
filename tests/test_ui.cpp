@@ -31,6 +31,7 @@
 #include <functional>
 #include <cfloat>
 #include <cmath>
+#include <cstring>
 #include <memory>
 #include <tuple>
 #include <unordered_set>
@@ -783,7 +784,135 @@ void ClickItem(platform::HeadlessImGui& imgui, app::App& a, const test::ProbeIte
 void FrontTab(platform::HeadlessImGui& imgui, app::App& a, const std::string& panel) {
     ClickItem(imgui, a, test::UiProbe::get().find(panel, "DockSpace"));
 }
+
+// WCAG 2's relative luminance and contrast ratio.
+double Luminance(const ImVec4& c) {
+    auto linear = [](double v) { return v <= 0.04045 ? v / 12.92 : std::pow((v + 0.055) / 1.055, 2.4); };
+    return 0.2126 * linear(c.x) + 0.7152 * linear(c.y) + 0.0722 * linear(c.z);
+}
+double Contrast(const ImVec4& a, const ImVec4& b) {
+    const double la = Luminance(a), lb = Luminance(b);
+    return (std::max(la, lb) + 0.05) / (std::min(la, lb) + 0.05);
+}
+ImVec4 Over(const ImVec4& c, const ImVec4& bg) {
+    return ImVec4(c.x * c.w + bg.x * (1 - c.w), c.y * c.w + bg.y * (1 - c.w), c.z * c.w + bg.z * (1 - c.w), 1.0f);
+}
+// The most any colour drawn in a check box's or a radio button's square (the
+// item's start, before its label) stands out from `bg`: how well it can be
+// seen. Read from the last frame's draw list of its window.
+double SquareContrast(const test::ProbeItem& it, const ImVec4& bg) {
+    const ImGuiWindow* w = ImGui::FindWindowByName(it.window.c_str());
+    if (!w) return 0.0;
+    const float side = ImGui::GetFrameHeight();
+    const ImRect square(it.rect.Min.x - 1, it.rect.Min.y - 1, it.rect.Min.x + side + 1, it.rect.Min.y + side + 1);
+    double most = 1.0;
+    for (const ImDrawVert& v : w->DrawList->VtxBuffer)
+        if (square.Contains(v.pos)) most = std::max(most, Contrast(Over(ImGui::ColorConvertU32ToFloat4(v.col), bg), bg));
+    return most;
+}
+ImGuiStyle StyleOf(void (*colours)(ImGuiStyle*)) {
+    ImGuiStyle s;
+    colours(&s);
+    return s;
+}
+bool SameColours(const ImGuiStyle& a, const ImGuiStyle& b) {
+    for (int i = 0; i < ImGuiCol_COUNT; ++i)
+        if (std::memcmp(&a.Colors[i], &b.Colors[i], sizeof(ImVec4)) != 0) return false;
+    return true;
+}
 } // namespace
+
+TEST("ui: View > Theme picks Classic, Dark or Light and keeps it; in Dark and Light an empty radio button or check box "
+     "stands out from its prompt") {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() / "attribulina_theme_test";
+    fs::remove_all(dir);
+    fs::create_directories(dir);
+    const fs::path ini = dir / "attribulina.ini";
+    auto read = [&]() {
+        const Bytes b = ReadFile(ini.string());
+        return std::string(b.begin(), b.end());
+    };
+    {
+        platform::HeadlessImGui imgui;
+        imgui.beforeFrame = ProbeBefore;
+        imgui.afterFrame = ProbeAfter;
+        test::UiProbe& probe = test::UiProbe::get();
+        platform::HeadlessHost host;
+        host.userDir = dir.string();
+        auto a = std::make_unique<app::App>(host);
+        a->setup(1.0f, ini.string());
+        a->setUserKeysPath("");
+        CHECK(a->theme() == app::Theme::Dark);
+        CHECK(SameColours(ImGui::GetStyle(), StyleOf(ImGui::StyleColorsDark)));
+        imgui.run(*a, 2);
+        auto choose = [&](const char* theme) {
+            ClickItem(imgui, *a, probe.find("View"));
+            imgui.run(*a, 1);
+            ClickItem(imgui, *a, probe.find("Theme"));
+            imgui.run(*a, 1);
+            ClickItem(imgui, *a, probe.find(theme));
+            imgui.run(*a, 2);
+        };
+        choose("Classic");
+        CHECK(a->theme() == app::Theme::Classic);
+        CHECK(SameColours(ImGui::GetStyle(), StyleOf(ImGui::StyleColorsClassic)));
+        CHECK_EQ(ImGui::GetStyle().FrameRounding, 3.0f); // only the colours change
+        choose("Light");
+        CHECK(a->theme() == app::Theme::Light);
+        CHECK(SameColours(ImGui::GetStyle(), StyleOf(ImGui::StyleColorsLight)));
+
+        // The nfsms setup prompt, nothing chosen yet.
+        CHECK(a->open(ProStreetDir() + "/ATTRIBUTES.BIN"));
+        a->setNfsmsText("ui_control radiobutton dif option1 \"Easy\"\n"
+                        "ui_control radiobutton dif option2 \"Hard\"\n"
+                        "ui_control checkbox nos false \"More nitrous\"\n"
+                        "ui_option dif option2\n"
+                        "update_field audio_revlimiter default total_frames_short 33\n"
+                        "ui_option dif option2\n");
+        imgui.run(*a, 2);
+        ClickItem(imgui, *a, probe.find("Run All", "Script (nfsms)"));
+        imgui.mouseMove(1, 1); // off the prompt: nothing hovered
+        imgui.run(*a, 2);
+        for (app::Theme t : {app::Theme::Classic, app::Theme::Dark, app::Theme::Light}) {
+            a->setTheme(t);
+            imgui.run(*a, 1);
+            const ImGuiStyle& style = ImGui::GetStyle();
+            const ImVec4 bg = style.Colors[ImGuiCol_PopupBg];
+            for (const char* label : {"Easy", "More nitrous"}) {
+                const test::ProbeItem* it = probe.find(label, "nfsms Setup");
+                CHECK(it);
+                if (!it) continue;
+                const double c = SquareContrast(*it, bg);
+                std::printf("        %s, %s: %.2f:1\n", app::ThemeName(t), label, c);
+                if (t == app::Theme::Classic) // as ImGui draws it: its fill is the most there
+                    CHECK(std::abs(c - Contrast(Over(style.Colors[ImGuiCol_FrameBg], bg), bg)) < 0.01);
+                else
+                    CHECK(c >= 3.0);
+            }
+        }
+        ClickItem(imgui, *a, probe.find("Cancel", "nfsms Setup"));
+        imgui.run(*a, 2);
+        a.reset();
+    }
+    CHECK(read().find("Theme=Light\n") != std::string::npos);
+    CHECK(read().find("LightTheme") == std::string::npos);
+    auto themeRead = [&]() {
+        platform::HeadlessImGui imgui;
+        platform::HeadlessHost host;
+        host.userDir = dir.string();
+        app::App a(host);
+        a.setup(1.0f, ini.string());
+        return a.theme();
+    };
+    CHECK(themeRead() == app::Theme::Light);
+    // An older version's Light Theme switch.
+    std::ofstream(ini, std::ios::binary | std::ios::trunc) << "[Attribulina][Settings]\nLightTheme=1\n";
+    CHECK(themeRead() == app::Theme::Light);
+    std::ofstream(ini, std::ios::binary | std::ios::trunc) << "[Attribulina][Settings]\nLightTheme=0\n";
+    CHECK(themeRead() == app::Theme::Dark);
+    fs::remove_all(dir);
+}
 
 TEST("ui: the game and platform come from the files; the prompt asks when they don't say, or always when detection is off") {
     namespace fs = std::filesystem;

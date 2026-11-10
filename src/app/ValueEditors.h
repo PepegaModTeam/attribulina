@@ -12,7 +12,9 @@
 #include "core/Values.h"
 
 #include <functional>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -126,5 +128,22 @@ namespace app
 							attrib::Endian e);
 
 	std::string ToLower(std::string s);
+
+	// The colour scheme (View > Theme, Theme= in the ini): ImGui's Classic,
+	// Dark and Light.
+	enum class Theme : uint8_t
+	{
+		Classic, Dark, Light
+	};
+	const char* ThemeName(Theme t);
+	std::optional<Theme> ParseTheme(std::string_view name);
+	// Sets ImGui's colours for `t`; sizes and rounding stay as they are.
+	void ApplyTheme(Theme t);
+	// ImGui's Checkbox and RadioButton. In Dark and Light they are outlined: an
+	// empty one is filled with FrameBg, about the colour of a prompt there (Dark
+	// 0.10 on 0.08, Light white on white). Classic is left as ImGui draws it.
+	bool Checkbox(const char* label, bool* v);
+	bool RadioButton(const char* label, bool active);
+	bool RadioButton(const char* label, int* v, int value);
 
 } // namespace app

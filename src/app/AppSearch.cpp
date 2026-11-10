@@ -141,7 +141,7 @@ namespace app
 		if (searchQuery_.mode != SearchMode::References)
 		{
 			ImGui::SameLine();
-			ImGui::Checkbox(searchQuery_.mode == SearchMode::Values ? "Whole value" : "Whole name", &searchQuery_.wholeValue);
+			Checkbox(searchQuery_.mode == SearchMode::Values ? "Whole value" : "Whole name", &searchQuery_.wholeValue);
 			if (ImGui::IsItemHovered())
 				ImGui::SetTooltip(searchQuery_.mode == SearchMode::Values ? "Off: values that contain the text. Numbers always match whole."
 								  : "Off: fields whose name contains the text.");

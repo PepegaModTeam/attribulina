@@ -143,6 +143,12 @@ namespace app
 		{
 			saveOnlyChanged_ = on;
 		}
+		// The colour scheme (View > Theme; Theme= in the .ini, Dark by default).
+		Theme theme() const
+		{
+			return theme_;
+		}
+		void setTheme(Theme t);
 		bool savePackAs(attrib::LoadedPack& pack, const std::string& path);
 		// Files of packs the database no longer has (World event vault files
 		// whose vault was deleted): Save All removes them.
@@ -989,7 +995,7 @@ namespace app
 		bool showSequence_ = false;
 		std::string panelsSeen_; // openPanels() as last saved, to notice a change
 		bool resetLayout_ = false;
-		bool lightTheme_ = false;
+		Theme theme_ = Theme::Dark;
 		std::unordered_set<const void*> reveal_; // tree nodes to open for a navigation
 		int explorerTabRequest_ = 0;              // 1 Classes, 2 Gameplay: bring to front once
 		int revealIn_ = 0;                        // the tree reveal_ is for (1 Classes, 2 Gameplay)

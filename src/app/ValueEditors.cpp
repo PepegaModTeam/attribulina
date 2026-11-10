@@ -31,6 +31,86 @@ namespace app
 		return s;
 	}
 
+	namespace
+	{
+		// The outline of check boxes and radio buttons; none (alpha 0) in Classic.
+		ImVec4 toggleRing(0, 0, 0, 0);
+
+		// Draws the widget made in its scope with the outline.
+		struct ToggleRingScope
+		{
+			const bool on = toggleRing.w > 0.0f;
+			ToggleRingScope()
+			{
+				if (!on) return;
+				ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, std::max(1.0f, std::floor(ImGui::GetStyle().FontScaleDpi)));
+				ImGui::PushStyleColor(ImGuiCol_Border, toggleRing);
+			}
+			~ToggleRingScope()
+			{
+				if (!on) return;
+				ImGui::PopStyleColor();
+				ImGui::PopStyleVar();
+			}
+		};
+	} // namespace
+
+	const char* ThemeName(Theme t)
+	{
+		switch (t)
+		{
+		case Theme::Classic: return "Classic";
+		case Theme::Light: return "Light";
+		default: return "Dark";
+		}
+	}
+
+	std::optional<Theme> ParseTheme(std::string_view name)
+	{
+		for (Theme t : { Theme::Classic, Theme::Dark, Theme::Light })
+			if (name == ThemeName(t)) return t;
+		return std::nullopt;
+	}
+
+	void ApplyTheme(Theme t)
+	{
+		// The outlines stand out 3:1 or more (WCAG's contrast for controls) from
+		// both the windows and the prompts: Dark's 0.18 and 0.08, Light's 0.94 and 1.0.
+		switch (t)
+		{
+		case Theme::Classic:
+			ImGui::StyleColorsClassic();
+			toggleRing = ImVec4(0, 0, 0, 0);
+			break;
+		case Theme::Light:
+			ImGui::StyleColorsLight();
+			toggleRing = ImVec4(0.45f, 0.45f, 0.48f, 1.0f);
+			break;
+		default:
+			ImGui::StyleColorsDark();
+			toggleRing = ImVec4(0.50f, 0.50f, 0.55f, 1.0f);
+			break;
+		}
+	}
+
+	bool Checkbox(const char* label, bool* v)
+	{
+		ToggleRingScope ring;
+		return ImGui::Checkbox(label, v);
+	}
+
+	bool RadioButton(const char* label, bool active)
+	{
+		ToggleRingScope ring;
+		return ImGui::RadioButton(label, active);
+	}
+
+	bool RadioButton(const char* label, int* v, int value)
+	{
+		ToggleRingScope ring;
+		return ImGui::RadioButton(label, v, value);
+	}
+
 	void CollectionIndex::rebuild(const Database& db, uint64_t modelVersion)
 	{
 		if (version == modelVersion) return;
@@ -454,7 +534,7 @@ namespace app
 				static const void* listFor = nullptr;
 				static bool listAll = false;
 				const std::string f = ToLower(ComboFilter());
-				ImGui::Checkbox("All elements", &showAll);
+				Checkbox("All elements", &showAll);
 				if (ImGui::IsItemHovered())
 				{
 					std::string ts;
@@ -1361,7 +1441,7 @@ namespace app
 			case TypeKind::Bool:
 			{
 				bool v = ReadInteger(b, off, vt, e) != 0;
-				if (ImGui::Checkbox("##b", &v))
+				if (Checkbox("##b", &v))
 				{
 					WriteInteger(b, off, vt, v ? 1 : 0, e);
 					changed = true;

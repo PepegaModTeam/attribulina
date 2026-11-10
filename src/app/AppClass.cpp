@@ -461,7 +461,7 @@ namespace app
 						ImGui::TableSetColumnIndex(3);
 						if (f.storage != FieldStorage::Static)
 						{
-							if (ImGui::Checkbox("##array", &f.array))
+							if (Checkbox("##array", &f.array))
 							{
 								if (f.array && f.storage == FieldStorage::Layout && !f.count) f.count = 4;
 								edited = true;
@@ -482,7 +482,7 @@ namespace app
 						ImGui::TableSetColumnIndex(4);
 						if (f.storage == FieldStorage::Layout)
 						{
-							if (ImGui::Checkbox("##search", &f.searchable)) edited = true;
+							if (Checkbox("##search", &f.searchable)) edited = true;
 							if (ImGui::IsItemHovered())
 								ImGui::SetTooltip("Found by key (Instance::Get, TAttrib, Lua) as well as through _LayoutStruct");
 						}
@@ -579,9 +579,9 @@ namespace app
 			}
 			if (ImGui::BeginTabItem("Attrib::Gen Header", nullptr, toHeader ? ImGuiTabItemFlags_SetSelected : 0))
 			{
-				ImGui::Checkbox("Set_ accessors", &d.header.setters);
+				Checkbox("Set_ accessors", &d.header.setters);
 				ImGui::SameLine();
-				ImGui::Checkbox("The game's types from the schema", &d.header.types);
+				Checkbox("The game's types from the schema", &d.header.types);
 				if (ImGui::IsItemHovered()) ImGui::SetTooltip("Definitions of the structs and enums its fields use, for code that hasn't got them");
 				std::string text = designerHeader();
 				ImGui::SameLine();

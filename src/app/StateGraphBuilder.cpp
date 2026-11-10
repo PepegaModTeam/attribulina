@@ -534,9 +534,9 @@ namespace app
 		if (ImGui::Button("Revert")) loadHandlerSource();
 		ImGui::EndDisabled();
 		ImGui::SameLine();
-		ImGui::Checkbox("Disassembly", &sbShowDisassembly_);
+		Checkbox("Disassembly", &sbShowDisassembly_);
 		ImGui::SameLine();
-		ImGui::Checkbox("Functions", &sbShowFunctions_);
+		Checkbox("Functions", &sbShowFunctions_);
 		if (ImGui::IsItemHovered())
 		{
 			if (luaList_.empty())

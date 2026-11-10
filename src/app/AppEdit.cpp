@@ -854,7 +854,7 @@ namespace app
 					std::string label = g.name;
 					if (!SupportedAnywhere(g.game)) label += "  (not supported yet)";
 					if (g.game == d.target.game) label += mark;
-					if (ImGui::RadioButton((label + "###game_" + g.id).c_str(), targetChoice_.game == g.game) && targetChoice_.game != g.game)
+					if (RadioButton((label + "###game_" + g.id).c_str(), targetChoice_.game == g.game) && targetChoice_.game != g.game)
 					{
 						targetChoice_.game = g.game;
 						// Keep the platform when the game came out on it; else the
@@ -881,7 +881,7 @@ namespace app
 						label += "  (not supported yet)";
 					if (p.platform == d.target.platform && targetChoice_.game == d.target.game) label += mark;
 					ImGui::BeginDisabled(!ReleasedOn(targetChoice_.game, p.platform));
-					if (ImGui::RadioButton((label + "###platform_" + p.id).c_str(), targetChoice_.platform == p.platform))
+					if (RadioButton((label + "###platform_" + p.id).c_str(), targetChoice_.platform == p.platform))
 						targetChoice_.platform = p.platform;
 					ImGui::EndDisabled();
 				}
@@ -900,7 +900,7 @@ namespace app
 			ImGui::PopTextWrapPos();
 			ImGui::Spacing();
 			bool detect = detectTarget_;
-			if (ImGui::Checkbox("Ask only when the files don't say", &detect)) setDetectTarget(detect);
+			if (Checkbox("Ask only when the files don't say", &detect)) setDetectTarget(detect);
 			if (ImGui::IsItemHovered())
 				ImGui::SetTooltip("On: the game and platform come from the files' Vers value, and this shows only when there isn't one\n"
 								  "Attribulina knows (Most Wanted's files). Off: it shows each time a database is opened.\n"

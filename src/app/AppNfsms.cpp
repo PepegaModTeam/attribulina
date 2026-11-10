@@ -649,17 +649,17 @@ namespace app
 		ImGui::SameLine();
 		bool record = recordNfsms_ && no.empty();
 		ImGui::BeginDisabled(!no.empty());
-		if (ImGui::Checkbox("Record changes", &record)) setRecording(recordAmod_, record);
+		if (Checkbox("Record changes", &record)) setRecording(recordAmod_, record);
 		ImGui::EndDisabled();
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
 			ImGui::SetTooltip("Adds what you change in the editor to this script as nfsms commands, as NFS-VltEd does");
 		ImGui::SameLine();
-		if (ImGui::Checkbox("Strict", &nfsmsStrict_)) ImGui::MarkIniSettingsDirty();
+		if (Checkbox("Strict", &nfsmsStrict_)) ImGui::MarkIniSettingsDirty();
 		if (ImGui::IsItemHovered())
 			ImGui::SetTooltip("On: warnings are errors. The script is tried on a copy of the database first and only applied when no line fails.\n"
 							  "Off: it runs line by line on the open database, and a line that fails is reported while the rest run, as in NFS-VltEd.");
 		ImGui::SameLine();
-		if (ImGui::Checkbox("Follow line", &nfsmsFollow_)) ImGui::MarkIniSettingsDirty();
+		if (Checkbox("Follow line", &nfsmsFollow_)) ImGui::MarkIniSettingsDirty();
 		if (ImGui::IsItemHovered())
 			ImGui::SetTooltip("Opens the collection the line with the caret names, with its field highlighted");
 		ImGui::SameLine();
@@ -906,7 +906,7 @@ namespace app
 				{
 					const ns::Control& c = s.controls[size_t(item.controls[0])];
 					bool on = nfsmsChoices_.checkboxes[c.name];
-					if (ImGui::Checkbox(c.label.c_str(), &on)) nfsmsChoices_.checkboxes[c.name] = on;
+					if (Checkbox(c.label.c_str(), &on)) nfsmsChoices_.checkboxes[c.name] = on;
 					break;
 				}
 				case ns::SetupItem::Kind::Radios:
@@ -915,7 +915,7 @@ namespace app
 						const ns::Control& c = s.controls[size_t(k)];
 						ImGui::PushID(k);
 						auto it = nfsmsChoices_.radios.find(c.group);
-						if (ImGui::RadioButton(c.label.c_str(), it != nfsmsChoices_.radios.end() && it->second == c.name))
+						if (RadioButton(c.label.c_str(), it != nfsmsChoices_.radios.end() && it->second == c.name))
 							nfsmsChoices_.radios[c.group] = c.name;
 						ImGui::PopID();
 					}

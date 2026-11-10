@@ -567,7 +567,7 @@ namespace app
 			ImGui::SetNextItemWidth(w);
 			const bool enter = ImGui::InputTextWithHint("new path", "path", &nameInput_, ImGuiInputTextFlags_EnterReturnsTrue);
 			const std::vector<Collection*> subtree = GameplaySubtree(m, *src);
-			ImGui::Checkbox("With everything listed under it", &withChildren_);
+			Checkbox("With everything listed under it", &withChildren_);
 			ImGui::SameLine();
 			ImGui::TextDisabled("(%zu elements)", subtree.size());
 			const bool taken = !nameInput_.empty() && db_->findCollection(m.cls()->key, StringHash32(nameInput_));

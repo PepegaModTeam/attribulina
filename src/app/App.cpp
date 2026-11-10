@@ -204,7 +204,12 @@ namespace app
 			}
 			// Older versions kept the recent files here; recent_files.txt wins once it exists.
 			else if (k == "Recent" && !v.empty() && self->settings_.recent.size() < kMaxRecent) self->settings_.recent.push_back(v);
-			else if (k == "LightTheme") self->lightTheme_ = v == "1";
+			else if (k == "Theme")
+			{
+				if (const auto t = ParseTheme(v)) self->theme_ = *t;
+			}
+			// Older versions had a Light Theme switch.
+			else if (k == "LightTheme") self->theme_ = v == "1" ? Theme::Light : Theme::Dark;
 			else if (k == "WindowPlacement") self->settings_.windowPlacement = v;
 			else if (k == "NfsmsFollow") self->nfsmsFollow_ = v == "1";
 			else if (k == "NfsmsStrict") self->nfsmsStrict_ = v == "1";
@@ -220,7 +225,7 @@ namespace app
 		{
 			auto* self = static_cast<App*>(hh->UserData);
 			out->appendf("[%s][Settings]\n", hh->TypeName);
-			out->appendf("LightTheme=%d\n", self->lightTheme_ ? 1 : 0);
+			out->appendf("Theme=%s\n", ThemeName(self->theme_));
 			out->appendf("GameplayView=%d\n", self->view_.gameplayView ? 1 : 0);
 			out->appendf("DetectGame=%d\n", self->detectTarget_ ? 1 : 0);
 			out->appendf("ArraysPastLimit=%d\n", self->arraysPastLimit_ ? 1 : 0);
@@ -243,10 +248,7 @@ namespace app
 		loadRecent();
 		moveOldFavorites();
 
-		if (lightTheme_) 
-			ImGui::StyleColorsLight();
-		else 
-			ImGui::StyleColorsDark();
+		ApplyTheme(theme_);
 		ImGuiStyle& style = ImGui::GetStyle();
 		style.WindowRounding = 3.0f;
 		style.FrameRounding = 3.0f;
@@ -1933,11 +1935,11 @@ namespace app
 				ImGui::SetTooltip("Shows the gameplay class as folders and templates, with references between elements resolved");
 			ImGui::Separator();
 			if (ImGui::MenuItem("Reset Layout")) resetLayout_ = true;
-			if (ImGui::MenuItem("Light Theme", nullptr, &lightTheme_))
+			if (ImGui::BeginMenu("Theme"))
 			{
-				if (lightTheme_) ImGui::StyleColorsLight();
-				else ImGui::StyleColorsDark();
-				ImGui::MarkIniSettingsDirty();
+				for (const Theme t : { Theme::Classic, Theme::Dark, Theme::Light })
+					if (ImGui::MenuItem(ThemeName(t), nullptr, theme_ == t)) setTheme(t);
+				ImGui::EndMenu();
 			}
 			ImGui::MenuItem("ImGui Demo", nullptr, &showDemo_);
 			ImGui::EndMenu();
@@ -1948,6 +1950,13 @@ namespace app
 			ImGui::EndMenu();
 		}
 		ImGui::EndMainMenuBar();
+	}
+
+	void App::setTheme(Theme t)
+	{
+		theme_ = t;
+		ApplyTheme(t);
+		ImGui::MarkIniSettingsDirty();
 	}
 
 	void App::drawStatusBar()
@@ -2568,13 +2577,13 @@ namespace app
 		if (view_.gameplayView && isGameplay(c)) drawGameplayHeader(c);
 		else drawCollectionHeader(c);
 
-		ImGui::Checkbox("Inherited", &view_.showInherited);
+		Checkbox("Inherited", &view_.showInherited);
 		if (ImGui::IsItemHovered()) ImGui::SetTooltip("Show values this collection inherits from its parents (greyed)");
 		ImGui::SameLine();
-		ImGui::Checkbox("Unset", &view_.showUnset);
+		Checkbox("Unset", &view_.showUnset);
 		if (ImGui::IsItemHovered()) ImGui::SetTooltip("Show fields no collection in the chain sets");
 		ImGui::SameLine();
-		ImGui::Checkbox("Expand", &view_.expandArrays);
+		Checkbox("Expand", &view_.expandArrays);
 		if (ImGui::IsItemHovered()) ImGui::SetTooltip("Open arrays and structs");
 		ImGui::SameLine();
 		ImGui::SetNextItemWidth(-FLT_MIN);
