@@ -398,14 +398,19 @@ namespace app
 		// Adds statements to the Script panel's script; edits of a collection it
 		// edits already are merged into that block. False when its text doesn't read.
 		bool addToScript(const std::vector<attrib::script::Statement>& statements, bool show = true);
+		// The same statements as nfsms lines (nfsms::FromStatements, in NFS-VltEd's
+		// words) at the end of the nfsms window's script, and a log line saying
+		// `what` was added. False when nfsms can't be written for this database.
+		bool addToNfsms(const std::vector<attrib::script::Statement>& statements, const std::string& what);
+		// With `nfsms`, these add to the nfsms window instead (Add to Script (nfsms)).
 		void addCollectionsToScript(const std::vector<attrib::Collection*>& roots, bool withChildren,
-									const attrib::script::ExportSettings& settings = {});
+									const attrib::script::ExportSettings& settings = {}, bool nfsms = false);
 		// `create vault` (not for the database's own vault), and with
 		// `withCollections` every collection in it.
 		void addVaultToScript(const attrib::Vault& vault, bool withCollections);
 		// Gameplay elements (GameplayFolderContents) with the vaults they are in
 		// and their owners' Children lists (script::ExportGameplay).
-		void addGameplayToScript(const std::vector<attrib::Collection*>& elements);
+		void addGameplayToScript(const std::vector<attrib::Collection*>& elements, bool nfsms = false);
 		// Reads `text` and the scripts it includes (relative paths from `folder`)
 		// and opens the Apply Script prompt (its options, then Apply).
 		bool requestApplyScript(const std::string& text, const std::string& source, const std::string& folder = {});
@@ -681,6 +686,8 @@ namespace app
 		void drawGoMenu();
 		// The edit commands for `t`, for the Edit menu and the context menus.
 		void drawEditItems(const EditTarget& t);
+		// The items of Add to Script, or with `nfsms` of Add to Script (nfsms).
+		void drawAddToScriptItems(const EditTarget& t, bool nfsms);
 		void globalShortcuts();
 		void switchTab(int delta);
 		// The Explorer's Ctrl+C, Delete, F2, ... on the focused item. Only while
@@ -860,6 +867,7 @@ namespace app
 		bool exportOriginals_ = false, exportWas_ = true;
 		std::set<uint32_t> exportFields_;
 		bool exportExact_ = false, exportEditOnly_ = false;
+		bool exportNfsms_ = false; // the Chosen Fields prompt adds to the nfsms window
 		std::string exportFilter_;
 		CodeEditor scriptEditor_{ CodeLanguage::Amod };
 		std::string consoleInput_, consoleStatus_;

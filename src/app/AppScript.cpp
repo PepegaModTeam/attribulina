@@ -4,6 +4,7 @@
 
 #include "App.h"
 
+#include "core/Nfsms.h"
 #include "core/Script.h"
 
 #include "imgui.h"
@@ -149,7 +150,32 @@ namespace app
 		return true;
 	}
 
-	void App::addCollectionsToScript(const std::vector<Collection*>& roots, bool withChildren, const sc::ExportSettings& settings)
+	bool App::addToNfsms(const std::vector<sc::Statement>& statements, const std::string& what)
+	{
+		if (!db_) return false;
+		if (const std::string no = nfsmsUnavailable(); !no.empty())
+		{
+			log(LogLevel::Warning, no + ".");
+			return false;
+		}
+		std::vector<sc::Statement> add;
+		for (const sc::Statement& st : statements)
+			if (st.kind != sc::Statement::Kind::Header && st.kind != sc::Statement::Kind::Meta) add.push_back(st);
+		const std::vector<std::string> lines = nfsms::FromStatements(*db_, add, nfsms::NamesFor(*db_, nfsmsNames_).get());
+		appendNfsms(lines);
+		showNfsms_ = bringNfsms_ = true;
+		// The writer's comments for what nfsms has no command or word for all say so.
+		const size_t unsaid = size_t(std::count_if(lines.begin(), lines.end(), [](const std::string& l)
+		{
+			return !l.empty() && l[0] == '#' && l.find("nfsms") != std::string::npos;
+		}));
+		std::string m = "Added " + what + " to the nfsms script (" + std::to_string(lines.size()) + " line" + (lines.size() == 1 ? "" : "s") + ")";
+		if (unsaid) m += "; " + std::to_string(unsaid) + (unsaid == 1 ? " is a comment" : " are comments") + " for what nfsms can't write";
+		log(unsaid ? LogLevel::Warning : LogLevel::Info, m);
+		return true;
+	}
+
+	void App::addCollectionsToScript(const std::vector<Collection*>& roots, bool withChildren, const sc::ExportSettings& settings, bool nfsms)
 	{
 		if (!db_) return;
 		std::vector<const Collection*> list;
@@ -161,8 +187,9 @@ namespace app
 		};
 		for (const Collection* c : roots) add(c);
 		const std::vector<sc::Statement> st = sc::Export(*db_, list, settings);
-		if (addToScript(st))
-			log(LogLevel::Info, "Added " + std::to_string(st.size()) + " collection" + (st.size() == 1 ? "" : "s") + " to the script");
+		const std::string what = std::to_string(st.size()) + " collection" + (st.size() == 1 ? "" : "s");
+		if (nfsms) addToNfsms(st, what);
+		else if (addToScript(st)) log(LogLevel::Info, "Added " + what + " to the script");
 	}
 
 	void App::addVaultToScript(const Vault& vault, bool withCollections)
@@ -184,7 +211,7 @@ namespace app
 			" to the script");
 	}
 
-	void App::addGameplayToScript(const std::vector<Collection*>& elements)
+	void App::addGameplayToScript(const std::vector<Collection*>& elements, bool nfsms)
 	{
 		if (!db_ || !gameplay_ || elements.empty()) return;
 		const std::vector<sc::Statement> st =
@@ -195,11 +222,11 @@ namespace app
 			vaults += s.kind == sc::Statement::Kind::CreateVault;
 			owners += s.kind == sc::Statement::Kind::Edit;
 		}
-		if (!addToScript(st)) return;
-		std::string what = "Added " + std::to_string(elements.size()) + " gameplay element" + (elements.size() == 1 ? "" : "s");
+		std::string what = std::to_string(elements.size()) + " gameplay element" + (elements.size() == 1 ? "" : "s");
 		if (vaults) what += ", the " + std::to_string(vaults) + " vault" + (vaults == 1 ? "" : "s") + " they are in";
 		if (owners) what += std::string(vaults ? "," : "") + " and the Children list" + (owners == 1 ? "" : "s") + " naming them";
-		log(LogLevel::Info, what + " to the script");
+		if (nfsms) addToNfsms(st, what);
+		else if (addToScript(st)) log(LogLevel::Info, "Added " + what + " to the script");
 	}
 
 	bool App::requestApplyScript(const std::string& text, const std::string& source, const std::string& folder)
@@ -803,7 +830,7 @@ namespace app
 			ImGui::EndPopup();
 		}
 
-		if (begin("Add Class to Script"))
+		if (begin(exportNfsms_ ? "Add Class to nfsms Script" : "Add Class to Script"))
 		{
 			ClassDef* cls = pendingClass_;
 			if (!cls || !db_)
@@ -839,10 +866,15 @@ namespace app
 				}
 			}
 			ImGui::EndChild();
-			ImGui::BeginDisabled(!exportFields_.empty());
-			Checkbox("Exact: applying it reverts own values it doesn't list", &exportExact_);
+			ImGui::BeginDisabled(!exportFields_.empty() || exportNfsms_);
+			bool exact = exportExact_ && !exportNfsms_;
+			if (Checkbox("Exact: applying it reverts own values it doesn't list", &exact)) exportExact_ = exact;
 			ImGui::EndDisabled();
+			if (exportNfsms_ && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+				ImGui::SetTooltip("nfsms has no command that reverts the own values a database has besides these.");
 			Checkbox("Edits only (the collections must exist where it's applied)", &exportEditOnly_);
+			if (exportNfsms_ && ImGui::IsItemHovered())
+				ImGui::SetTooltip("update_field lines only. Otherwise each collection begins with add_node and add_field.");
 			ImGui::Spacing();
 			bool go = ImGui::Button("Add to Script");
 			ImGui::SameLine();
@@ -853,9 +885,9 @@ namespace app
 			{
 				sc::ExportSettings st;
 				st.fields = exportFields_;
-				st.exact = exportExact_ && exportFields_.empty();
+				st.exact = exportExact_ && exportFields_.empty() && !exportNfsms_;
 				st.editOnly = exportEditOnly_;
-				addCollectionsToScript(std::vector<Collection*>(cls->collections.begin(), cls->collections.end()), false, st);
+				addCollectionsToScript(std::vector<Collection*>(cls->collections.begin(), cls->collections.end()), false, st, exportNfsms_);
 				done();
 			}
 			ImGui::EndPopup();

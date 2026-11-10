@@ -293,13 +293,19 @@ namespace app
 		else
 		{
 			// A path no element has: what is under it all the same.
-			if (folder && ImGui::BeginMenu("Add to Script"))
+			for (const bool nfsms : { false, true })
 			{
-				if (ImGui::MenuItem("With Everything Under It")) addGameplayToScript(GameplayFolderContents(*gameplay_, *folder));
-				if (ImGui::IsItemHovered())
-					ImGui::SetTooltip("The elements under this path and those their Children lists name, with the vaults\n"
-									  "they are in and their owners' Children lists, so the game finds them");
-				ImGui::EndMenu();
+				const std::string no = nfsms ? nfsmsUnavailable() : std::string();
+				if (folder && ImGui::BeginMenu(nfsms ? "Add to Script (nfsms)" : "Add to Script", no.empty()))
+				{
+					if (ImGui::MenuItem("With Everything Under It")) addGameplayToScript(GameplayFolderContents(*gameplay_, *folder), nfsms);
+					if (ImGui::IsItemHovered())
+						ImGui::SetTooltip("The elements under this path and those their Children lists name, with the vaults\n"
+										  "they are in and their owners' Children lists, so the game finds them%s",
+										  nfsms ? ".\nnfsms can't write Lua handlers: they come out as comments." : "");
+					ImGui::EndMenu();
+				}
+				if (folder && !no.empty() && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s.", no.c_str());
 			}
 			if (ImGui::MenuItem("Copy Path")) ImGui::SetClipboardText(folder ? folder->path.c_str() : "");
 		}

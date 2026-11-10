@@ -14,6 +14,7 @@
 #include "core/Game.h"
 #include "core/Gameplay.h"
 #include "core/Hash.h"
+#include "core/Nfsms.h"
 #include "core/Script.h"
 #include "core/Writer.h"
 #include "core/lua/Lua.h"
@@ -33,6 +34,7 @@
 #include <cmath>
 #include <cstring>
 #include <memory>
+#include <sstream>
 #include <tuple>
 #include <unordered_set>
 
@@ -3354,6 +3356,116 @@ TEST("ui: script: a gameplay folder and a vault go to the script from their menu
     // Added twice, it is there once.
     addToScript(vaultLabel, "##files", "This Vault");
     CHECK_EQ(a.scriptText(), std::string("attribulina 1\ngame prostreet_pc\ncreate vault an_2_1_ss_1 in gameplay.lzc\n"));
+
+    CHECK_EQ(Errors(a), size_t(0));
+    CHECK(!a.hasUnsavedChanges());
+    for (const auto& c : probe.conflicts) std::printf("        ID conflict: %s\n", c.c_str());
+    CHECK(probe.conflicts.empty());
+}
+
+TEST("ui: nfsms: Add to Script (nfsms) writes a collection, a class or a gameplay folder into the nfsms window") {
+    platform::HeadlessImGui imgui;
+    imgui.beforeFrame = ProbeBefore;
+    imgui.afterFrame = ProbeAfter;
+    test::UiProbe& probe = test::UiProbe::get();
+    probe.conflicts.clear();
+    platform::HeadlessHost host;
+    app::App a(host);
+    a.setup(1.0f, "");
+    a.setUserKeysPath("");
+    CHECK(a.open(ProStreetDir()));
+    Database* db = a.database();
+    ClassDef* pv = db->findClass(StringHash32("pvehicle"));
+    Collection* street = db->findCollection(pv->key, StringHash32("street"));
+    a.select(street, true);
+    imgui.run(a, 3);
+    const std::string script = a.scriptText();
+    auto lines = [&]() {
+        std::vector<std::string> out;
+        std::istringstream in(a.nfsmsText());
+        for (std::string l; std::getline(in, l);) out.push_back(l);
+        return out;
+    };
+    // Right-click `node`, then Add to Script (nfsms) > `item`.
+    auto add = [&](const test::ProbeItem* node, const char* item) {
+        Rightclick(imgui, a, node);
+        const test::ProbeItem* sub = probe.find("Add to Script (nfsms)", "##Popup");
+        CHECK(sub);
+        if (!sub) return;
+        ClickItem(imgui, a, *sub);
+        imgui.run(a, 1);
+        const test::ProbeItem* it = probe.find(item);
+        CHECK(it);
+        if (it) ClickItem(imgui, a, *it);
+        imgui.run(a, 2);
+    };
+
+    // A collection: add_node, then each value it has besides its layout's added first.
+    add(probe.find("street", "##classes"), "This Collection");
+    const std::string one = a.nfsmsText();
+    CHECK(one.rfind("add_node pvehicle ", 0) == 0);
+    CHECK(one.find("\nadd_field pvehicle street HornType\nupdate_field pvehicle street HornType 5\n") != std::string::npos);
+    CHECK(one.find("add_field pvehicle street CollectionName") == std::string::npos); // in the layout
+    CHECK_EQ(a.scriptText(), script);                                                    // the Script panel is left alone
+
+    // A class: nfsms has no class command, so Class Definition does nothing.
+    const test::ProbeItem* cls = nullptr;
+    const std::string classLabel = "pvehicle  (" + std::to_string(pv->collections.size()) + ")";
+    auto classNode = [&]() { return probe.find(classLabel, "##classes"); };
+    a.setNfsmsText({});
+    imgui.run(a, 2);
+    cls = classNode();
+    add(cls, "Class Definition");
+    CHECK(a.nfsmsText().empty());
+    imgui.key(a, ImGuiKey_Escape);
+    imgui.key(a, ImGuiKey_Escape);
+    imgui.run(a, 2);
+    // Every Collection: each made as This Collection makes it.
+    add(classNode(), "Every Collection");
+    size_t made = 0;
+    for (const std::string& l : lines()) made += l.rfind("add_node pvehicle ", 0) == 0;
+    CHECK_EQ(made, pv->collections.size());
+
+    // Chosen Fields, edits only: just the update_field lines for HornType.
+    a.setNfsmsText({});
+    imgui.run(a, 2);
+    add(classNode(), "Chosen Fields...");
+    const char* modal = "Add Class to nfsms Script";
+    const test::ProbeItem* filter = probe.find("##fieldfilter", modal);
+    CHECK(filter);
+    if (!filter) return;
+    ClickItem(imgui, a, *filter);
+    imgui.type(a, "HornType");
+    imgui.run(a, 2);
+    ClickItem(imgui, a, probe.find("HornType", modal));
+    ClickItem(imgui, a, probe.find("Edits only (the collections must exist where it's applied)", modal));
+    ClickItem(imgui, a, probe.find("Add to Script", modal));
+    imgui.run(a, 2);
+    CHECK(!probe.find("##fieldfilter", modal)); // closed
+    size_t horns = 0;
+    for (const Collection* c : pv->collections) horns += c->find(StringHash32("HornType")) != nullptr;
+    const std::vector<std::string> chosen = lines();
+    CHECK(horns > 0);
+    CHECK_EQ(chosen.size(), horns);
+    for (const std::string& l : chosen) {
+        const nfsms::Command cmd = nfsms::ParseLine(l);
+        CHECK(cmd.name == "update_field" && cmd.args.size() == 4 && cmd.args[0] == "pvehicle" && cmd.args[2] == "HornType");
+    }
+    CHECK(std::find(chosen.begin(), chosen.end(), "update_field pvehicle street HornType 5") != chosen.end());
+    CHECK_EQ(a.scriptText(), script);
+
+    // A race: its vault (change_vault makes it), the race, and its bin's Children list.
+    a.setNfsmsText({});
+    Collection* race = db->findCollection(StringHash32("gameplay"), StringHash32("prostreet_career/bins/race_bin_an_2_1/gr_1"));
+    CHECK(race);
+    a.select(race, true);
+    imgui.run(a, 3);
+    add(probe.find("gr_1", "##gameplay"), "With Everything Under It");
+    const std::string gr = a.nfsmsText();
+    CHECK(gr.find("add_node gameplay circuit prostreet_career/bins/race_bin_an_2_1/gr_1\n"
+                  "change_vault gameplay prostreet_career/bins/race_bin_an_2_1/gr_1 race_bin_an_2_1\n") != std::string::npos);
+    CHECK(gr.find("resize_field gameplay prostreet_career/bins/race_bin_an_2_1 Children ") != std::string::npos);
+    CHECK_EQ(a.scriptText(), script);
 
     CHECK_EQ(Errors(a), size_t(0));
     CHECK(!a.hasUnsavedChanges());

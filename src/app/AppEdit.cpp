@@ -507,43 +507,20 @@ namespace app
 			request(Pending::MoveToVault, c);
 			pendingVault_ = c->vault;
 		}
-		if (!t.empty() && db_ && ImGui::BeginMenu("Add to Script"))
+		if (!t.empty() && db_)
 		{
-			if (c)
+			if (ImGui::BeginMenu("Add to Script"))
 			{
-				if (ImGui::MenuItem("This Collection")) addCollectionsToScript({ c }, false);
-				if (ImGui::IsItemHovered()) ImGui::SetTooltip("Its parent, vault and own values, as a script that makes it or updates it");
-				if (t.kind == Kind::Element && gameplay_)
-				{
-					// What the folder holds: elements under its path and in Children
-					// lists, not the elements made from it as a template. A race with
-					// nothing under it still needs its vault and its owner's list.
-					const GameplayModel::Node* n = gameplay_->nodeOf(c);
-					if (ImGui::MenuItem("With Everything Under It"))
-						addGameplayToScript(n ? GameplayFolderContents(*gameplay_, *n) : GameplaySubtree(*gameplay_, *c));
-					if (ImGui::IsItemHovered())
-						ImGui::SetTooltip("This element, the ones under its path and those their Children lists name, with\n"
-										  "the vaults they are in and its owner's Children list, so the game finds them");
-				}
-				else if (ImGui::MenuItem("With Everything Under It", nullptr, false, !c->children.empty()))
-					addCollectionsToScript({ c }, true);
+				drawAddToScriptItems(t, false);
+				ImGui::EndMenu();
 			}
-			else
+			const std::string no = nfsmsUnavailable();
+			if (ImGui::BeginMenu("Add to Script (nfsms)", no.empty()))
 			{
-				if (ImGui::MenuItem("Every Collection"))
-				{
-					addCollectionsToScript(std::vector<Collection*>(t.cls->collections.begin(), t.cls->collections.end()), false);
-				}
-				if (ImGui::MenuItem("Chosen Fields..."))
-				{
-					pendingClass_ = t.cls;
-					exportFields_.clear();
-					request(Pending::ExportFields);
-				}
-				if (ImGui::MenuItem("Class Definition")) addToScript({ script::ClassStatement(*db_, *t.cls) });
-				if (ImGui::IsItemHovered()) ImGui::SetTooltip("A class statement that makes the class, or changes it to this");
+				drawAddToScriptItems(t, true);
+				ImGui::EndMenu();
 			}
-			ImGui::EndMenu();
+			if (!no.empty() && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s.", no.c_str());
 		}
 		if (!c && t.cls && plain)
 		{
@@ -558,6 +535,56 @@ namespace app
 			char b[16];
 			std::snprintf(b, sizeof(b), "0x%08X", c ? c->key : t.cls->key);
 			ImGui::SetClipboardText(b);
+		}
+	}
+
+	void App::drawAddToScriptItems(const EditTarget& t, bool nfsms)
+	{
+		using Kind = EditTarget::Kind;
+		Collection* c = t.collection;
+		if (c)
+		{
+			if (ImGui::MenuItem("This Collection")) addCollectionsToScript({ c }, false, {}, nfsms);
+			if (ImGui::IsItemHovered())
+				ImGui::SetTooltip("%s", nfsms ? "add_node with its parent and vault, then add_field and update_field lines for its own\n"
+												"values. Where it exists already, add_node fails (in NFS-VltEd add_field too), and the\n"
+												"values still go in."
+											  : "Its parent, vault and own values, as a script that makes it or updates it");
+			if (t.kind == Kind::Element && gameplay_)
+			{
+				// What the folder holds: elements under its path and in Children
+				// lists, not the elements made from it as a template. A race with
+				// nothing under it still needs its vault and its owner's list.
+				const GameplayModel::Node* n = gameplay_->nodeOf(c);
+				if (ImGui::MenuItem("With Everything Under It"))
+					addGameplayToScript(n ? GameplayFolderContents(*gameplay_, *n) : GameplaySubtree(*gameplay_, *c), nfsms);
+				if (ImGui::IsItemHovered())
+					ImGui::SetTooltip("This element, the ones under its path and those their Children lists name, with\n"
+									  "the vaults they are in and its owner's Children list, so the game finds them%s",
+									  nfsms ? ".\nnfsms can't write Lua handlers: they come out as comments." : "");
+			}
+			else if (ImGui::MenuItem("With Everything Under It", nullptr, false, !c->children.empty()))
+			{
+				addCollectionsToScript({ c }, true, {}, nfsms);
+			}
+		}
+		else
+		{
+			if (ImGui::MenuItem("Every Collection"))
+				addCollectionsToScript(std::vector<Collection*>(t.cls->collections.begin(), t.cls->collections.end()), false, {}, nfsms);
+			if (nfsms && ImGui::IsItemHovered())
+				ImGui::SetTooltip("Each one as This Collection writes it. Chosen Fields can write update_field lines only.");
+			if (ImGui::MenuItem("Chosen Fields..."))
+			{
+				pendingClass_ = t.cls;
+				exportFields_.clear();
+				exportNfsms_ = nfsms;
+				request(Pending::ExportFields);
+			}
+			if (ImGui::MenuItem("Class Definition", nullptr, false, !nfsms)) addToScript({ script::ClassStatement(*db_, *t.cls) });
+			if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+				ImGui::SetTooltip("%s", nfsms ? "nfsms has no command that makes or changes a class. Add to Script has it."
+											  : "A class statement that makes the class, or changes it to this");
 		}
 	}
 

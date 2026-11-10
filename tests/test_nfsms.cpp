@@ -835,6 +835,97 @@ TEST("nfsms: a diff written as nfsms rebuilds the changed database") {
     CHECK_EQ(field, StringHash32("load_for_short"));
 }
 
+TEST("nfsms: a collection written as nfsms is made with add_node and add_field, as NFS-VltEd needs, or edited") {
+    auto base = Load();
+    auto cur = sc::CloneDatabase(*base);
+    CHECK(sc::Apply(*cur, sc::Parse("attribulina 1\n"
+                                    "create pvehicle/ns_street from pvehicle/street\n"
+                                    "create collisionsfx_damage/ns_hood from collisionsfx_damage/hood { VolMap = [5, 6, 7] }\n"))
+              .ok);
+    ns::RunSettings st;
+    st.names = ns::PropertyNames::Load(test::DataPath("data/nfsms/prostreet_pc.txt"));
+    std::vector<const Collection*> made = {&Col(*cur, "pvehicle", "ns_street"), &Col(*cur, "collisionsfx_damage", "ns_hood")};
+    const std::vector<std::string> lines = ns::FromStatements(*cur, sc::Export(*cur, made), st.names.get());
+    std::string text;
+    for (const std::string& l : lines) text += l + "\n";
+    // NFS-VltEd's add_node gives a node its layout fields only, and update_field
+    // fails on a field the node doesn't have: each other value is added first,
+    // an array with its length (no resize_field after it).
+    for (const Collection* c : made) {
+        const std::string cls = cur->names().format(c->classKey), node = cur->names().format(c->key);
+        size_t entries = 0, layout = 0;
+        for (const Attribute& a : c->attributes) {
+            const std::string field = cur->names().format(a.key);
+            int added = -1, set = -1, resized = -1;
+            for (size_t i = 0; i < lines.size(); ++i) {
+                const ns::Command cmd = ns::ParseLine(lines[i]);
+                if (cmd.args.size() < 3 || cmd.args[0] != cls || cmd.args[1] != node) continue;
+                const std::string f = cmd.args[2].substr(0, cmd.args[2].find('['));
+                if (f != field) continue;
+                if (cmd.name == "add_field" && added < 0) added = int(i);
+                if ((cmd.name == "update_field" || cmd.name == "update_collection") && set < 0) set = int(i);
+                if (cmd.name == "resize_field") resized = int(i);
+            }
+            if (a.inLayout) {
+                ++layout;
+                CHECK_EQ(added, -1);
+            } else {
+                ++entries;
+                if (set >= 0 && !(added >= 0 && added < set)) std::fprintf(stderr, "%s/%s %s:\n%s", cls.c_str(), node.c_str(), field.c_str(), text.c_str());
+                CHECK(set < 0 || (added >= 0 && added < set));
+                CHECK_EQ(resized, -1);
+            }
+        }
+        CHECK(layout > 0 && entries > 0);
+    }
+    CHECK(text.find("add_node pvehicle ") != std::string::npos);
+    CHECK(text.find("add_field collisionsfx_damage ns_hood VolMap 3\n") != std::string::npos);
+    CHECK(text.find("update_field collisionsfx_damage ns_hood VolMap[2] 7\n") != std::string::npos);
+    // Run where they aren't, it makes them as they are here.
+    auto target = sc::CloneDatabase(*base);
+    const sc::ApplyReport r = Run(*target, text, st);
+    if (!r.ok || !r.messages.empty()) std::fprintf(stderr, "%s---\n%s", Messages(r).c_str(), text.c_str());
+    CHECK_RUN(r);
+    CHECK(r.messages.empty());
+    const sc::Script left = sc::Diff(*target, *cur);
+    if (Changes(left)) std::fprintf(stderr, "%s", sc::Print(left).c_str());
+    CHECK_EQ(Changes(left), size_t(0));
+
+    // Edits only: update_field lines, which run where the collections are as here.
+    sc::ExportSettings edit;
+    edit.editOnly = true;
+    const Collection* street = &Col(*cur, "pvehicle", "street");
+    std::string edits;
+    for (const std::string& l : ns::FromStatements(*cur, sc::Export(*cur, {street}, edit), st.names.get())) {
+        const ns::Command cmd = ns::ParseLine(l);
+        CHECK(cmd.name == "update_field" || cmd.name == "update_collection" || cmd.name == "resize_field");
+        edits += l + "\n";
+    }
+    CHECK(edits.find("update_field pvehicle street HornType ") != std::string::npos);
+    auto same = sc::CloneDatabase(*base);
+    const sc::ApplyReport e = Run(*same, edits, st);
+    CHECK_RUN(e);
+    CHECK(e.messages.empty());
+    CHECK_EQ(Changes(sc::Diff(*base, *same)), size_t(0));
+
+    // copy_node copies the source's own values: only the others are added.
+    const Collection& source = Col(*base, "pvehicle", "street");
+    std::string other; // a value street doesn't have
+    for (const FieldDef& f : source.cls->fields)
+        if (!f.inLayout() && !f.isArray() && !source.find(f.key)) other = base->names().format(f.key);
+    CHECK(source.find(StringHash32("HornType")) && !other.empty());
+    const sc::Statement copy = sc::Parse("attribulina 1\n"
+                                         "create pvehicle/ns_copy from pvehicle/street {\n"
+                                         "    HornType = 2\n    " + other + " = 3\n}\n")
+                                   .statements.back();
+    std::string copied;
+    for (const std::string& l : ns::FromStatements(*base, {copy})) copied += l + "\n";
+    CHECK(copied.rfind("copy_node pvehicle street ", 0) == 0);
+    CHECK(copied.find("add_field pvehicle ns_copy HornType") == std::string::npos);
+    CHECK(copied.find("update_field pvehicle ns_copy HornType 2\n") != std::string::npos);
+    CHECK(copied.find("add_field pvehicle ns_copy " + other + "\nupdate_field pvehicle ns_copy " + other + " 3\n") != std::string::npos);
+}
+
 TEST("nfsms: World's scripts edit its packs and event vaults, and record back as nfsms") {
     auto base = LoadFolder(test::DataPath("attrib/databases/pc/world-final"));
     CHECK_EQ(ns::GameCode(*base), std::string("W"));
@@ -929,4 +1020,49 @@ TEST("nfsms: a line that fails is reported and the next one runs, as in NFS-VltE
     CHECK(!r.ok);
     CHECK_EQ(U32(Own(rev, "total_frames_short")), 21u);
     CHECK_EQ(U32(Own(rev, "total_frames_long")), 12u);
+}
+
+TEST("nfsms: a field the schema gives an enum (light_flares_cg's flare_texture) is named in scripts and a number in nfsms") {
+    const std::string dir = test::DataPath("attrib/databases/pc/carbon-vanilla");
+    if (!std::filesystem::exists(dir)) return;
+    auto db = LoadFolder(dir);
+    Collection& c = Col(*db, "light_flares_cg", "headlight_inner");
+    const std::string text = sc::Print(sc::NewScript(*db, sc::Export(*db, {&c})));
+    CHECK(text.find("flare_texture = ESLF_TEX_HEADLIGHT_OUTER") != std::string::npos);
+    // A script sets it by name or by number.
+    const sc::ApplyReport byName =
+        sc::Apply(*db, sc::Parse("attribulina 1\nedit light_flares_cg/headlight_inner { flare_texture = ESLF_TEX_LAMPPOSTFLARE }\n", "a.amod"));
+    CHECK(byName.ok);
+    CHECK_EQ(U32(Own(c, "flare_texture")), 4u);
+    const sc::ApplyReport byNumber = sc::Apply(*db, sc::Parse("attribulina 1\nedit light_flares_cg/headlight_inner { flare_texture = 3 }\n", "a.amod"));
+    CHECK(byNumber.ok);
+    CHECK_EQ(U32(Own(c, "flare_texture")), 3u);
+    // NFS-VltEd reads it as the UInt32 the type table says: nfsms lines take
+    // the number, and the recorder writes it.
+    CHECK_RUN(Run(*db, "update_field light_flares_cg headlight_inner flare_texture 2"));
+    CHECK_EQ(U32(Own(c, "flare_texture")), 2u);
+    const sc::Script edits = sc::Parse("attribulina 1\nedit light_flares_cg/headlight_inner { flare_texture = ESLF_TEX_CATSEYE }\n", "rec.amod");
+    const std::vector<std::string> lines = ns::FromStatements(*db, edits.statements);
+    CHECK(std::find(lines.begin(), lines.end(), "update_field light_flares_cg headlight_inner flare_texture 3") != lines.end());
+    if (std::find(lines.begin(), lines.end(), "update_field light_flares_cg headlight_inner flare_texture 3") == lines.end())
+        for (const std::string& l : lines) std::fprintf(stderr, "    recorded: %s\n", l.c_str());
+    // A number no name has (for code changed to have more textures) goes in,
+    // and comes out as that number.
+    const sc::ApplyReport past = sc::Apply(*db, sc::Parse("attribulina 1\nedit light_flares_cg/headlight_inner { flare_texture = 12 }\n", "a.amod"));
+    CHECK(past.ok);
+    CHECK_EQ(U32(Own(c, "flare_texture")), 12u);
+    CHECK(sc::Print(sc::NewScript(*db, sc::Export(*db, {&c}))).find("flare_texture = 12") != std::string::npos);
+    CHECK_RUN(Run(*db, "update_field light_flares_cg headlight_inner flare_texture 13"));
+    CHECK_EQ(U32(Own(c, "flare_texture")), 13u);
+    const std::vector<std::string> pastLines =
+        ns::FromStatements(*db, sc::Parse("attribulina 1\nedit light_flares_cg/headlight_inner { flare_texture = 12 }\n", "rec.amod").statements);
+    CHECK(std::find(pastLines.begin(), pastLines.end(), "update_field light_flares_cg headlight_inner flare_texture 12") != pastLines.end());
+    // Most Wanted's build has no cat's eye texture.
+    const std::string mwDir = test::DataPath("attrib/databases/pc/mw-vanilla");
+    if (!std::filesystem::exists(mwDir)) return;
+    auto mw = LoadFolder(mwDir);
+    const sc::ApplyReport none =
+        sc::Apply(*mw, sc::Parse("attribulina 1\nedit light_flares_cg/headlight_outer { flare_texture = ESLF_TEX_CATSEYE }\n", "a.amod"));
+    CHECK(!none.ok);
+    CHECK(Messages(none).find("has no value ESLF_TEX_CATSEYE") != std::string::npos);
 }

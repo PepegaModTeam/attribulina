@@ -193,6 +193,7 @@ In the editor, the Script panel (View > Script) holds one script, with line numb
 - A vault's menu in the Files tab, Add to Script: This Vault gives its `create vault` line, and With Its Collections adds a `collection` statement for each collection in it, in the vault's order.
 - A class's menu, Add to Script: Every Collection, or Chosen Fields... (only those fields; or `exact`, or `edit` blocks for collections that must exist already).
 - A field's menu in the collection panel: Add to Script, for that one value.
+- Next to Add to Script in the menus of collections, classes and gameplay paths, Add to Script (nfsms) has the same items and writes them as nfsms lines in the nfsms window instead (`doc/nfsms.md`).
 - File > Export Changes as Script...: everything that changed since the files were saved, or since the originals (the `.bak` files the first save keeps), with `was` for the old values.
 
 File > Apply Script... applies a file without opening it in the panel.

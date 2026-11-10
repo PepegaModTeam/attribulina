@@ -1951,14 +1951,23 @@ namespace attrib::nfsms
 							out.push_back("copy_node " + Token(cls) + " " + Token(nameOf(s.from.name)) + parent + " " + Token(n));
 						else
 							out.push_back("add_node " + Token(cls) + parent + " " + Token(n));
+						const ClassDef* k = db_.findClass(KeyOf(cls));
 						if (!s.vault.empty())
 						{
 							// The vault, when it isn't the one add_node picks.
-							const ClassDef* k = db_.findClass(KeyOf(cls));
 							const Collection* p = k && s.hasUnder && !s.under.root ? db_.findCollection(k->key, KeyOf(nameOf(s.under.name))) : nullptr;
 							if (!p || !p->vault || p->vault->name != s.vault) out.push_back("change_vault " + Token(cls) + " " + Token(n) + " " + Token(s.vault));
 						}
+						// NFS-VltEd's new node has its layout fields only (a copy, its
+						// source's own values too), and its update_field fails on a field
+						// the node doesn't have: each other value is added first.
+						newNode_ = true;
+						added_.clear();
+						if (s.kind == K::Create && s.hasFrom && k)
+							if (const Collection* from = db_.findCollection(k->key, KeyOf(nameOf(s.from.name))))
+								for (const Attribute& a : from->attributes) added_.insert(a.key);
 						for (const sc::Statement& b : s.body) body(s.target, b);
+						newNode_ = false;
 						break;
 					}
 					case K::Delete: out.push_back("delete_node " + Token(nameOf(s.target.cls)) + " " + Token(nameOf(s.target.name))); break;
@@ -2030,14 +2039,56 @@ namespace attrib::nfsms
 									v = number.get();
 									break;
 								}
+						const size_t at = out.size();
 						value("update_field " + head, field, props, *v, b.path.steps.empty() || !b.path.steps[0].member.empty());
+						if (f) addField(head, *f, b, at);
 						break;
 					}
 					case K::Revert: out.push_back("delete_field " + head + " " + Token(nameOf(b.path.field))); break;
-					case K::Resize: out.push_back("resize_field " + head + " " + Token(nameOf(b.path.field)) + " " + std::to_string(b.count)); break;
+					case K::Resize:
+					{
+						const ClassDef* k = db_.findClass(KeyOf(nameOf(t.cls)));
+						const FieldDef* f = k ? k->field(KeyOf(nameOf(b.path.field))) : nullptr;
+						const size_t at = out.size();
+						out.push_back("resize_field " + head + " " + Token(nameOf(b.path.field)) + " " + std::to_string(b.count));
+						if (f) addField(head, *f, b, at);
+						break;
+					}
 					case K::Comment: out.push_back("#" + b.comment); break;
 					default: out.push_back("# not in nfsms: " + b.path.text()); break;
 				}
+			}
+
+			// In a node add_node made: `add_field` before the lines from `at` that set
+			// one of its values, the first time a line sets that field. Not for a
+			// layout field (the node has it), nor when nfsms can't write the value
+			// (only comments): the node keeps inheriting it.
+			void addField(const std::string& head, const FieldDef& f, const sc::Statement& b, size_t at)
+			{
+				if (!newNode_ || f.inLayout() || added_.count(f.key)) return;
+				if (std::none_of(out.begin() + std::ptrdiff_t(at), out.end(), [](const std::string& l) { return !l.empty() && l[0] != '#'; }))
+					return;
+				const std::string field = Token(nameOf(b.path.field));
+				std::string line = "add_field " + head + " " + field;
+				if (f.isArray())
+				{
+					// The array's length: as the statement gives it, else as the collection has it.
+					int64_t count = -1;
+					if (b.kind == K::Resize) count = b.count;
+					else if (b.path.steps.empty() && b.value && b.value->kind == sc::Value::Kind::List) count = int64_t(b.value->items.size());
+					if (count < 0 && target_)
+						if (const ClassDef* k = db_.findClass(KeyOf(nameOf(target_->cls))))
+							if (const Collection* x = db_.findCollection(k->key, KeyOf(nameOf(target_->name))))
+								if (const Attribute* a = x->find(f.key)) count = a->count;
+					if (count < 0 && !b.path.steps.empty() && b.path.steps[0].member.empty()) count = b.path.steps[0].index + 1;
+					if (count < 0) count = 0;
+					line += " " + std::to_string(count);
+					// add_field gives it that length already.
+					if (at < out.size() && out[at] == "resize_field " + head + " " + field + " " + std::to_string(count))
+						out.erase(out.begin() + std::ptrdiff_t(at));
+				}
+				out.insert(out.begin() + std::ptrdiff_t(at), line);
+				added_.insert(f.key);
 			}
 
 			// Our words after the field (members, Class, X, X[3]) in NFS-VltEd's: the
@@ -2290,6 +2341,10 @@ namespace attrib::nfsms
 			const Database& db_;
 			const PropertyNames* names_;
 			const sc::Target* target_ = nullptr;
+			// In the body of a node add_node or copy_node makes, and the fields it
+			// has besides its layout's (added, or copied from the source).
+			bool newNode_ = false;
+			std::set<uint32_t> added_;
 		};
 
 	} // namespace
