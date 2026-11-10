@@ -86,6 +86,16 @@ attribcli get GLOBAL pvehicle/street HornType
 
 `attribcli help` lists every command; `doc/scripts.md` describes them and the script language.
 
+# AI/LLM Usage Disclosure
+
+This project used AI/LLM to assist with:
+
+- code scaffolding
+- automated code tests
+- debugging
+- format research and documentation
+- other boilerplate work
+
 # Credits
 
 See [CREDITS.md](./CREDITS.md)
