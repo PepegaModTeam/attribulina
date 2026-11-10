@@ -3,6 +3,8 @@
 
 #include "Test.h"
 
+#include <cmath>
+
 #include "core/Curve.h"
 #include "core/Edit.h"
 #include "core/Folder.h"
@@ -645,6 +647,127 @@ TEST("nfsms: ToModScript names a field, key, bin key, reference or new name give
         CHECK(ar.ok);
         auto viaNfsms = sc::CloneDatabase(*db);
         Run(*viaNfsms, text0, st);
+        const sc::Script diff = sc::Diff(*viaNfsms, *viaAmod);
+        if (Changes(diff)) std::fprintf(stderr, "%s", sc::Print(diff).c_str());
+        CHECK_EQ(Changes(diff), size_t(0));
+    }
+}
+
+TEST("nfsms: a NaN or an infinity converts and writes as text every platform reads back") {
+    // MSVC's printf writes a NaN as -nan(ind), which no script reads: NumberText spells them itself.
+    CHECK_EQ(sc::NumberText(std::nan(""), true), std::string("nan"));
+    CHECK_EQ(sc::NumberText(std::copysign(std::nan(""), -1.0)), std::string("-nan"));
+    CHECK_EQ(sc::NumberText(-HUGE_VAL), std::string("-inf"));
+    // X that repeats or goes back (Reformed's camera curves): the natural spline divided by
+    // zero there. Each rising run of X gets its own, and nothing is NaN.
+    auto finite = [](const std::vector<float>& v) {
+        return std::all_of(v.begin(), v.end(), [](float f) { return std::isfinite(f); });
+    };
+    const std::vector<float> y2 = NaturalY2({0, 0.4875f, 1, 1}, {0, 0.7731481f, 1, 0.372449f});
+    CHECK(finite(y2));
+    CHECK(y2 == (std::vector<float>{0, NaturalY2({0, 0.4875f, 1}, {0, 0.7731481f, 1})[1], 0, 0}));
+    CHECK(finite(NaturalY2({0, 0.2583333f, 0.5208333f, 0.6916667f, 0.8354167f, 1, 0.8723732f, 1},
+                           {0.1990741f, 0.2962963f, 0.3611111f, 0.4768519f, 0.6574074f, 1, 0.6880196f, 0.9795918f})));
+
+    auto db = Load();
+    const std::string script = "version 4.6\n"
+                               "game PS\n"
+                               "update_collection vehicle 240sx TORQUE XValues 1 Value 0\n" // X[1] = X[0]
+                               "update_field skidaudio default ShockSqueakThreshPavement[0] NaN\n"
+                               "update_field skidaudio default ShockSqueakThreshPavement[1] Infinity\n"
+                               "update_field skidaudio default ShockSqueakThreshPavement[2] -Infinity\n";
+    for (const bool vltEd : {false, true}) {
+        ns::RunSettings st;
+        st.names = ns::PropertyNames::Load(test::DataPath("data/nfsms/prostreet_pc.txt"));
+        st.vltEd = vltEd;
+        sc::ApplyReport conv;
+        auto scratch = sc::CloneDatabase(*db);
+        const std::string text = sc::Print(ns::ToModScript(*scratch, ns::Parse(script, "nan.nfsms"), st, &conv));
+        if (conv.errors()) std::fprintf(stderr, "%s\n%s", Messages(conv).c_str(), text.c_str());
+        CHECK_EQ(conv.errors(), size_t(0));
+        CHECK(text.find("nan(") == std::string::npos);
+        auto has = [&](const char* what) {
+            const bool found = text.find(what) != std::string::npos;
+            if (!found) std::fprintf(stderr, "vltEd %d: no \"%s\" in\n%s", int(vltEd), what, text.c_str());
+            CHECK(found);
+        };
+        // NFS-VltEd reads NaN as .NET's NaN (0xFFC00000), written as its bytes; our reading, as nan.
+        has(vltEd ? "ShockSqueakThreshPavement[0] = bytes \"00 00 C0 FF" : "ShockSqueakThreshPavement[0] = nan");
+        has("ShockSqueakThreshPavement[1] = inf");
+        has("ShockSqueakThreshPavement[2] = -inf");
+        auto viaNfsms = sc::CloneDatabase(*db);
+        CHECK_RUN(Run(*viaNfsms, script, st));
+        const Attribute& thresh = Own(Col(*viaNfsms, "skidaudio", "default"), "ShockSqueakThreshPavement");
+        CHECK_EQ(U32(thresh, 0), vltEd ? 0xFFC00000u : 0x7FC00000u);
+        CHECK(std::isinf(F32(thresh, 1)) && F32(thresh, 1) > 0 && std::isinf(F32(thresh, 2)) && F32(thresh, 2) < 0);
+        const CurveValue torque = ReadCurve(Own(Col(*viaNfsms, "vehicle", "240sx"), "TORQUE"), 0, Endian::Little);
+        CHECK(finite(torque.y2));
+        // It reads back and makes the same database.
+        const sc::Script back = sc::Parse(text, "nan.amod");
+        auto viaAmod = sc::CloneDatabase(*db);
+        const sc::ApplyReport ar = sc::Apply(*viaAmod, back);
+        if (!ar.ok) std::fprintf(stderr, "%s", Messages(ar).c_str());
+        CHECK(ar.ok);
+        const sc::Script diff = sc::Diff(*viaNfsms, *viaAmod);
+        if (Changes(diff)) std::fprintf(stderr, "%s", sc::Print(diff).c_str());
+        CHECK_EQ(Changes(diff), size_t(0));
+        // As nfsms: NFS-VltEd's words for them (.NET under en-US). The writer reads the
+        // database the statements changed, as the recorder's is.
+        const sc::Script edit = sc::Parse("edit skidaudio/default { ShockSqueakThreshPavement = [nan, inf, -inf] }\n", "x.amod");
+        auto changed = sc::CloneDatabase(*db);
+        CHECK(sc::Apply(*changed, edit).ok);
+        std::string lines;
+        for (const std::string& l : ns::FromStatements(*changed, edit.statements, st.names.get(), vltEd)) lines += l + "\n";
+        for (const char* want : {"ShockSqueakThreshPavement[0] NaN\n", "ShockSqueakThreshPavement[1] Infinity\n", "ShockSqueakThreshPavement[2] -Infinity\n"}) {
+            if (lines.find(want) == std::string::npos) std::fprintf(stderr, "vltEd %d: no \"%s\" in\n%s", int(vltEd), want, lines.c_str());
+            CHECK(lines.find(want) != std::string::npos);
+        }
+    }
+}
+
+TEST("nfsms: ToModScript writes a reference's Class and Collection lines as one value, and no collection as 0x00000000") {
+    // Reformed sets each new car in car_list by its Class, then its Collection. In a mod script's
+    // reference a bare 0 is a collection called "0", so no collection is 0x00000000, as exports write it.
+    auto db = Load();
+    const uint32_t n = Own(Col(*db, "car_list", "all_cars"), "Cars").count;
+    const std::string a = "Cars[" + std::to_string(n) + "]", b = "Cars[" + std::to_string(n + 1) + "]";
+    const std::string script = "version 4.6\n"
+                               "game PS\n"
+                               "resize_field car_list all_cars Cars " + std::to_string(n + 2) + "\n"
+                               "update_field car_list all_cars " + a + " Class pvehicle\n"
+                               "update_field car_list all_cars " + a + " Collection 240sx\n"
+                               "update_field car_list all_cars " + b + " Class pvehicle\n"
+                               "update_field car_list all_cars " + b + " Collection 0x00000000\n";
+    for (const bool vltEd : {false, true}) {
+        ns::RunSettings st;
+        st.names = ns::PropertyNames::Load(test::DataPath("data/nfsms/prostreet_pc.txt"));
+        st.vltEd = vltEd;
+        sc::ApplyReport conv;
+        auto scratch = sc::CloneDatabase(*db);
+        const std::string text = sc::Print(ns::ToModScript(*scratch, ns::Parse(script, "refs.nfsms"), st, &conv));
+        if (conv.errors()) std::fprintf(stderr, "%s\n%s", Messages(conv).c_str(), text.c_str());
+        CHECK_EQ(conv.errors(), size_t(0));
+        auto count = [&](const std::string& what) {
+            size_t k = 0;
+            for (size_t at = text.find(what); at != std::string::npos; at = text.find(what, at + 1)) ++k;
+            return k;
+        };
+        const bool merged = count(a + " = ") == 1 && count(b + " = ") == 1 && count(a + " = \"pvehicle\"/\"240sx\"\n") == 1 &&
+                            count(b + " = \"pvehicle\"/0x00000000\n") == 1 && count("/0\n") == 0;
+        if (!merged) std::fprintf(stderr, "vltEd %d:\n%s", int(vltEd), text.c_str());
+        CHECK(merged);
+        // It applies without a warning and makes the same database.
+        const sc::Script back = sc::Parse(text, "refs.amod");
+        auto viaAmod = sc::CloneDatabase(*db);
+        const sc::ApplyReport ar = sc::Apply(*viaAmod, back);
+        if (!ar.ok || ar.warnings()) std::fprintf(stderr, "%s", Messages(ar).c_str());
+        CHECK(ar.ok);
+        CHECK_EQ(ar.warnings(), size_t(0));
+        auto viaNfsms = sc::CloneDatabase(*db);
+        CHECK_RUN(Run(*viaNfsms, script, st));
+        const Attribute& cars = Own(Col(*viaNfsms, "car_list", "all_cars"), "Cars");
+        CHECK_EQ(U32(cars, n + 1, 0), StringHash32("pvehicle"));
+        CHECK_EQ(U32(cars, n + 1, 4), 0u);
         const sc::Script diff = sc::Diff(*viaNfsms, *viaAmod);
         if (Changes(diff)) std::fprintf(stderr, "%s", sc::Print(diff).c_str());
         CHECK_EQ(Changes(diff), size_t(0));

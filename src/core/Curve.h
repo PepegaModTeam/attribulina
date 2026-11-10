@@ -52,7 +52,10 @@ namespace attrib
 		}
 	};
 
-	// Natural cubic spline second derivatives (y2[0] = y2[n-1] = 0).
+	// Natural cubic spline second derivatives (y2[0] = y2[n-1] = 0). X that
+	// repeats or goes back (a mod's [0, 0.5, 1, 1]) has no spline through it:
+	// each rising run of X gets its own, and a value that still isn't finite is 0,
+	// so a NaN never reaches the file.
 	std::vector<float> NaturalY2(const std::vector<float>& x, const std::vector<float>& y);
 	// splint on normalised arrays; xn is normalised.
 	float SplineEval(const CurveValue& c, float xn);

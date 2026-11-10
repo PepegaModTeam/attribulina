@@ -57,6 +57,18 @@ namespace attrib::nfsms
 			return end && !*end;
 		}
 
+		// A number as NFS-VltEd reads it (.NET under en-US): NaN, Infinity and
+		// -Infinity are its words for a mod script's nan, inf and -inf. Our runs
+		// read both (strtod).
+		std::string NetNumber(const std::string& t)
+		{
+			const std::string l = Lower(t);
+			if (l == "nan" || l == "-nan" || l == "+nan") return "NaN";
+			if (l == "inf" || l == "+inf" || l == "infinity" || l == "+infinity") return "Infinity";
+			if (l == "-inf" || l == "-infinity") return "-Infinity";
+			return t;
+		}
+
 		// What NFS-VltEd's char.IsWhiteSpace finds in a name (the ASCII ones).
 		bool HasWhiteSpace(const std::string& t)
 		{
@@ -840,6 +852,29 @@ namespace attrib::nfsms
 				t.root = true;
 				return t;
 			}
+			// `later` sets the same value whole right after `earlier`, so `earlier` does
+			// nothing: Reformed sets a reference's Class, then its Collection, and each
+			// line comes out as a whole reference. A { ... } keeps the members it doesn't
+			// list, so it overrides nothing.
+			static bool Overrides(const sc::Statement& later, const sc::Statement& earlier)
+			{
+				if (later.kind != K::Set || earlier.kind != K::Set || later.op != '=' || earlier.op != '=' || later.was || earlier.was ||
+					!later.value || later.path.text() != earlier.path.text())
+					return false;
+				std::function<bool(const sc::Value&)> whole = [&](const sc::Value& v)
+				{
+					if (v.kind == sc::Value::Kind::Struct) return false;
+					for (const sc::ValuePtr& i : v.items)
+						if (i && !whole(*i)) return false;
+					return true;
+				};
+				return whole(*later.value);
+			}
+			static void AddTo(std::vector<sc::Statement>& body, sc::Statement b)
+			{
+				if (!body.empty() && Overrides(b, body.back())) body.back() = std::move(b);
+				else body.push_back(std::move(b));
+			}
 			void emit(sc::Statement st)
 			{
 				if (!out_) return;
@@ -847,8 +882,14 @@ namespace attrib::nfsms
 				if (st.kind == K::Edit && !out_->empty() && out_->back().kind == K::Edit && out_->back().target.cls == st.target.cls &&
 					out_->back().target.name == st.target.name)
 				{
-					for (sc::Statement& b : st.body) out_->back().body.push_back(std::move(b));
+					for (sc::Statement& b : st.body) AddTo(out_->back().body, std::move(b));
 					return;
+				}
+				if (st.kind == K::Edit)
+				{
+					std::vector<sc::Statement> body;
+					for (sc::Statement& b : st.body) AddTo(body, std::move(b));
+					st.body = std::move(body);
 				}
 				out_->push_back(std::move(st));
 			}
@@ -2209,16 +2250,20 @@ namespace attrib::nfsms
 					const uint32_t ck = cur.size() >= rl.cls + rl.keySize ? LoadKey(db_, cur.data() + rl.cls, rl.keySize, e) : 0;
 					const uint32_t k = cur.size() >= rl.col + rl.keySize ? LoadKey(db_, cur.data() + rl.col, rl.keySize, e) : 0;
 					// The part that stays as it is, by name where it has one (64-bit keys need it).
+					// No key is 0x00000000: in a reference a bare 0 is a collection called "0".
 					auto keep = [&](uint32_t key)
 					{
-						const std::string* n = db_.names().find(key);
+						const std::string* n = key ? db_.names().find(key) : nullptr;
 						return n ? sc::MakeString(*n) : sc::MakeNumber(Hex32(key));
 					};
-					if (part == RefPart::Class) return ref(keyValue(t, db_.names()), k ? keep(k) : sc::MakeNumber("0"));
+					auto part2 = [&](const std::string& s)
+					{
+						return s.empty() ? sc::MakeNumber(Hex32(0)) : keyValue(s, db_.names());
+					};
+					if (part == RefPart::Class) return ref(part2(t), keep(k));
 					// The collection alone, as these tools set it: the class stays.
 					if (!ck && part == RefPart::Whole) fail("the reference has no class yet; set its Class first");
-					const std::string* className = db_.names().find(ck); // by name, so messages read "vehicle/x"
-					return ref(className ? sc::MakeString(*className) : sc::MakeNumber(Hex32(ck)), keyValue(t, db_.names()));
+					return ref(keep(ck), part2(t)); // the class by name, so messages read "vehicle/x"
 				}
 				switch (vt.kind)
 				{
@@ -2241,7 +2286,13 @@ namespace attrib::nfsms
 						// NFS-VltEd reads 1,000.5 (en-US: the comma groups thousands).
 						std::string n = t;
 						if (st_.vltEd) n.erase(std::remove(n.begin(), n.end(), ','), n.end());
-						if (IsNumber(n) || IsHex(n)) return sc::MakeNumber(n);
+						if (IsHex(n)) return sc::MakeNumber(n);
+						if (IsNumber(n))
+						{
+							// NaN, Infinity (NFS-VltEd's) or 1e999 as a mod script spells them.
+							const double d = std::strtod(n.c_str(), nullptr);
+							return sc::MakeNumber(std::isfinite(d) ? n : sc::NumberText(d));
+						}
 						fail("not a number: " + t);
 					}
 					case TypeKind::Enum: return IsHex(t) || IsNumber(t) ? sc::MakeNumber(t) : sc::MakeString(t);
@@ -2720,7 +2771,7 @@ namespace attrib::nfsms
 					double d = 0;
 					if (t == "Infinity") d = HUGE_VAL;
 					else if (t == "-Infinity") d = -HUGE_VAL;
-					else if (t == "NaN") d = std::nan("");
+					else if (t == "NaN") d = std::copysign(std::nan(""), -1.0); // .NET's NaN: 0xFFC00000 as a float
 					else
 					{
 						// [sign] digits (commas among them) [. digits] [e [sign] digits]
@@ -2789,19 +2840,34 @@ namespace attrib::nfsms
 			// number.
 			sc::ValuePtr BitsValue(const ValueType& mt, uint32_t ms, uint64_t v, Endian e) const
 			{
+				// The value's bytes, as the file holds them.
+				auto bytes = [&]
+				{
+					auto out = std::make_shared<sc::Value>();
+					out->kind = sc::Value::Kind::Bytes;
+					for (uint32_t i = 0; i < ms; ++i)
+					{
+						char buf[4];
+						std::snprintf(buf, sizeof(buf), "%02X ", unsigned((v >> (8 * (e == Endian::Big ? ms - 1 - i : i))) & 0xFF));
+						out->text += buf;
+					}
+					return out;
+				};
 				if (mt.kind == TypeKind::Bool && v <= 1) return sc::MakeWord(v ? "true" : "false");
+				// A NaN as its bytes, as an export writes one: "nan" would lose its bits
+				// (a u32 word of 0xFFFFFFFF over a float).
 				if (mt.kind == TypeKind::Float && ms == 4)
 				{
 					const uint32_t u = uint32_t(v);
 					float fl;
 					std::memcpy(&fl, &u, 4);
-					return sc::MakeNumber(sc::NumberText(fl, true));
+					return std::isnan(fl) ? bytes() : sc::MakeNumber(sc::NumberText(fl, true));
 				}
 				if (mt.kind == TypeKind::Double && ms == 8)
 				{
 					double d;
 					std::memcpy(&d, &v, 8);
-					return sc::MakeNumber(sc::NumberText(d));
+					return std::isnan(d) ? bytes() : sc::MakeNumber(sc::NumberText(d));
 				}
 				// Enums are read as signed numbers of their size.
 				if (mt.kind == TypeKind::Int8 || mt.kind == TypeKind::Int16 || mt.kind == TypeKind::Int32 || mt.kind == TypeKind::Int64 ||
@@ -2810,19 +2876,8 @@ namespace attrib::nfsms
 					const int64_t sv = ms == 8 ? int64_t(v) : int64_t(v << (64 - 8 * ms)) >> (64 - 8 * ms);
 					return sc::MakeNumber(std::to_string(sv));
 				}
-				if (mt.kind == TypeKind::Bool)
-				{
-					// A bool holding 2 is a byte all the same: as NFS-VltEd writes it.
-					auto bytes = std::make_shared<sc::Value>();
-					bytes->kind = sc::Value::Kind::Bytes;
-					for (uint32_t i = 0; i < ms; ++i)
-					{
-						char buf[4];
-						std::snprintf(buf, sizeof(buf), "%02X ", unsigned((v >> (8 * (e == Endian::Big ? ms - 1 - i : i))) & 0xFF));
-						bytes->text += buf;
-					}
-					return bytes;
-				}
+				// A bool holding 2 is a byte all the same: as NFS-VltEd writes it.
+				if (mt.kind == TypeKind::Bool) return bytes();
 				// A key's name, else its number in hex (a bare decimal would be a name to hash).
 				if (mt.kind == TypeKind::Key || mt.kind == TypeKind::BinKey)
 				{
@@ -3828,13 +3883,13 @@ namespace attrib::nfsms
 					const uint32_t w = uint32_t(u);
 					float f;
 					std::memcpy(&f, &w, 4);
-					return sc::NumberText(f, true);
+					return NetNumber(sc::NumberText(f, true));
 				}
 				if (base == "f64")
 				{
 					double d;
 					std::memcpy(&d, &u, 8);
-					return sc::NumberText(d);
+					return NetNumber(sc::NumberText(d));
 				}
 				if (base == "bool8" || base == "bool32") return std::string(u ? "true" : "false");
 				if (how == "key")
@@ -3904,7 +3959,8 @@ namespace attrib::nfsms
 				using VK = sc::Value::Kind;
 				switch (v.kind)
 				{
-					case VK::Number: case VK::Word: case VK::String:
+					case VK::Number: line(props, NetNumber(v.text)); return;
+					case VK::Word: case VK::String:
 						line(props, v.kind == VK::Word && v.text == "null" ? std::string() : v.text);
 						return;
 					case VK::Binary:
@@ -3955,7 +4011,7 @@ namespace attrib::nfsms
 								{
 									auto ps = props;
 									ps.push_back(std::to_string(r) + "[" + std::to_string(c) + "]");
-									line(ps, v.items[r]->items[c]->text);
+									line(ps, NetNumber(v.items[r]->items[c]->text));
 								}
 							return;
 						}
@@ -3968,7 +4024,7 @@ namespace attrib::nfsms
 							{
 								auto ps = props;
 								ps.push_back(xyzw[i]);
-								line(ps, v.items[i]->text);
+								line(ps, NetNumber(v.items[i]->text));
 							}
 							return;
 						}

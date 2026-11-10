@@ -124,16 +124,16 @@ Values are typed when they are applied, by the field they go into. `a/b` is a re
 | --- | --- |
 | bool | `true`, `false` |
 | integers | `12`, `-3`, `0x1F`. The field's size and sign are checked: `300` doesn't fit a `uint8`. |
-| float, double | `0.5`, `1e-3`, `inf`. The editor writes the fewest digits that read back as the same value, so a script never changes a float by rounding. |
+| float, double | `0.5`, `1e-3`, `inf`, `-inf`, `nan`. The editor writes the fewest digits that read back as the same value, so a script never changes a float by rounding, and a NaN it reads from a file as `bytes "..."`, which keeps its bits. |
 | enum | Its name, `ENGINE_REAR`, or a number. |
 | key, bin key | A name is hashed (StringHash32, or bStringHash for `type_bStringHash`): `street`, `"$1 CAYMAN"`. `0x...` and `0` are values. A bare number like `7` is the name "7". |
 | string key | `"text"`: the hash is the text's, and `""` is 0. `("text", 0x1234ABCD)` keeps a stored hash that isn't the text's (retail strings mangled to `?` have them). Most Wanted's 16-byte string key (Carbon's 360 files) also stores a 64-bit hash: `("text", 0x1234ABCD, 0x0123456789ABCDEF)`. `null` for none. |
 | text | `"text"` or `null`. |
-| reference | `pvehicle/street`, or `null`. |
+| reference | `pvehicle/street`, or `null`. `emittergroup/0x00000000` keeps the class with no collection. A bare `0` there would be a collection called "0", since a reference's parts are names (a gameplay path's numbered segments are written bare too). |
 | class reference | Undercover's references to one class (`Attrib::Gen::ClassRefSpec_<class>`): the collection's name, `wall_reverb_00`, or `0` for none. |
 | vectors, colours | `(x, y, z, w)`. A colour's four bytes are given in memory order, `(a, r, g, b)`. |
 | matrix | Four rows: `((1, 0, 0, 0), (0, 1, 0, 0), ...)`. |
-| curve | `{ xMin = 0, xMax = 100, yMin = 0, yMax = 1, X = [0, 0.5, 1], Y = [0, 0.8, 1] }`, with X and Y normalised to 0..1 the way they are stored. Y2 is recomputed unless the curve gives `Y2 = [...]`. Undercover's curves have a `graphScale` too. |
+| curve | `{ xMin = 0, xMax = 100, yMin = 0, yMax = 1, X = [0, 0.5, 1], Y = [0, 0.8, 1] }`, with X and Y normalised to 0..1 the way they are stored. Y2 is recomputed unless the curve gives `Y2 = [...]`. Where X repeats or goes back down, as some mods leave it, no spline passes through every point: each run of rising X gets its own, and Y2 is 0 at the points where X turns back. Undercover's curves have a `graphScale` too. |
 | blob | `lua """source"""`: a handler's Lua, compiled with Lua 5.0 and packed the way the State Graph Builder does it. `bytes "0a 0b ..."` for other blobs, `null` for none. |
 | struct | `{ member = value, ... }`. Members it doesn't list keep their values. |
 | arrays | `[a, b, c]` sets the length and the elements. A struct's fixed-size array needs exactly its length. |

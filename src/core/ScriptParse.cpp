@@ -1849,6 +1849,9 @@ namespace attrib::script
 	std::string NumberText(double d, bool asFloat)
 	{
 		if (std::isinf(d)) return d > 0 ? "inf" : "-inf";
+		// Spelled here: printf's spelling is the C library's (MSVC writes -nan(ind)),
+		// and a script must read back on every platform.
+		if (std::isnan(d)) return std::signbit(d) ? "-nan" : "nan";
 		char buf[40];
 		const int most = asFloat ? 9 : 17;
 		for (int prec = 1; prec <= most; ++prec)

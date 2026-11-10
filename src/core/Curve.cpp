@@ -3,6 +3,7 @@
 #include "Database.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace attrib
 {
@@ -43,25 +44,60 @@ namespace attrib
 		}
 	} // namespace
 
+	namespace
+	{
+		std::vector<float> Spline(const std::vector<float>& x, const std::vector<float>& y)
+		{
+			const size_t n = std::min(x.size(), y.size());
+			std::vector<float> y2(n, 0.0f);
+			if (n < 3)
+				return y2;
+			// Numerical Recipes `spline` with natural end conditions, in float like the game data.
+			std::vector<float> u(n, 0.0f);
+			for (size_t i = 1; i + 1 < n; ++i)
+			{
+				const float sig = (x[i] - x[i - 1]) / (x[i + 1] - x[i - 1]);
+				const float p = sig * y2[i - 1] + 2.0f;
+				y2[i] = (sig - 1.0f) / p;
+				u[i] = (y[i + 1] - y[i]) / (x[i + 1] - x[i]) - (y[i] - y[i - 1]) / (x[i] - x[i - 1]);
+				u[i] = (6.0f * u[i] / (x[i + 1] - x[i - 1]) - sig * u[i - 1]) / p;
+			}
+			y2[n - 1] = 0.0f;
+			for (size_t k = n - 1; k-- > 0;)
+				y2[k] = y2[k] * y2[k + 1] + u[k];
+			return y2;
+		}
+
+		bool AllFinite(const std::vector<float>& v)
+		{
+			return std::all_of(v.begin(), v.end(), [](float f)
+			{
+				return std::isfinite(f);
+			});
+		}
+	} // namespace
+
 	std::vector<float> NaturalY2(const std::vector<float>& x, const std::vector<float>& y)
 	{
-		const size_t n = std::min(x.size(), y.size());
-		std::vector<float> y2(n, 0.0f);
-		if (n < 3)
-			return y2;
-		// Numerical Recipes `spline` with natural end conditions, in float like the game data.
-		std::vector<float> u(n, 0.0f);
-		for (size_t i = 1; i + 1 < n; ++i)
+		std::vector<float> y2 = Spline(x, y);
+		if (AllFinite(y2)) return y2;
+		// X repeats or goes back somewhere (an interval of no width divides by
+		// zero): a spline over each rising run, its ends natural.
+		const size_t n = y2.size();
+		std::fill(y2.begin(), y2.end(), 0.0f);
+		size_t b = 0;
+		for (size_t i = 1; i <= n; ++i)
 		{
-			const float sig = (x[i] - x[i - 1]) / (x[i + 1] - x[i - 1]);
-			const float p = sig * y2[i - 1] + 2.0f;
-			y2[i] = (sig - 1.0f) / p;
-			u[i] = (y[i + 1] - y[i]) / (x[i + 1] - x[i]) - (y[i] - y[i - 1]) / (x[i] - x[i - 1]);
-			u[i] = (6.0f * u[i] / (x[i + 1] - x[i - 1]) - sig * u[i - 1]) / p;
+			if (i < n && x[i] > x[i - 1]) continue;
+			if (i - b >= 3)
+			{
+				const std::vector<float> run = Spline(std::vector<float>(x.begin() + b, x.begin() + i), std::vector<float>(y.begin() + b, y.begin() + i));
+				std::copy(run.begin(), run.end(), y2.begin() + b);
+			}
+			b = i;
 		}
-		y2[n - 1] = 0.0f;
-		for (size_t k = n - 1; k-- > 0;)
-			y2[k] = y2[k] * y2[k + 1] + u[k];
+		for (float& f : y2)
+			if (!std::isfinite(f)) f = 0.0f;
 		return y2;
 	}
 
