@@ -96,6 +96,8 @@ This project used AI/LLM to assist with:
 - format research and documentation
 - other boilerplate work
 
+No AI generated artwork is used in this project.
+
 # Credits
 
 See [CREDITS.md](./CREDITS.md)
