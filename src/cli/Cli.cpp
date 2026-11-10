@@ -40,7 +40,7 @@ namespace cli
   attribcli export <database> <class>[/<collection>]... [-o <out.amod>]
                    [--children] [--field <name>]... [--exact] [--edit]
   attribcli get    <database> <class>/<collection> [<field>...]
-  attribcli convert <database> <script.nfsms> [-o <out.amod>]
+  attribcli convert <database> <script.nfsms> [-o <out.amod>] [--vlted]
   attribcli list   <database> [<class>]
   attribcli header <database> <class> [-o <out.h>] [--types] [--no-setters]
   attribcli info   <database>
@@ -66,6 +66,8 @@ apply:
   --out <dir>       write the changed packs there instead of over the originals
   --compress <kind> save gameplay.lzc with jdlz (as retail), huff or raww (stored)
   --no-backup       don't keep the first original as <file>.bak
+  --vlted           read nfsms scripts as NFS-VltEd 4.6 does (doc/nfsms.md,
+                    "NFS-VltEd compatible"): its value widths and quirks
 
 diff: the script that turns <base> into <database>. --no-was leaves out the
 old values, --class limits it to some classes.
@@ -487,7 +489,7 @@ which decides how values read; lines that fail come out as comments.
 
 			int apply(const std::vector<std::string>& in)
 			{
-				const Args a = Parse(in, { "-e", "--set", "--out", "--compress" }, { "--dry-run", "--strict", "--no-backup" });
+				const Args a = Parse(in, { "-e", "--set", "--out", "--compress" }, { "--dry-run", "--strict", "--no-backup", "--vlted" });
 				if (a.positional.empty()) throw Failed{ "apply needs a database" };
 				std::optional<LzKind> compress;
 				if (a.has("--compress") && !(compress = ParseLzKind(a.get("--compress"))))
@@ -541,6 +543,7 @@ which decides how values read; lines that fail come out as comments.
 					const ns::Script& s = nfsmsScripts[index];
 					ns::RunSettings st;
 					st.strict = a.has("--strict");
+					st.vltEd = a.has("--vlted");
 					st.choices = ns::DefaultChoices(s);
 					// --set kits=true for a checkbox, --set tier=race for a radio group.
 					for (const ns::Control& c : s.controls)
@@ -785,11 +788,12 @@ which decides how values read; lines that fail come out as comments.
 
 			int convert(const std::vector<std::string>& in)
 			{
-				const Args a = Parse(in, { "-o" }, {});
+				const Args a = Parse(in, { "-o" }, { "--vlted" });
 				if (a.positional.size() != 2) throw Failed{ "convert takes a database and an nfsms script" };
 				auto db = load(a.positional[0]);
 				const ns::Script s = readNfsms(a.positional[1]);
 				ns::RunSettings st;
+				st.vltEd = a.has("--vlted");
 				st.names = ns::NamesFor(*db, nfsmsNames());
 				sc::ApplyReport r;
 				const sc::Script out = ns::ToModScript(*db, s, st, &r); // db is a copy: nothing is saved

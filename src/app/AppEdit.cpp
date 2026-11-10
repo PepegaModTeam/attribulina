@@ -542,6 +542,12 @@ namespace app
 	{
 		using Kind = EditTarget::Kind;
 		Collection* c = t.collection;
+		// nfsms can't make a collection only where it's missing: these write
+		// update_field lines alone, for collections that exist where it runs.
+		script::ExportSettings valuesOnly;
+		valuesOnly.editOnly = true;
+		const char* valuesTip = "Its own values as update_field lines, without add_node or add_field: for a database\n"
+								"where the collection is already there with these fields.";
 		if (c)
 		{
 			if (ImGui::MenuItem("This Collection")) addCollectionsToScript({ c }, false, {}, nfsms);
@@ -550,6 +556,8 @@ namespace app
 												"values. Where it exists already, add_node fails (in NFS-VltEd add_field too), and the\n"
 												"values still go in."
 											  : "Its parent, vault and own values, as a script that makes it or updates it");
+			if (nfsms && ImGui::MenuItem("This Collection's Values")) addCollectionsToScript({ c }, false, valuesOnly, true);
+			if (nfsms && ImGui::IsItemHovered()) ImGui::SetTooltip("%s", valuesTip);
 			if (t.kind == Kind::Element && gameplay_)
 			{
 				// What the folder holds: elements under its path and in Children
@@ -572,8 +580,12 @@ namespace app
 		{
 			if (ImGui::MenuItem("Every Collection"))
 				addCollectionsToScript(std::vector<Collection*>(t.cls->collections.begin(), t.cls->collections.end()), false, {}, nfsms);
+			if (nfsms && ImGui::IsItemHovered()) ImGui::SetTooltip("Each one as This Collection writes it.");
+			if (nfsms && ImGui::MenuItem("Every Collection's Values"))
+				addCollectionsToScript(std::vector<Collection*>(t.cls->collections.begin(), t.cls->collections.end()), false, valuesOnly, true);
 			if (nfsms && ImGui::IsItemHovered())
-				ImGui::SetTooltip("Each one as This Collection writes it. Chosen Fields can write update_field lines only.");
+				ImGui::SetTooltip("Each one's own values as update_field lines, without add_node or add_field: for a\n"
+								  "database where the collections are already there with these fields.");
 			if (ImGui::MenuItem("Chosen Fields..."))
 			{
 				pendingClass_ = t.cls;
@@ -610,6 +622,8 @@ namespace app
 			focusExplorerFilter_ = true;
 		}
 		ImGui::Separator();
+		if (ImGui::MenuItem("NFS-VltEd Compatible nfsms", nullptr, &nfsmsVltEd_)) ImGui::MarkIniSettingsDirty();
+		if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", kVltEdTip);
 		if (ImGui::MenuItem("Allow Arrays Past Their Limit", nullptr, &arraysPastLimit_)) ImGui::MarkIniSettingsDirty();
 		ImGui::SetItemTooltip("Lets an array hold more elements than its field's definition allows (GEAR_RATIO's 9), with a "
 							  "warning.\nGame code made for that count may ignore the rest or misbehave. An array in the "

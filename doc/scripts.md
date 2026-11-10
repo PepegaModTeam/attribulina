@@ -22,7 +22,7 @@ collection pvehicle/street_tuned under pvehicle/street in vault db {
 
 Every statement names the thing it changes and what it becomes. That choice buys several things a scripting language wouldn't give:
 
-- Applying a script twice gives the same database as applying it once. The exceptions are `+=` and its siblings, which add to whatever is there.
+- Applying a script twice gives the same database as applying it once. The exceptions are `+=` and its siblings, which add to whatever is there, and `append` without `if missing`.
 - The editor can write a script from the difference between two databases, and the test suite checks that applying that script to the first one leaves no difference to the second.
 - A reader sees what a mod changes without running it, and two mods can be compared line by line.
 - The whole script is checked before anything changes: the editor applies it to a copy of the database first.
@@ -32,7 +32,9 @@ Configurators still get what they need: options the user sets before applying, u
 
 ## Files and names
 
-Scripts are UTF-8 text. A statement ends at the end of the line or at `;`, and `#` starts a comment. The first statement is `attribulina 1`, the format version. A script without it still applies, with a warning.
+Scripts are UTF-8 text. A statement ends at the end of the line or at `;`, and `#` starts a comment. The first statement is `attribulina 1` or `attribulina 2`, the format version. A script without it still applies, with a warning.
+
+Format 2 added `append`, `remove ... = value`, `resize ... by`, indices counted from the end (`Cars[-1]`) and conditions on the database (`exists`, `has`, `own`, `count`, comparisons and `contains`). The editor writes the lowest format that reads a script, so one that uses none of these still says 1 and opens in an older Attribulina, which refuses a 2 with "this script needs a newer Attribulina". A script whose first line says 1 but uses format 2 statements applies here with a warning to change the line.
 
 - A collection is `class/collection`: `pvehicle/street`. Gameplay collections are named by paths and keep their slashes: `gameplay/prostreet_career/bins/race_bin_an_2_1/gr_1`.
 - A name with spaces or other odd characters goes in quotes: `frontend/"$1 CAYMAN"`.
@@ -44,7 +46,7 @@ Scripts are UTF-8 text. A statement ends at the end of the line or at `;`, and `
 
 | Statement | What it does |
 | --- | --- |
-| `attribulina 1` | The format version. |
+| `attribulina 2` | The format version (1 or 2). |
 | `game prostreet_pc` | The game and platform the script was made for (see below), or `prostreet_all` for every platform. Another game or platform gives a warning; the values still apply, typed by the fields they go into. |
 | `title`, `author`, `version`, `description`, `url` | Text the editor shows before applying. |
 | `option ...` | A setting asked for when the script is applied (see Options). |
@@ -60,7 +62,7 @@ Scripts are UTF-8 text. A statement ends at the end of the line or at `;`, and `
 | `rename vault V to NAME` | Renames vault `V`. Its `.vlt` and `.bin` dependencies follow, and so does every `gameplayvault` value that named it. The database's vault (`db`) and World's event vaults, which are named after their files, keep their names. |
 | `class C [in vault V] { fields }` | Makes class `C` if it's missing, or else lays it out again to these fields, its collections' values following (see Classes). A class of the game stays as it is: the statement applies only when it describes it as it is. |
 | `delete class C` | Deletes class `C` and every collection of it. Deleting one that is gone already is a note, not an error. |
-| `if ... { } else { }` | Runs one of the blocks, by option values. Works at the top and inside blocks. |
+| `if ... { } else { }` | Runs one of the blocks, by option values and what the database holds (see Conditions). Works at the top and inside blocks. |
 | `echo value ...` | Prints its values, joined by spaces, to the Log (attribcli: standard output). `$option` prints the option's value. |
 | `echo warning value ...` | The same as a warning. |
 | `echo error value ...` | Stops the script with that text, so a script can refuse a setup it doesn't fit: `if $tier == "pro" { echo error "pro needs the 1.1 patch" }`. |
@@ -76,8 +78,13 @@ Inside an `edit`, `create` or `collection` block:
 | `FIELD = value was old` | Warns when the field wasn't `old` before. The editor writes `was` when it makes a script from your changes, so a script applied to a different version of the game says where it doesn't fit. |
 | `revert FIELD` | Removes the collection's own value, so it inherits again. |
 | `resize FIELD 4` | Sets an array's length. New elements are zero. An array can go past the count its field's definition allows (GEAR_RATIO's 9), with a warning; an array in the layout can't go past the space the layout has for it. |
+| `resize FIELD by 2` | Makes it longer by 2 zero elements, or with `by -2` shorter, from whatever length it has. |
 | `insert FIELD[0] = value` | Inserts an element (zero without `= value`). |
+| `append FIELD = value` | Adds an element at the end, whatever the length is; a list `[a, b]` adds each. Without a value, a zero element. |
+| `append FIELD = value if missing` | Only what the array doesn't hold yet. A car mod adds its car to `car_list` this way: `append Cars = pvehicle/mycar if missing`, and a second run doesn't list it twice. |
 | `remove FIELD[3]` | Removes an element. |
+| `remove FIELD = value` | Removes every element that is the value, wherever it is; none is a note, not an error. |
+| `FIELD[-1] = value` | A negative index counts from the end: `[-1]` is the last element, `[-2]` the one before. It works in every path, and in `insert` and `remove` (`insert Cars[-1]` goes before the last one). |
 | `echo value ...` | As at the top, and a word that names one of the collection's fields prints its value: `echo "horn was" HornType`. |
 
 ## Classes
@@ -151,6 +158,46 @@ option tag text "Name suffix" default "_race"
 The types are `bool`, `number`, `integer`, `choice` and `text`. In values, `$power` is the option's value. `if` tests them: `if $kits and not ($tier == "street") { ... } else if $power { ... } else { ... }`. The editor shows one control per option before it applies a script. `attribcli` takes `--set power=1.2`.
 
 That is all options do for now. Groups, pages, pictures, presets and options that depend on each other are left for when nfsms has been looked at; they will be new words after `option`, so existing scripts keep working.
+
+## Conditions
+
+`if` tests options and, from format 2, the database. `and`, `or`, `not` and parentheses combine tests, and a condition may go on to the next line after `and`, `or`, `not` or `(`.
+
+| Test | True when |
+| --- | --- |
+| `$opt` | the option is true, a number other than 0, or text |
+| `$opt == value`, `!=` | the option is the value (numbers compare as numbers) |
+| `$opt < 2`, `<=`, `>`, `>=` | the comparison holds; both must be numbers |
+| `exists class C` | the database has class `C` |
+| `exists vault V` | it has a vault named `V` (in any case) |
+| `exists field C F` | class `C` has field `F` |
+| `exists C/N` | collection `C/N` exists; with `*` or `?` in the name, any match |
+
+Inside an `edit`, `create` or `collection` block, a test may look at that collection. Its values count whether they are its own or inherited:
+
+| Test | True when |
+| --- | --- |
+| `has PATH` | the collection has a value there: `has Cars`, `has Cars[3]`, `has partData[0].price`. A field the class lacks, or an index past the end, isn't there. |
+| `own FIELD` | the collection has its own value of the field, not an inherited one |
+| `PATH == value`, `!=` | the value there is the value, typed by the field: `HornType == 5`, `Cars[0] == pvehicle/240sx`. With nothing there, `==` is false and `!=` true. |
+| `PATH < 2`, `<=`, `>`, `>=` | on numbers: `MAX_RPM > 9000` |
+| `count PATH < 40` | the length of the array there (0 when nothing is there), with any comparison |
+| `PATH contains value` | one of the array's elements is the value: `Cars contains pvehicle/mycar` |
+
+```
+attribulina 2
+if exists class car_list and exists pvehicle/mycar {
+    edit car_list/all_cars {
+        if not (Cars contains pvehicle/mycar) and count Cars < 200 {
+            append Cars = pvehicle/mycar
+        }
+    }
+}
+```
+
+A test on a field the class doesn't have is an error (except `has`), and so is `<` on something that isn't a number.
+
+The editor's diffs (Export Changes, the change recorder) write `append` when an array only gained elements at its end, with `if missing` for references and keys that weren't in it, and `remove ... = value` when it only lost elements whose values it held once. Other array changes are written whole.
 
 ## Including scripts
 

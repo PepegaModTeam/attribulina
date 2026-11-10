@@ -107,6 +107,25 @@ MODEL = {'MW': ('A/_0017_0015.cs', 1286)}
 MODEL_OTHER = ('A/_0007_0012.cs', 1293)
 
 
+def vlt_type(p, k):
+    """NFS-VltEd's own type for a word: what it reads and writes at the offset and
+    how it parses the text (the attribute's DataType). u32/key: a name hashed with
+    StringHash32 (a number in hex as itself); /binkey: a decimal number as itself,
+    else bStringHash; /key64: StringHash64; /hex: 0x hex or decimal; i32>f32: the
+    file holds an i32 that NFS-VltEd shows as a float."""
+    dt = p['dt'] if p else 0
+    t = k.replace('->', '>')
+    if dt == 3:
+        return t + '/key'
+    if dt in (4, 8):
+        return t + '/binkey'
+    if dt == 2:
+        return t + '/key64'
+    if dt in (1, 6):
+        return t + '/hex'
+    return t
+
+
 def kindstr(p, k):
     dt = p['dt'] if p else 0
     if k == 'u32' and dt == 3:
@@ -161,11 +180,13 @@ class Table:
         self.stats = dict(types=0, words=0, with_path=0, conf={}, plus=[], failures=[], sizes=[], absent=[],
                           checks={})
 
-    def word(self, word, off, path, names, rest='', covered=None):
-        """A word line: <word> <offset> [<path>] [list ...]  # covered members."""
+    def word(self, word, off, path, names, rest='', covered=None, vtype=None):
+        """A word line: <word> <offset> [:<type>] [<path>] [list ...]  # covered members."""
         assert ' ' not in word and word not in ('list', 'single', 'end'), word
         assert path is None or (path != 'list' and ' ' not in path), path
         s = '  %s %d' % (word, off)
+        if vtype:
+            s += ' :' + vtype
         if path:
             s += ' ' + path
         s += rest
@@ -183,7 +204,7 @@ class Table:
             path, names = self.sch.path(t, off, sz) if st else (None, [])
             if what == 'prop':
                 if p and p['attr']:
-                    out.append(self.word(p['name'], off, path, names, covered=st))
+                    out.append(self.word(p['name'], off, path, names, covered=st, vtype=vlt_type(p, k)))
                     paths.append((p['name'], off, path, names))
                 else:
                     nm = p['cs'] + ' (no attribute: not a script property)' if p else '?'
@@ -197,10 +218,10 @@ class Table:
                 elif kind == 'ptr2u32':
                     out.append('  # %s %d: ptr2u32, not editable%s' % (p['name'], off, ('  # ' + ','.join(names)) if names else ''))
                 elif elems:
-                    out.append(self.word(p['name'], off, path, names, ' list ' + ' '.join(elems)))
+                    out.append(self.word(p['name'], off, path, names, ' list ' + ' '.join(elems), vtype=kind))
                     paths.append((p['name'], off, path, names))
                 elif kind in ('string', 'blob'):
-                    out.append(self.word(p['name'], off, path, names))
+                    out.append(self.word(p['name'], off, path, names, vtype=kind))
                     paths.append((p['name'], off, path, names))
                 else:
                     raise SystemExit('%s: list kind %s not handled' % (t, kind))
@@ -341,7 +362,7 @@ class Table:
         fmt = """game <code>
 type <AttribSys type name>      Attrib::StringKey(MODEL): a StringKey field named MODEL
   single                        one property: NFS-VltEd ignores the word after the field
-  <word> <offset> [<path>] [list <element words>]
+  <word> <offset> :<type> [<path>] [list <element words>]
 end"""
         paras2 = [
             '<path>: member names joined with ".", [i] for an element of an inline array, down to the '
@@ -350,6 +371,13 @@ end"""
             'word\'s bytes start N bytes into that member. No path: the word\'s members have nothing in common but the '
             'value itself, or the type has no struct in our schema (enums, vectors, simple values), where '
             'the offset is the same on every platform.',
+            '<type>: what NFS-VltEd itself reads and writes at the offset, which its NFS-VltEd compatible '
+            'reading uses (doc/nfsms.md): u8, i8, u16, i16, u32, i32, u64, i64, f32, f64, bool8 (a byte, 1 '
+            'is true), bool32; then /key (a name, hashed with StringHash32; 0x and 8 hex digits is the '
+            'number), /binkey (a decimal number is itself, else bStringHash), /key64 or /hex (0x hex or '
+            'decimal). i32>f32: the file holds an i32 that NFS-VltEd shows as a float. A list word has '
+            'the list\'s kind (f32list, keylist, refspeclist, ...), string a char* and blob a size and '
+            'pointer.',
             'The comments give where each class was read and how sure the game assignment is: "read" '
             'means registered for %s or for every game, or in a compiled array whose bytes other code '
             'shows; "inferred" and "uncertain" mean the game list is a compiled array the decompilation '

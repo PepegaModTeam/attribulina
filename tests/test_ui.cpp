@@ -3407,6 +3407,12 @@ TEST("ui: nfsms: Add to Script (nfsms) writes a collection, a class or a gamepla
     CHECK(one.find("\nadd_field pvehicle street HornType\nupdate_field pvehicle street HornType 5\n") != std::string::npos);
     CHECK(one.find("add_field pvehicle street CollectionName") == std::string::npos); // in the layout
     CHECK_EQ(a.scriptText(), script);                                                    // the Script panel is left alone
+    // Its values only: update_field lines for a database that has it.
+    a.setNfsmsText({});
+    imgui.run(a, 2);
+    add(probe.find("street", "##classes"), "This Collection's Values");
+    CHECK(a.nfsmsText().find("update_field pvehicle street HornType 5\n") != std::string::npos);
+    for (const std::string& l : lines()) CHECK(l.rfind("add_node", 0) != 0 && l.rfind("add_field", 0) != 0);
 
     // A class: nfsms has no class command, so Class Definition does nothing.
     const test::ProbeItem* cls = nullptr;
@@ -3425,6 +3431,11 @@ TEST("ui: nfsms: Add to Script (nfsms) writes a collection, a class or a gamepla
     size_t made = 0;
     for (const std::string& l : lines()) made += l.rfind("add_node pvehicle ", 0) == 0;
     CHECK_EQ(made, pv->collections.size());
+    a.setNfsmsText({});
+    imgui.run(a, 2);
+    add(classNode(), "Every Collection's Values");
+    CHECK(a.nfsmsText().find("update_field pvehicle street HornType 5\n") != std::string::npos);
+    for (const std::string& l : lines()) CHECK(l.rfind("add_node", 0) != 0 && l.rfind("add_field", 0) != 0);
 
     // Chosen Fields, edits only: just the update_field lines for HornType.
     a.setNfsmsText({});
@@ -4712,6 +4723,50 @@ TEST("ui: state graph builder: Undercover's 360 handlers edit and compile in Lua
         for (const auto& c : probe.conflicts) std::printf("        ID conflict: %s\n", c.c_str());
         CHECK(probe.conflicts.empty());
     }
+}
+
+TEST("ui: nfsms: the NFS-VltEd compatible switch, in the nfsms window and the Edit menu, decides how a run reads values") {
+    platform::HeadlessImGui imgui;
+    imgui.beforeFrame = ProbeBefore;
+    imgui.afterFrame = ProbeAfter;
+    test::UiProbe& probe = test::UiProbe::get();
+    probe.conflicts.clear();
+    platform::HeadlessHost host;
+    app::App a(host);
+    a.setup(1.0f, "");
+    a.setUserKeysPath("");
+    CHECK(a.open(ProStreetDir()));
+    Database* db = a.database();
+    Collection* part = db->findCollection(StringHash32("part_fedata"), StringHash32("generic_spoiler_evo"));
+    CHECK(part);
+    if (!part) return;
+    auto tier = [&]() { return unsigned(part->find(StringHash32("partData"))->data.bytes[12]); };
+    const unsigned stock = tier();
+    CHECK(!a.nfsmsVltEd());
+    // FEPartData's 4 is NFS-VltEd's int32 over tier, drift, drag and grip: 0x01000103.
+    a.setNfsmsText("update_field part_fedata generic_spoiler_evo partData[0] 4 16777475\n");
+    imgui.run(a, 2);
+    ClickItem(imgui, a, probe.find("Run All", "Script (nfsms)"));
+    imgui.run(a, 2);
+    CHECK_EQ(tier(), stock); // doesn't fit our byte: the line fails
+    const test::ProbeItem* box = probe.find("NFS-VltEd compatible", "Script (nfsms)");
+    CHECK(box);
+    if (box) ClickItem(imgui, a, *box);
+    imgui.run(a, 1);
+    CHECK(a.nfsmsVltEd());
+    ClickItem(imgui, a, probe.find("Run All", "Script (nfsms)"));
+    imgui.run(a, 2);
+    CHECK_EQ(tier(), 3u);
+    // The Edit menu has the same switch.
+    ClickItem(imgui, a, probe.find("Edit"));
+    imgui.run(a, 1);
+    const test::ProbeItem* item = probe.find("NFS-VltEd Compatible nfsms");
+    CHECK(item);
+    if (item) ClickItem(imgui, a, *item);
+    imgui.run(a, 2);
+    CHECK(!a.nfsmsVltEd());
+    for (const auto& c : probe.conflicts) std::printf("        ID conflict: %s\n", c.c_str());
+    CHECK(probe.conflicts.empty());
 }
 
 TEST("ui: nfsms: Run All asks for the setup first; Run Line runs one line; Follow line opens the collection") {

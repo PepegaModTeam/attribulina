@@ -305,7 +305,7 @@ namespace attrib::script
 					++i;
 					continue;
 				}
-				if (c == '=' || c == '/' || ((c == '+' || c == '-' || c == '*' || c == '!') && n == '='))
+				if (c == '=' || c == '/' || ((c == '+' || c == '-' || c == '*' || c == '!' || c == '<' || c == '>') && n == '='))
 				{
 					t.t = Token::T::Punct;
 					t.text = n == '=' ? std::string{ c, '=' } : std::string(1, c);
@@ -316,7 +316,7 @@ namespace attrib::script
 				size_t e = i;
 				while (e < s.size() && !Breaks(s[e]))
 				{
-					if ((s[e] == '+' || s[e] == '-' || s[e] == '*' || s[e] == '!') && e + 1 < s.size() && s[e + 1] == '=') break;
+					if ((s[e] == '+' || s[e] == '-' || s[e] == '*' || s[e] == '!' || s[e] == '<' || s[e] == '>') && e + 1 < s.size() && s[e + 1] == '=') break;
 					++e;
 				}
 				t.t = Token::T::Word;
@@ -411,6 +411,9 @@ namespace attrib::script
 			{
 				Top, Collection, Class
 			};
+			// Parsing an `if` inside a collection's block: has, own, count and
+			// fields may be tested.
+			bool condInBlock_ = false;
 
 			const Token& peek(size_t k = 0) const
 			{
@@ -584,8 +587,9 @@ namespace attrib::script
 						next();
 						const Token& n = peek();
 						char* end = nullptr;
-						const long long idx = n.t == Token::T::Word ? std::strtoll(n.text.c_str(), &end, 10) : -1;
-						if (n.t != Token::T::Word || !end || *end || idx < 0) failHere("expected an index");
+						const long long idx = n.t == Token::T::Word ? std::strtoll(n.text.c_str(), &end, 10) : 0;
+						// [-1] is the last element (format 2).
+						if (n.t != Token::T::Word || !end || *end || n.text.empty() || n.text == "-0") failHere("expected an index");
 						next();
 						expectPunct("]");
 						p.steps.push_back({ std::string(), idx });
@@ -1054,7 +1058,10 @@ namespace attrib::script
 				s.kind = Statement::Kind::If;
 				s.pos = peek().pos;
 				expectWord("if");
+				const bool outer = condInBlock_;
+				condInBlock_ = ctx == Context::Collection;
 				s.cond = condition();
+				condInBlock_ = outer;
 				s.body = block(ctx);
 				// `else` may follow the closing brace on the same line.
 				if (atWord("else"))
@@ -1070,12 +1077,18 @@ namespace attrib::script
 				return s;
 			}
 
+			// A condition goes on to the next line after and, or, not and '('.
+			void conditionGoesOn()
+			{
+				while (peek().t == Token::T::Newline || peek().t == Token::T::Comment) next();
+			}
 			Condition condition()
 			{
 				Condition c = conjunction();
 				while (atWord("or"))
 				{
 					next();
+					conditionGoesOn();
 					Condition o;
 					o.kind = Condition::Kind::Or;
 					o.items.push_back(std::move(c));
@@ -1090,6 +1103,7 @@ namespace attrib::script
 				while (atWord("and"))
 				{
 					next();
+					conditionGoesOn();
 					Condition a;
 					a.kind = Condition::Kind::And;
 					a.items.push_back(std::move(c));
@@ -1103,6 +1117,7 @@ namespace attrib::script
 				if (atWord("not"))
 				{
 					next();
+					conditionGoesOn();
 					Condition n;
 					n.kind = Condition::Kind::Not;
 					n.items.push_back(negation());
@@ -1111,20 +1126,107 @@ namespace attrib::script
 				if (atPunct("("))
 				{
 					next();
+					conditionGoesOn();
 					Condition c = condition();
+					conditionGoesOn();
 					expectPunct(")");
 					return c;
 				}
-				if (peek().t != Token::T::Option) failHere("expected $option in the condition");
 				Condition c;
-				c.option = next().text;
-				if (atPunct("==") || atPunct("!="))
+				const auto named = [&](int at)
 				{
-					c.kind = peek().text == "==" ? Condition::Kind::Equal : Condition::Kind::NotEqual;
+					return peek(at).t == Token::T::Word || peek(at).t == Token::T::String;
+				};
+				if (atWord("exists") && named(1))
+				{
 					next();
-					c.value = primary();
+					if (atWord("class") && named(1))
+					{
+						next();
+						c.kind = Condition::Kind::ExistsClass;
+						c.word = nameText(next());
+					}
+					else if (atWord("vault") && named(1))
+					{
+						next();
+						c.kind = Condition::Kind::ExistsVault;
+						c.word = nameText(next());
+					}
+					else if (atWord("field") && named(1) && named(2))
+					{
+						next();
+						c.kind = Condition::Kind::ExistsField;
+						c.word = nameText(next());
+						c.name = nameText(next());
+					}
+					else
+					{
+						c.kind = Condition::Kind::ExistsCollection;
+						c.target = target();
+					}
+					return c;
+				}
+				const bool keyword = named(1) && !comparisonAt(1);
+				if (condInBlock_ && atWord("has") && keyword)
+				{
+					next();
+					c.kind = Condition::Kind::Has;
+					c.path = path();
+					c.hasPath = true;
+					return c;
+				}
+				if (condInBlock_ && atWord("own") && keyword)
+				{
+					next();
+					c.kind = Condition::Kind::Own;
+					c.path = path();
+					c.hasPath = true;
+					if (!c.path.steps.empty()) fail(c.path.pos, "own takes a field (a value is own as a whole)");
+					return c;
+				}
+				if (peek().t == Token::T::Option)
+				{
+					c.option = next().text;
+				}
+				else if (condInBlock_ && (peek().t == Token::T::Word || peek().t == Token::T::String))
+				{
+					if (atWord("count") && keyword)
+					{
+						next();
+						c.count = true;
+					}
+					c.path = path();
+					c.hasPath = true;
+					if (!comparisonAt(0)) failHere(c.count ? "expected ==, <, > ... after count " + c.path.text()
+														   : "expected ==, !=, <, >, <=, >= or contains after " + c.path.text());
+				}
+				else
+				{
+					failHere(condInBlock_ ? "expected $option, exists, has, own, count or a field in the condition"
+										  : "expected $option or exists in the condition");
+				}
+				if (comparisonAt(0))
+				{
+					const std::string op = next().text;
+					c.kind = op == "==" ? Condition::Kind::Equal : op == "!=" ? Condition::Kind::NotEqual : op == "<" ? Condition::Kind::Less
+						: op == "<=" ? Condition::Kind::LessEqual : op == ">" ? Condition::Kind::Greater : op == ">=" ? Condition::Kind::GreaterEqual
+						: Condition::Kind::Contains;
+					if (c.kind == Condition::Kind::Contains && (!c.hasPath || c.count)) fail(c.path.pos, "contains takes an array: Cars contains pvehicle/x");
+					c.value = c.kind == Condition::Kind::Contains || c.hasPath ? value() : primary();
 				}
 				return c;
+			}
+			// ==, !=, <, <=, >, >= or the word contains at peek(at).
+			// (< and > are words: the lexer keeps them in names.)
+			bool comparisonAt(int at) const
+			{
+				const Token& k = peek(at);
+				if (k.t == Token::T::Punct) return k.text == "==" || k.text == "!=" || k.text == "<=" || k.text == ">=";
+				return k.t == Token::T::Word && (k.text == "<" || k.text == ">" || k.text == "contains");
+			}
+			std::string nameText(const Token& t)
+			{
+				return t.t == Token::T::String ? quotedName(t.text, true) : t.text;
 			}
 
 			Statement blockStatement()
@@ -1133,14 +1235,44 @@ namespace attrib::script
 				const Token& k = peek();
 				s.pos = k.pos;
 				using K = Statement::Kind;
-				// `if` starts a condition; a field named if is followed by '='.
-				if (atWord("if") && (peek(1).t == Token::T::Option || atWord("not", 1) || atPunct("(", 1)))
-					return ifStatement(Context::Collection);
-				if (k.t == Token::T::Word && (k.text == "revert" || k.text == "resize" || k.text == "insert" || k.text == "remove") &&
+				// `if` starts a condition; a field named if is followed by '=', an
+				// operator or an index.
+				const Token& after = peek(1);
+				const bool assigns = (after.t == Token::T::Punct && (after.text == "=" || after.text == "+=" || after.text == "-=" ||
+																	 after.text == "*=" || after.text == "/=" || after.text == "[")) ||
+					(after.t == Token::T::Word && !after.spaceBefore && after.text[0] == '.');
+				if (atWord("if") && !assigns && after.t != Token::T::End) return ifStatement(Context::Collection);
+				if (k.t == Token::T::Word && (k.text == "revert" || k.text == "resize" || k.text == "insert" || k.text == "remove" || k.text == "append") &&
 					(peek(1).t == Token::T::Word || peek(1).t == Token::T::String))
 				{
 					const std::string w = next().text;
 					s.path = path();
+					if (w == "append")
+					{
+						s.kind = K::Append;
+						if (atPunct("="))
+						{
+							next();
+							s.value = value();
+						}
+						if (atWord("if") && atWord("missing", 1))
+						{
+							next();
+							next();
+							s.ifMissing = true;
+						}
+						endStatement(s);
+						return s;
+					}
+					if (w == "remove" && atPunct("="))
+					{
+						// By value: every element that is it.
+						next();
+						s.kind = K::Remove;
+						s.value = value();
+						endStatement(s);
+						return s;
+					}
 					if (w == "revert")
 					{
 						s.kind = K::Revert;
@@ -1149,6 +1281,21 @@ namespace attrib::script
 					else if (w == "resize")
 					{
 						s.kind = K::Resize;
+						if (atWord("by"))
+						{
+							// By a number of elements, either way.
+							next();
+							const Token& n = peek();
+							char* end = nullptr;
+							const long long c = n.t == Token::T::Word ? std::strtoll(n.text.c_str(), &end, 10) : 0;
+							if (n.t != Token::T::Word || !end || *end || n.text.empty() || c < -0xFFFFFF || c > 0xFFFFFF)
+								failHere("expected the number of elements to add (or, negative, take away)");
+							next();
+							s.by = true;
+							s.number = int(c);
+							endStatement(s);
+							return s;
+						}
 						const Token& n = peek();
 						char* end = nullptr;
 						const long long c = n.t == Token::T::Word ? std::strtoll(n.text.c_str(), &end, 10) : -1;
@@ -1160,7 +1307,8 @@ namespace attrib::script
 					{
 						s.kind = w == "insert" ? K::Insert : K::Remove;
 						if (s.path.steps.empty() || !s.path.steps.back().member.empty())
-							fail(s.path.pos, w + " needs an index: " + w + " " + s.path.text() + "[0]");
+							fail(s.path.pos, w == "insert" ? "insert needs an index: insert " + s.path.text() + "[0] (or append " + s.path.text() + " = ...)"
+								 : "remove needs an index or a value: remove " + s.path.text() + "[0], or remove " + s.path.text() + " = ...");
 						if (s.kind == K::Insert && atPunct("="))
 						{
 							next();
@@ -1386,16 +1534,36 @@ namespace attrib::script
 
 		std::string CondText(const Condition& c, bool nested)
 		{
+			using CK = Condition::Kind;
+			// The left side of a comparison.
+			const std::string left = c.hasPath ? (c.count ? "count " : "") + c.path.text() : "$" + c.option;
+			auto compare = [&](const char* op)
+			{
+				return left + " " + op + " " + PrintValue(*c.value);
+			};
 			switch (c.kind)
 			{
-				case Condition::Kind::Option: return "$" + c.option;
-				case Condition::Kind::Equal: return "$" + c.option + " == " + PrintValue(*c.value);
-				case Condition::Kind::NotEqual: return "$" + c.option + " != " + PrintValue(*c.value);
-				case Condition::Kind::Not: return "not " + CondText(c.items[0], true);
+				case CK::Option: return "$" + c.option;
+				case CK::Equal: return compare("==");
+				case CK::NotEqual: return compare("!=");
+				case CK::Less: return compare("<");
+				case CK::LessEqual: return compare("<=");
+				case CK::Greater: return compare(">");
+				case CK::GreaterEqual: return compare(">=");
+				case CK::Contains: return compare("contains");
+				case CK::ExistsClass: return "exists class " + Name(c.word);
+				case CK::ExistsVault: return "exists vault " + Name(c.word);
+				case CK::ExistsField: return "exists field " + Name(c.word) + " " + Name(c.name);
+				case CK::ExistsCollection: return "exists " + c.target.text();
+				case CK::Has: return "has " + c.path.text();
+				case CK::Own: return "own " + c.path.text();
+				case CK::Not: return "not " + CondText(c.items[0], true);
 				case Condition::Kind::And:
 				case Condition::Kind::Or:
 				{
-					std::string s = CondText(c.items[0], true) + (c.kind == Condition::Kind::And ? " and " : " or ") + CondText(c.items[1], true);
+					// a and b and c reads as (a and b) and c: the left one needs no parentheses.
+					std::string s = CondText(c.items[0], c.items[0].kind != c.kind) + (c.kind == Condition::Kind::And ? " and " : " or ") +
+						CondText(c.items[1], true);
 					return nested ? "(" + s + ")" : s;
 				}
 			}
@@ -1600,7 +1768,7 @@ namespace attrib::script
 					break;
 				}
 				case K::Revert: out += "revert " + s.path.text(); break;
-				case K::Resize: out += "resize " + s.path.text() + " " + std::to_string(s.count); break;
+				case K::Resize: out += "resize " + s.path.text() + (s.by ? " by " + std::to_string(s.number) : " " + std::to_string(s.count)); break;
 				case K::Insert:
 					out += "insert " + s.path.text();
 					if (s.value)
@@ -1609,7 +1777,23 @@ namespace attrib::script
 						PrintValueTo(out, *s.value, indent);
 					}
 					break;
-				case K::Remove: out += "remove " + s.path.text(); break;
+				case K::Remove:
+					out += "remove " + s.path.text();
+					if (s.value)
+					{
+						out += " = ";
+						PrintValueTo(out, *s.value, indent);
+					}
+					break;
+				case K::Append:
+					out += "append " + s.path.text();
+					if (s.value)
+					{
+						out += " = ";
+						PrintValueTo(out, *s.value, indent);
+					}
+					if (s.ifMissing) out += " if missing";
+					break;
 				case K::Include: out += "include " + Quote(s.text); break;
 				case K::Class:
 					out += "class " + Name(s.word);
@@ -1877,9 +2061,54 @@ namespace attrib::script
 		return Unread(script.statements);
 	}
 
+	namespace
+	{
+		bool PathNeeds2(const FieldPath& p)
+		{
+			for (const FieldPath::Step& st : p.steps)
+				if (st.member.empty() && st.index < 0) return true;
+			return false;
+		}
+		bool CondNeeds2(const Condition& c)
+		{
+			using CK = Condition::Kind;
+			switch (c.kind)
+			{
+				case CK::Option: return false;
+				case CK::Not: case CK::And: case CK::Or:
+					for (const Condition& i : c.items)
+						if (CondNeeds2(i)) return true;
+					return false;
+				case CK::Equal: case CK::NotEqual: return c.hasPath;
+				default: return true;
+			}
+		}
+	} // namespace
+
+	int FormatNeeded(const std::vector<Statement>& statements)
+	{
+		using K = Statement::Kind;
+		for (const Statement& s : statements)
+		{
+			if (s.kind == K::Append || s.by || (s.kind == K::Remove && s.value) || PathNeeds2(s.path)) return 2;
+			if (s.kind == K::If && CondNeeds2(s.cond)) return 2;
+			if (FormatNeeded(s.body) > 1 || FormatNeeded(s.elseBody) > 1) return 2;
+		}
+		return 1;
+	}
+
 	std::string Print(const Script& script)
 	{
 		std::string out;
+		// The header says the lowest format that reads the script.
+		const int need = FormatNeeded(script.statements);
+		if (!script.statements.empty() && script.statements[0].kind == Statement::Kind::Header && script.statements[0].number < need)
+		{
+			std::vector<Statement> list = script.statements;
+			list[0].number = need;
+			PrintStatements(out, list, 0);
+			return out;
+		}
 		PrintStatements(out, script.statements, 0);
 		return out;
 	}

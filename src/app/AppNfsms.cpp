@@ -133,6 +133,11 @@ namespace app
 		}
 		recordDirty_.clear();
 		if (out.empty()) return;
+		// The nfsms lines against the copy as it was: a value a collection only
+		// inherited there gets add_field first, as NFS-VltEd needs.
+		std::vector<std::string> nfsmsLines;
+		if (recordNfsms_ && nfsmsUnavailable().empty())
+			nfsmsLines = ns::FromStatements(*db_, out, ns::NamesFor(*db_, nfsmsNames_).get(), nfsmsVltEd_, recordBase_.get());
 		// The copy follows, so the next change is measured from here.
 		sc::Script sync;
 		sync.statements = out;
@@ -140,7 +145,7 @@ namespace app
 		st.fragment = true;
 		if (!sc::Apply(*recordBase_, sync, st).ok) recordBase_ = sc::CloneDatabase(*db_);
 		if (recordAmod_) addToScript(out, false);
-		if (recordNfsms_ && nfsmsUnavailable().empty()) appendNfsms(ns::FromStatements(*db_, out, ns::NamesFor(*db_, nfsmsNames_).get()));
+		if (!nfsmsLines.empty()) appendNfsms(nfsmsLines);
 	}
 
 	// ---------------------------------------------------------------- window ---
@@ -246,6 +251,7 @@ namespace app
 		st.lastLine = lastLine;
 		st.targetFolder = gameFolder();
 		st.strict = nfsmsStrict_;
+		st.vltEd = nfsmsVltEd_;
 		st.names = ns::NamesFor(*db_, nfsmsNames_);
 		// An included script open in a tab runs as the tab has it, saved or not.
 		st.readFile = [this](const std::string& path) -> std::string
@@ -351,6 +357,7 @@ namespace app
 		const std::string source = nfsmsPath_.empty() ? std::string("nfsms window.nfsms") : ToUtf8(FromUtf8(nfsmsPath_).filename());
 		const ns::Script s = ns::Parse(nfsmsText_, source, nfsmsFolderOf({}));
 		ns::RunSettings st;
+		st.vltEd = nfsmsVltEd_;
 		st.names = ns::NamesFor(*db_, nfsmsNames_);
 		st.readFile = [this](const std::string& path) -> std::string
 		{
@@ -391,7 +398,7 @@ namespace app
 		const sc::Statement e = sc::ExportValue(*db_, c, field);
 		if (e.body.empty()) return out;
 		const std::string fieldName = db_->names().format(field);
-		for (const std::string& l : ns::FromStatements(*db_, { e }, ns::NamesFor(*db_, nfsmsNames_).get()))
+		for (const std::string& l : ns::FromStatements(*db_, { e }, ns::NamesFor(*db_, nfsmsNames_).get(), nfsmsVltEd_))
 		{
 			// Just the lines that set values (not resize_field, not comments).
 			const ns::Command cmd = ns::ParseLine(l);
@@ -658,6 +665,9 @@ namespace app
 		if (ImGui::IsItemHovered())
 			ImGui::SetTooltip("On: warnings are errors. The script is tried on a copy of the database first and only applied when no line fails.\n"
 							  "Off: it runs line by line on the open database, and a line that fails is reported while the rest run, as in NFS-VltEd.");
+		ImGui::SameLine();
+		if (Checkbox("NFS-VltEd compatible", &nfsmsVltEd_)) ImGui::MarkIniSettingsDirty();
+		if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", kVltEdTip);
 		ImGui::SameLine();
 		if (Checkbox("Follow line", &nfsmsFollow_)) ImGui::MarkIniSettingsDirty();
 		if (ImGui::IsItemHovered())

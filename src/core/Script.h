@@ -47,7 +47,12 @@ namespace attrib
 namespace attrib::script
 {
 
-	constexpr int kVersion = 1;
+	// The newest format this build reads. 2 added append, remove by value,
+	// resize by, indices from the end ([-1]) and conditions on the database
+	// (exists, has, own, count, comparisons, contains). A script is printed with
+	// the lowest format that reads it (FormatNeeded), so one that uses none of
+	// those still opens in a build that reads 1.
+	constexpr int kVersion = 2;
 	constexpr const char* kExtension = ".amod";
 
 	// 1-based line and column.
@@ -148,9 +153,24 @@ namespace attrib::script
 	{
 		enum class Kind : uint8_t
 		{
-			Option, Not, And, Or, Equal, NotEqual
+			Option, Not, And, Or,
+			// A comparison of the left side with `value`: $option, or (format 2,
+			// inside a collection's block) the value at `path` or with `count`
+			// the length of the array there.
+			Equal, NotEqual, Less, LessEqual, Greater, GreaterEqual,
+			Contains,         // path contains value: an element of the array there is it
+			ExistsClass,      // exists class word
+			ExistsVault,      // exists vault word
+			ExistsField,      // exists field word name: class word has the field name
+			ExistsCollection, // exists target (wildcards: any match)
+			Has,              // has path: the collection has a value there, own or inherited
+			Own,              // own name: the collection's own value of the field
 		} kind = Kind::Option;
-		std::string option;
+		std::string option; // the left side of a comparison when it is $option
+		FieldPath path;     // or this path in the collection (hasPath)
+		bool hasPath = false, count = false;
+		std::string word, name;
+		Target target;
 		ValuePtr value;
 		std::vector<Condition> items;
 	};
@@ -180,7 +200,8 @@ namespace attrib::script
 			Revert,      // revert path: inherit again
 			Resize,      // resize path count
 			Insert,      // insert path[index] [= value]
-			Remove,      // remove path[index]
+			Remove,      // remove path[index], or (format 2) remove path = value: each element that is value
+			Append,      // append path [= value] [if missing] (format 2): at the end; a list adds each item
 			Echo,        // echo [warning|error] values...: word is the level ("" for plain), value a List
 			Include,     // include "path": text is the path as written
 			// class word [in vault vault] [reserve n ...] { fields }: made if missing,
@@ -202,6 +223,9 @@ namespace attrib::script
 		int number = 0;
 		Target target, from, under;
 		bool hasFrom = false, hasUnder = false, withChildren = false, exact = false;
+		// Append: `if missing`, only values the array doesn't hold yet. Resize:
+		// `by` (format 2), count changes by `number` instead of becoming `count`.
+		bool ifMissing = false, by = false;
 		std::string vault;
 		FieldPath path;
 		char op = '='; // '=', or '+', '-', '*', '/' for +=, ...
@@ -246,6 +270,10 @@ namespace attrib::script
 	bool HasUnreadIncludes(const Script& script);
 	// Script text; Parse(Print(s)) gives s back (comments included).
 	std::string Print(const Script& script);
+	// The lowest format version that reads these statements: 2 when one uses
+	// what format 2 added (kVersion's comment), else 1. Included scripts aren't
+	// counted; each says its own.
+	int FormatNeeded(const std::vector<Statement>& statements);
 	std::string PrintValue(const Value& v);
 	std::string Quote(std::string_view text);
 	// A number in the fewest digits that read back the same (as a float with

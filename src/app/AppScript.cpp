@@ -161,7 +161,7 @@ namespace app
 		std::vector<sc::Statement> add;
 		for (const sc::Statement& st : statements)
 			if (st.kind != sc::Statement::Kind::Header && st.kind != sc::Statement::Kind::Meta) add.push_back(st);
-		const std::vector<std::string> lines = nfsms::FromStatements(*db_, add, nfsms::NamesFor(*db_, nfsmsNames_).get());
+		const std::vector<std::string> lines = nfsms::FromStatements(*db_, add, nfsms::NamesFor(*db_, nfsmsNames_).get(), nfsmsVltEd_);
 		appendNfsms(lines);
 		showNfsms_ = bringNfsms_ = true;
 		// The writer's comments for what nfsms has no command or word for all say so.

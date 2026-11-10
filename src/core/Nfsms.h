@@ -130,6 +130,10 @@ namespace attrib::nfsms
 			uint32_t rest = 0; // bytes into the path's last member (+N in the table)
 			bool list = false;
 			std::vector<std::string> elements; // a list's element words (Value; Group Name Value)
+			// What NFS-VltEd itself reads and writes at the offset (the table's
+			// :type): i32, u32/key, u8, f32, i32>f32, f32list, ... Empty in older
+			// tables. NFS-VltEd compatible runs write a value with this width.
+			std::string vltType;
 			std::string pathText() const;      // as the table writes it
 		};
 		struct Type
@@ -176,6 +180,11 @@ namespace attrib::nfsms
 		// NFS-VltEd's words for the game's values; without them only our
 		// schema's member names are known.
 		std::shared_ptr<const PropertyNames> names;
+		// NFS-VltEd compatible: words and values read the way NFS-VltEd 4.6
+		// reads them, for scripts written against its quirks (doc/nfsms.md,
+		// "NFS-VltEd compatible"). Off (the default): Attribulina's extended
+		// reading, by our schema's members.
+		bool vltEd = false;
 	};
 
 	// Runs the script line by line. A line that fails is reported (an Error
@@ -205,8 +214,13 @@ namespace attrib::nfsms
 	// nfsms lines for mod script statements (the editor records changes this
 	// way), in NFS-VltEd's words when `names` has them. What nfsms can't say
 	// comes out as a # comment.
+	// With `vltEd`, in the form NFS-VltEd 4.6 reads (its value widths, no
+	// Attribulator commands), as RunSettings::vltEd reads them. `before`, when
+	// given, is the database the statements change: a value they give a
+	// collection that only inherited it gets add_field first, which NFS-VltEd
+	// needs (the change recorder passes its copy).
 	std::vector<std::string> FromStatements(const Database& db, const std::vector<script::Statement>& statements,
-											const PropertyNames* names = nullptr);
+											const PropertyNames* names = nullptr, bool vltEd = false, const Database* before = nullptr);
 	// The names among `tables` for this database's game, or null.
 	std::shared_ptr<const PropertyNames> NamesFor(const Database& db, const std::vector<std::shared_ptr<const PropertyNames>>& tables);
 

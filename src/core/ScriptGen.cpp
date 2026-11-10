@@ -349,6 +349,7 @@ namespace attrib::script
 					diff(out, path, o.data, 0, n.data, 0, vt, e, was);
 					return;
 				}
+				if (o.isArray && o.elemSize == n.elemSize && o.count != n.count && incremental(out, path, o, n, vt, e)) return;
 				if (o.count != n.count || o.elemSize != n.elemSize || !o.isArray)
 				{
 					set(out, path, attribute(n, fieldName, e), nullptr);
@@ -360,6 +361,83 @@ namespace attrib::script
 					el.steps.push_back({ std::string(), int64_t(i) });
 					diff(out, el, o.data, i * o.elemSize, n.data, i * n.elemSize, vt, e, was);
 				}
+			}
+
+			// An array that only gained elements at its end, or only lost elements
+			// whose values it held once: `append` or `remove ... = value`, so the
+			// script changes just those wherever it's applied (a car added to
+			// car_list's Cars, beside the cars other mods added). False otherwise.
+			bool incremental(std::vector<Statement>& out, const FieldPath& path, const Attribute& o, const Attribute& n, const ValueType& vt,
+							 Endian e)
+			{
+				const uint32_t es = n.elemSize;
+				auto same = [&](const Attribute& x, uint32_t i, const Attribute& y, uint32_t j)
+				{
+					return SameRegion(x.data, i * es, y.data, j * es, es);
+				};
+				auto in = [&](const Attribute& x, uint32_t upto, const Attribute& y, uint32_t j)
+				{
+					for (uint32_t i = 0; i < upto; ++i)
+						if (same(x, i, y, j)) return true;
+					return false;
+				};
+				if (n.count > o.count)
+				{
+					if (o.count == 0) return false; // a whole new list: written whole
+					for (uint32_t i = 0; i < o.count; ++i)
+						if (!same(o, i, n, i)) return false;
+					// References and keys name things: one listed twice is a mistake, so
+					// `if missing` keeps a script applied twice from listing it again.
+					// Only when no new value was there before or comes twice, so the
+					// script still makes this array from the old one.
+					bool unique = vt.kind == TypeKind::RefSpec || vt.kind == TypeKind::ClassRefSpec || vt.kind == TypeKind::Key ||
+						vt.kind == TypeKind::BinKey || vt.kind == TypeKind::StringKey;
+					std::vector<ValuePtr> items;
+					for (uint32_t j = o.count; j < n.count; ++j)
+					{
+						if (in(o, o.count, n, j) || InRange(n, o.count, j, j, es)) unique = false;
+						items.push_back(value(n.data, j * es, vt, e));
+					}
+					Statement s;
+					s.kind = K::Append;
+					s.path = path;
+					s.value = items.size() == 1 ? items[0] : MakeList(std::move(items));
+					s.ifMissing = unique;
+					out.push_back(std::move(s));
+					return true;
+				}
+				// Lost elements: the new array is the old one without some of them.
+				std::vector<uint32_t> removed;
+				uint32_t j = 0;
+				for (uint32_t i = 0; i < o.count; ++i)
+				{
+					if (j < n.count && same(o, i, n, j)) ++j;
+					else removed.push_back(i);
+				}
+				if (j != n.count || removed.empty()) return false;
+				for (uint32_t r : removed)
+				{
+					// Removing by value takes every element that is it.
+					uint32_t times = 0;
+					for (uint32_t i = 0; i < o.count; ++i) times += same(o, i, o, r);
+					if (times != 1) return false;
+				}
+				for (uint32_t r : removed)
+				{
+					Statement s;
+					s.kind = K::Remove;
+					s.path = path;
+					s.value = value(o.data, r * es, vt, e);
+					out.push_back(std::move(s));
+				}
+				return true;
+			}
+			// Element j of `a` equals one of a's elements in [from, upto), other than j.
+			static bool InRange(const Attribute& a, uint32_t from, uint32_t upto, uint32_t j, uint32_t es)
+			{
+				for (uint32_t i = from; i < upto; ++i)
+					if (i != j && SameRegion(a.data, i * es, a.data, j * es, es)) return true;
+				return false;
 			}
 
 			static void set(std::vector<Statement>& out, const FieldPath& path, ValuePtr v, ValuePtr was)
@@ -660,7 +738,7 @@ namespace attrib::script
 		Script sc;
 		Statement h;
 		h.kind = K::Header;
-		h.number = kVersion;
+		h.number = 1; // Print raises it to what the statements need (FormatNeeded)
 		sc.statements.push_back(h);
 		const std::string game = GameId(db);
 		if (!game.empty()) sc.setMeta("game", game);

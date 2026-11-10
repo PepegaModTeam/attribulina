@@ -73,6 +73,13 @@ namespace app
 	// another button, which ImGui then presses.
 	bool CancelKey();
 
+	// What NFS-VltEd compatible nfsms means, for its switches (the nfsms window, the Edit menu).
+	inline constexpr const char* kVltEdTip =
+		"On: nfsms scripts read and the editor writes nfsms values the way NFS-VltEd 4.6 does, for scripts made\n"
+		"for it: its own width for each word (part_fedata's 4 is one 32-bit number over four members), arrays\n"
+		"written past their length, and only NFS-VltEd's commands in what the editor writes.\n"
+		"Off (the default): words lead to the game's members, as Attribulina reads the types.";
+
 	class App
 	{
 	public:
@@ -441,6 +448,16 @@ namespace app
 		void setNfsmsStrict(bool on)
 		{
 			nfsmsStrict_ = on;
+		}
+		// NFS-VltEd compatible nfsms (RunSettings::vltEd): runs, To Mod Script and
+		// the nfsms lines the editor writes. The nfsms window and the Edit menu.
+		bool nfsmsVltEd() const
+		{
+			return nfsmsVltEd_;
+		}
+		void setNfsmsVltEd(bool on)
+		{
+			nfsmsVltEd_ = on;
 		}
 		// A script the window's script includes, in a tab of its own (opened from
 		// a message, or by itself when a run fails in it). Runs read the tab's
@@ -900,6 +917,7 @@ namespace app
 		// Strict: tried on a copy first and applied only when no line fails.
 		// Off (NFS-VltEd's way): line by line on the open database.
 		bool nfsmsStrict_ = false;
+		bool nfsmsVltEd_ = false; // NFS-VltEd compatible (NfsmsVltEd in the ini)
 		std::unique_ptr<attrib::nfsms::Script> pendingNfsms_;
 		attrib::nfsms::Choices nfsmsChoices_;
 		std::string nfsmsChoicesFor_; // the script nfsmsChoices_ were made for

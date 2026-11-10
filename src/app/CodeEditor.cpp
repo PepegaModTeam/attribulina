@@ -52,7 +52,9 @@ namespace app
 				"attribulina", "game", "title", "author", "version", "description", "url", "option", "edit", "create",
 				"collection", "delete", "rename", "move", "if", "else", "revert", "resize", "insert", "remove", "echo",
 				"from", "under", "in", "vault", "exact", "with", "children", "to", "root", "and", "or", "not", "was",
-				"default", "min", "max", "choices", "help", "warning", "error" };
+				"default", "min", "max", "choices", "help", "warning", "error",
+				// format 2
+				"append", "missing", "by", "exists", "class", "field", "has", "own", "count", "contains" };
 			return k;
 		}
 		const std::unordered_set<std::string>& AmodValues()

@@ -169,7 +169,7 @@ TEST("script: mistakes are reported with their line and column") {
     CHECK(error("attribulina 1\nedit pvehicle/a {\n    MAX_RPM 9000\n}\n").find("bad.amod:3:13: expected '=' after MAX_RPM") != std::string::npos);
     CHECK(error("edit pvehicle {\n}\n").find("bad.amod:1:15: expected '/'") != std::string::npos);
     CHECK(error("title \"open\n").find("unterminated string") != std::string::npos);
-    CHECK(error("attribulina 2\n").find("newer Attribulina") != std::string::npos);
+    CHECK(error("attribulina 3\n").find("newer Attribulina") != std::string::npos);
     CHECK(error("MAX_RPM = 3\n").find("unknown statement 'MAX_RPM'") != std::string::npos);
     CHECK(error("edit a/b {\n  X = 1\n").find("expected '}'") != std::string::npos);
     CHECK(error("option x choice \"X\"\n").find("needs choices") != std::string::npos);
@@ -328,6 +328,112 @@ TEST("script: was, options and conditions") {
     r = Run(d, "attribulina 1\ngame carbon_pc\n");
     CHECK_OK(r);
     CHECK_EQ(r.warnings(), size_t(1));
+}
+
+TEST("script: format 2: append, remove by value, resize by, indices from the end, conditions on the database") {
+    auto db = LoadAll(false);
+    Database& d = *db;
+    auto base = sc::CloneDatabase(d);
+    Collection& all = Col(d, "car_list", "all_cars");
+    auto cars = [&]() -> Attribute& { return Own(all, "Cars"); };
+    const uint32_t n = cars().count;
+    CHECK(n > 3);
+    auto carAt = [&](int64_t i) { return U32(cars(), uint32_t(i < 0 ? cars().count + i : i), 4); }; // RefSpec's collection key
+    CHECK_EQ(carAt(0), StringHash32("240sx"));
+    // append adds at the end; if missing leaves what the array holds, so a car
+    // mod applied twice lists its car once.
+    const std::string add = "attribulina 2\nedit car_list/all_cars {\n"
+                            "    append Cars = pvehicle/street if missing\n    append Cars = pvehicle/240sx if missing\n}\n";
+    CHECK_OK(Run(d, add));
+    CHECK_EQ(cars().count, n + 1);
+    CHECK_EQ(carAt(-1), StringHash32("street"));
+    CHECK_OK(Run(d, add));
+    CHECK_EQ(cars().count, n + 1);
+    // remove by value, [-1], resize by, insert from the end.
+    CHECK_OK(Run(d, "attribulina 2\nedit car_list/all_cars {\n    remove Cars = pvehicle/street\n    Cars[-1] = pvehicle/street\n"
+                    "    resize Cars by 2\n    insert Cars[-1] = pvehicle/default\n}\n"));
+    CHECK_EQ(cars().count, n + 3);
+    CHECK_EQ(carAt(n - 1), StringHash32("street"));
+    CHECK_EQ(carAt(-2), StringHash32("default"));
+    CHECK_EQ(carAt(-1), 0u);
+    const sc::ApplyReport gone = Run(d, "attribulina 2\nedit car_list/all_cars {\n    resize Cars by -2\n    remove Cars = pvehicle/nothing_like_it\n}\n");
+    CHECK_OK(gone);
+    CHECK_EQ(cars().count, n + 1);
+    CHECK(Messages(gone).find("holds no pvehicle/nothing_like_it") != std::string::npos);
+    CHECK(!Run(d, "attribulina 2\nedit car_list/all_cars { resize Cars by -1000 }\n").ok);
+    CHECK(!Run(d, "attribulina 2\nedit car_list/all_cars { Cars[-1000] = pvehicle/street }\n").ok);
+
+    // Conditions on the database, at the top and on the collection in a block.
+    const std::string cond = "attribulina 2\n"
+                             "option scale number default 2\n"
+                             "if exists class car_list and exists car_list/all_cars and exists car_list/all_* and exists vault db and\n"
+                             "        exists field car_list Cars and not exists class no_such_class and not exists field car_list Nope and\n"
+                             "        not exists car_list/no_such_list and $scale > 1.5 and $scale <= 2 {\n"
+                             "    edit car_list/all_cars {\n"
+                             "        if count Cars >= 4 and Cars contains pvehicle/240sx and has Cars[0] and own Cars and not has Cars[9999] and\n"
+                             "                Cars[0] == pvehicle/240sx and Cars[0] != pvehicle/350z and not (Cars contains pvehicle/default) {\n"
+                             "            append Cars = pvehicle/default\n"
+                             "        }\n"
+                             "        if count Cars < 3 or not own Cars { echo error \"not this\" }\n"
+                             "    }\n"
+                             "    edit collisionsfx_damage/hood {\n"
+                             "        if VolMap[0] >= 0 and count VolMap == 3 and not has VolMap[3] { append VolMap = [7, 8] }\n"
+                             "    }\n"
+                             "}\n";
+    CHECK_OK(Run(d, cond));
+    CHECK_EQ(cars().count, n + 2);
+    CHECK_EQ(carAt(-1), StringHash32("default"));
+    CHECK_EQ(Own(Col(d, "collisionsfx_damage", "hood"), "VolMap").count, 5u);
+    CHECK_EQ(U32(Own(Col(d, "collisionsfx_damage", "hood"), "VolMap"), 4), 8u);
+    // has, own and count of a collection that inherits the field.
+    CHECK_OK(Run(d, "attribulina 2\ncreate car_list/ns_kid from car_list/all_cars under car_list/all_cars\n"
+                    "edit car_list/ns_kid {\n    revert Cars\n    if has Cars and not own Cars and count Cars > 3 { Name = \"inherits\" }\n}\n"));
+    const Attribute& name = Own(Col(d, "car_list", "ns_kid"), "Name");
+    CHECK(name.data.ptrAt(0) && name.data.ptrAt(0)->text == "inherits");
+    // A comparison that needs a number, and one on a field the class lacks, are errors.
+    CHECK(!Run(d, "attribulina 2\nedit car_list/all_cars { if Cars[0] > 1 { Name = \"x\" } }\n").ok);
+    CHECK(!Run(d, "attribulina 2\nedit car_list/all_cars { if NoSuchField == 1 { Name = \"x\" } }\n").ok);
+
+    // A format 2 statement under "attribulina 1" applies, with a warning; the
+    // printer writes the lowest format that reads a script.
+    const sc::ApplyReport old = Run(d, "attribulina 1\nedit car_list/all_cars { append Cars = pvehicle/240sx if missing }\n");
+    CHECK_OK(old);
+    CHECK(Messages(old).find("make it \"attribulina 2\"") != std::string::npos);
+    CHECK_EQ(sc::Print(sc::Parse("attribulina 1\nedit a/b {\n    X = 1\n}\n")), std::string("attribulina 1\nedit a/b {\n    X = 1\n}\n"));
+    const std::string every = "attribulina 2\n"
+                              "if exists class a and exists vault v and exists field a X and exists a/b and not exists a/c and $o >= 2 {\n"
+                              "    edit a/b {\n"
+                              "        if has X[-1] and own X and count X < 4 and X[0] == 3 and X[1] <= 2.5 and X contains a/b and Y.z > 1 {\n"
+                              "            append X = [1, 2] if missing\n"
+                              "            append X\n"
+                              "            remove X = a/b\n"
+                              "            resize X by -3\n"
+                              "            insert X[-2] = 4\n"
+                              "            X[-1].y = 2\n"
+                              "        }\n"
+                              "    }\n"
+                              "}\n";
+    CHECK_EQ(sc::Print(sc::Parse(every)), every);
+    CHECK_EQ(sc::Print(sc::Parse("attribulina 1\nedit a/b {\n    append X = 1\n}\n")), std::string("attribulina 2\nedit a/b {\n    append X = 1\n}\n"));
+    CHECK_EQ(sc::FormatNeeded(sc::Parse("attribulina 1\nif $o == 1 {\n    edit a/b {\n        X[2] = 1\n    }\n}\n").statements), 1);
+
+    // A diff of an array that only grew or only lost elements says so, and
+    // applied to the original it makes the same database.
+    auto grown = sc::CloneDatabase(*base);
+    CHECK_OK(Run(*grown, "attribulina 2\nedit car_list/all_cars {\n    remove Cars = pvehicle/350z\n}\n"));
+    const sc::Script diff = sc::Diff(*base, *grown);
+    const std::string text = sc::Print(diff);
+    CHECK(text.rfind("attribulina 2\n", 0) == 0);
+    if (text.find("    remove Cars = pvehicle/350z\n") == std::string::npos) std::fprintf(stderr, "%s", text.c_str());
+    CHECK(text.find("    remove Cars = pvehicle/350z\n") != std::string::npos);
+    auto again = sc::CloneDatabase(*base);
+    CHECK_OK(sc::Apply(*again, diff));
+    CHECK_EQ(Changes(sc::Diff(*again, *grown)), size_t(0));
+    auto appended = sc::CloneDatabase(*base);
+    CHECK_OK(Run(*appended, "attribulina 2\nedit car_list/all_cars { append Cars = [pvehicle/default, pvehicle/street] }\n"));
+    const std::string appendText = sc::Print(sc::Diff(*base, *appended));
+    if (appendText.find("    append Cars = [pvehicle/default, pvehicle/street] if missing\n") == std::string::npos) std::fprintf(stderr, "%s", appendText.c_str());
+    CHECK(appendText.find("    append Cars = [pvehicle/default, pvehicle/street] if missing\n") != std::string::npos);
 }
 
 TEST("script: collections are made, renamed, moved and deleted") {

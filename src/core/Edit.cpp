@@ -750,6 +750,27 @@ namespace attrib
 		if (col.cls) UpdateIndexTables(*col.cls);
 	}
 
+	void CollectionEditor::rename(Collection& col, uint32_t newKey)
+	{
+		if (const std::string* n = db_.names().find(newKey))
+		{
+			rename(col, *n);
+			return;
+		}
+		if (newKey == col.key) return;
+		if (db_.findCollection(col.classKey, newKey))
+			throw std::runtime_error("collection " + db_.names().format(newKey) + " already exists in " + db_.names().format(col.classKey));
+		db_.collectionByKey_.erase((uint64_t(col.classKey) << 32) | col.key);
+		col.key = newKey;
+		const std::string shown = db_.names().format(newKey);
+		col.exportId = col.vault ? CollectionExportId(*col.vault, db_.names(), col.classKey, shown)
+			: CollectionExportId(db_.names(), col.classKey, shown);
+		db_.collectionByKey_[(uint64_t(col.classKey) << 32) | newKey] = &col;
+		for (Collection* child : col.children)
+			child->parentKey = newKey;
+		if (col.cls) UpdateIndexTables(*col.cls);
+	}
+
 	bool CollectionEditor::move(Collection& col, Collection* newParent)
 	{
 		// A root whose parent isn't loaded still names it; moving to the root clears that.

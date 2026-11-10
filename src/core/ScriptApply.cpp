@@ -218,6 +218,11 @@ namespace attrib::script
 			std::string where;
 		};
 
+		// An index past the end while a condition reads (Applier::softRange_).
+		struct OutOfRange
+		{
+		};
+
 		class Applier
 		{
 		public:
@@ -412,26 +417,232 @@ namespace attrib::script
 				}
 				return !v.text.empty();
 			}
-			bool test(const Condition& c)
+			// `col`: the collection whose block the `if` is in (null at the top).
+			bool test(const Condition& c, Collection* col)
 			{
+				using CK = Condition::Kind;
 				switch (c.kind)
 				{
-					case Condition::Kind::Option: return Truthy(*optionValue(c.option, pos_));
-					case Condition::Kind::Not: return !test(c.items[0]);
-					case Condition::Kind::And: return test(c.items[0]) && test(c.items[1]);
-					case Condition::Kind::Or: return test(c.items[0]) || test(c.items[1]);
-					case Condition::Kind::Equal:
-					case Condition::Kind::NotEqual:
+					case CK::Option: return Truthy(*optionValue(c.option, pos_));
+					case CK::Not: return !test(c.items[0], col);
+					case CK::And: return test(c.items[0], col) && test(c.items[1], col);
+					case CK::Or: return test(c.items[0], col) || test(c.items[1], col);
+					case CK::ExistsClass: return db_.findClass(KeyOf(c.word)) != nullptr;
+					case CK::ExistsVault: return findVault(c.word) != nullptr;
+					case CK::ExistsField:
 					{
-						const Value& a = *optionValue(c.option, pos_);
-						const Value& b = resolve(*c.value);
-						bool eq = a.text == b.text;
-						Num x, y;
-						if (!eq && ParseNum(a.text, x) && ParseNum(b.text, y)) eq = x.d == y.d;
-						return c.kind == Condition::Kind::Equal ? eq : !eq;
+						const ClassDef* k = db_.findClass(KeyOf(c.word));
+						return k && k->field(KeyOf(c.name));
 					}
+					case CK::ExistsCollection:
+					{
+						const ClassDef* k = db_.findClass(KeyOf(c.target.cls));
+						if (!k) return false;
+						if (c.target.name.find_first_of("*?") == std::string::npos) return db_.findCollection(k->key, KeyOf(c.target.name)) != nullptr;
+						const std::string pat = Lower(c.target.name);
+						for (const Collection* x : k->collections)
+							if (Glob(pat, Lower(names().format(x->key)))) return true;
+						return false;
+					}
+					case CK::Own:
+					{
+						const ClassDef* k = col ? col->cls : nullptr;
+						const FieldDef* f = k ? k->field(KeyOf(c.path.field)) : nullptr;
+						return f && col->find(f->key);
+					}
+					case CK::Has:
+					{
+						Attribute zero;
+						return readPlace(*col, c.path, zero, false).has_value();
+					}
+					default: break;
 				}
-				return false;
+				if (!c.hasPath)
+				{
+					// $option compared with a value.
+					const Value& a = *optionValue(c.option, pos_);
+					const Value& b = resolve(*c.value);
+					Num x, y;
+					const bool numbers = ParseNum(a.text, x) && ParseNum(b.text, y);
+					if (c.kind == CK::Equal || c.kind == CK::NotEqual)
+					{
+						const bool eq = a.text == b.text || (numbers && x.d == y.d);
+						return c.kind == CK::Equal ? eq : !eq;
+					}
+					if (!numbers) fail(c.value->pos, "<, >, <= and >= compare numbers: $" + c.option + " is " + PrintValue(a));
+					return Compare(c.kind, x.d, y.d);
+				}
+				Attribute zero;
+				const std::optional<Place> pl = readPlace(*col, c.path, zero, true);
+				if (c.count)
+				{
+					const double n = pl ? double(lengthAt(*pl, c.path.pos)) : 0;
+					return Compare(c.kind, n, number(*c.value).d);
+				}
+				if (!pl) return c.kind == CK::NotEqual; // nothing there
+				if (c.kind == CK::Contains)
+				{
+					const uint32_t n = lengthAt(*pl, c.path.pos);
+					for (uint32_t i = 0; i < n; ++i)
+						if (elementIs(*pl, i, *c.value)) return true;
+					return false;
+				}
+				if (pl->kind != Place::Kind::Value)
+					fail(c.path.pos, c.path.text() + " is an array: compare an element (" + c.path.text() + "[0]), its count, or test contains");
+				if (c.kind == CK::Equal || c.kind == CK::NotEqual)
+				{
+					const bool eq = holds(*pl->block, pl->off, pl->vt, *c.value);
+					return c.kind == CK::Equal ? eq : !eq;
+				}
+				return Compare(c.kind, numberAt(*pl, c.path), number(*c.value).d);
+			}
+			static bool Compare(Condition::Kind k, double a, double b)
+			{
+				switch (k)
+				{
+					case Condition::Kind::Equal: return a == b;
+					case Condition::Kind::NotEqual: return a != b;
+					case Condition::Kind::Less: return a < b;
+					case Condition::Kind::LessEqual: return a <= b;
+					case Condition::Kind::Greater: return a > b;
+					case Condition::Kind::GreaterEqual: return a >= b;
+					default: return false;
+				}
+			}
+
+			// Where `path` leads in the collection's value of the field, own or
+			// inherited, without writing; nothing when it has no value there (no
+			// value of the field, an index past the end). `known`: a field the
+			// class doesn't have is an error, else nothing too.
+			std::optional<Place> readPlace(Collection& c, const FieldPath& path, Attribute& zero, bool known)
+			{
+				(void)zero;
+				const FieldDef* f = c.cls ? c.cls->field(KeyOf(path.field)) : nullptr;
+				if (!f)
+				{
+					if (known) fail(path.pos, names().format(c.classKey) + " has no field " + path.field);
+					return std::nullopt;
+				}
+				endian_ = c.vault ? c.vault->raw.endian : Endian::Little;
+				Attribute* a = const_cast<Attribute*>(c.resolve(f->key));
+				if (!a) return std::nullopt;
+				const bool outer = softRange_;
+				softRange_ = true;
+				try
+				{
+					Place pl = locate(*a, path, names().format(f->key), false, path.steps.size());
+					softRange_ = outer;
+					return pl;
+				}
+				catch (const OutOfRange&)
+				{
+					softRange_ = outer;
+					return std::nullopt;
+				}
+				catch (...)
+				{
+					softRange_ = outer;
+					throw;
+				}
+			}
+
+			// The length of the array a place is.
+			uint32_t lengthAt(const Place& pl, Pos p)
+			{
+				switch (pl.kind)
+				{
+					case Place::Kind::AttrArray: return pl.attr->count;
+					case Place::Kind::InlineArray: return pl.count;
+					case Place::Kind::PtrArray:
+						if (!pl.countMember) fail(p, pl.where + " points at one value, not an array");
+						return pointerCount(pl);
+					case Place::Kind::CurvePart:
+						if (pl.index < 0)
+						{
+							const CurveValue cv = ReadCurve(*pl.block, pl.off, endian_, pl.curveSize);
+							return uint32_t((pl.curvePart == 0 ? cv.x : pl.curvePart == 1 ? cv.y : cv.y2).size());
+						}
+						break;
+					default: break;
+				}
+				fail(p, pl.where + " isn't an array");
+			}
+
+			// Element i of the array at `pl`: its block, offset and type.
+			Place elementAt(const Place& pl, uint32_t i)
+			{
+				Place e;
+				e.vt = pl.vt;
+				e.where = pl.where + "[" + std::to_string(i) + "]";
+				switch (pl.kind)
+				{
+					case Place::Kind::AttrArray:
+						e.block = &pl.attr->data;
+						e.off = i * pl.attr->elemSize;
+						break;
+					case Place::Kind::InlineArray:
+						e.block = pl.block;
+						e.off = pl.off + i * pl.vt.size;
+						break;
+					case Place::Kind::PtrArray:
+					{
+						const PtrSlot* sl = pl.block->ptrAt(pl.off + pl.member->offset);
+						e.block = sl ? sl->data.get() : nullptr;
+						e.off = i * pl.vt.size;
+						break;
+					}
+					default: break;
+				}
+				return e;
+			}
+
+			// The value at block+off is `v` (typed by vt), as setting it there
+			// would leave it: nothing is set, and no name or reference is noted.
+			bool holds(const DataBlock& b, uint32_t off, const ValueType& vt, const Value& v)
+			{
+				const size_t refs = refs_.size(), learned = rep_.newNames.size();
+				DataBlock copy = b;
+				assignValue(copy, off, vt, v);
+				refs_.resize(refs);
+				rep_.newNames.resize(learned);
+				return SameRegion(copy, b, off, std::max<uint32_t>(vt.size, 1));
+			}
+			bool elementIs(const Place& pl, uint32_t i, const Value& v)
+			{
+				const Place e = elementAt(pl, i);
+				return e.block && holds(*e.block, e.off, e.vt, v);
+			}
+			bool holdsZero(const Place& pl, uint32_t i)
+			{
+				const Place e = elementAt(pl, i);
+				if (!e.block) return false;
+				for (uint32_t k = 0; k < e.vt.size; ++k)
+					if (e.off + k >= e.block->bytes.size() || e.block->bytes[e.off + k]) return false;
+				for (const PtrSlot& p : e.block->ptrs)
+					if (p.offset >= e.off && p.offset < e.off + e.vt.size) return false;
+				return true;
+			}
+
+			double numberAt(const Place& pl, const FieldPath& path)
+			{
+				const ValueType& vt = pl.vt;
+				const uint8_t* p = pl.block->bytes.data() + pl.off;
+				switch (vt.kind)
+				{
+					case TypeKind::Bool: case TypeKind::Int8: case TypeKind::UInt8: case TypeKind::Int16: case TypeKind::UInt16:
+					case TypeKind::Int32: case TypeKind::UInt32: case TypeKind::Int64: case TypeKind::Char: case TypeKind::Enum:
+						return double(ReadInteger(*pl.block, pl.off, vt, endian_));
+					case TypeKind::UInt64: return double(uint64_t(ReadInteger(*pl.block, pl.off, vt, endian_)));
+					case TypeKind::Float: return loadf32(p, endian_);
+					case TypeKind::Double:
+					{
+						const uint64_t u = load64(p, endian_);
+						double d;
+						std::memcpy(&d, &u, 8);
+						return d;
+					}
+					default: fail(path.pos, "<, >, <= and >= compare numbers; " + path.text() + " is " + vt.typeName);
+				}
 			}
 
 			// -------------------------------------------------------- numbers ---
@@ -592,13 +803,18 @@ namespace attrib::script
 				out.block = pl.block;
 				if (st.member.empty())
 				{
-					const int64_t i = st.index;
+					int64_t i = st.index;
 					out.where = pl.where + "[" + std::to_string(i) + "]";
+					// A negative index counts from the end: [-1] is the last element.
 					auto range = [&](uint32_t n)
 					{
+						if (i < 0) i += int64_t(n);
 						if (i < 0 || uint64_t(i) >= n)
+						{
+							if (softRange_) throw OutOfRange{};
 							fail(p, out.where + " is past the end (" + pl.where + " has " + std::to_string(n) + " element" +
 								 (n == 1 ? "" : "s") + "; resize or insert first)");
+						}
 					};
 					switch (pl.kind)
 					{
@@ -624,6 +840,7 @@ namespace attrib::script
 						}
 						case Place::Kind::CurvePart:
 							if (pl.index >= 0) fail(p, out.where + ": one index is enough");
+							if (i < 0) fail(p, out.where + ": a curve's points are counted from the start");
 							out = pl;
 							out.index = i;
 							out.where = pl.where + "[" + std::to_string(i) + "]";
@@ -1260,7 +1477,14 @@ namespace attrib::script
 						first = &s;
 						break;
 					}
-				if (!st_.fragment && (!first || first->kind != K::Header)) message(Message::Level::Warning, {}, "no \"attribulina 1\" line at the top; reading it as format 1");
+				const int need = FormatNeeded(sc_.statements);
+				if (!st_.fragment && (!first || first->kind != K::Header))
+					message(Message::Level::Warning, {}, "no \"attribulina " + std::to_string(need) + "\" line at the top; reading it as format " +
+							std::to_string(need));
+				else if (first && first->kind == K::Header && first->number < need)
+					message(Message::Level::Warning, first->pos, "this script uses format " + std::to_string(need) + " statements (append, conditions on the "
+							"database, ...) but its first line says " + std::to_string(first->number) + ": make it \"attribulina " +
+							std::to_string(need) + "\" so that older versions of Attribulina say they can't read it");
 				checkGame(sc_);
 			}
 			// The `game` line names the game and platform the script was made for.
@@ -1313,7 +1537,7 @@ namespace attrib::script
 					{
 						case K::Comment: case K::Header: case K::Meta: case K::Option: break;
 						case K::If:
-							if (test(s.cond)) top(s.body);
+							if (test(s.cond, nullptr)) top(s.body);
 							else top(s.elseBody);
 							break;
 						case K::Edit:
@@ -1499,22 +1723,24 @@ namespace attrib::script
 
 			void rename(const Statement& s)
 			{
+				// A 0x... word is a key (a name not known, as an nfsms rename_node to a hash).
 				const std::string newName = NameOf(s.word);
-				if (newName.empty()) fail("the new name is a name, not a hash");
+				const uint32_t newKey = newName.empty() ? KeyOf(s.word) : StringHash32(newName);
 				Collection* c = find(s.target);
 				if (!c)
 				{
 					const ClassDef& cls = classOf(s.target);
-					if (db_.findCollection(cls.key, StringHash32(newName)))
+					if (db_.findCollection(cls.key, newKey))
 					{
-						info(s.target.text() + " is called " + newName + " already");
+						info(s.target.text() + " is called " + s.word + " already");
 						return;
 					}
 					fail(s.target.pos, "no collection " + s.target.text());
 				}
-				const bool known = names().find(StringHash32(newName)) != nullptr;
+				const bool known = newName.empty() || names().find(newKey) != nullptr;
 				const std::string oldName = names().format(c->key);
-				CollectionEditor(db_).rename(*c, newName);
+				if (newName.empty()) CollectionEditor(db_).rename(*c, newKey);
+				else CollectionEditor(db_).rename(*c, newName);
 				followName(*c, oldName);
 				if (!known) rep_.newNames.push_back(newName);
 				touch(c->vault);
@@ -1797,10 +2023,10 @@ namespace attrib::script
 					{
 						case K::Comment: break;
 						case K::If:
-							if (test(s.cond)) block(c, s.body, assigned);
+							if (test(s.cond, &c)) block(c, s.body, assigned);
 							else block(c, s.elseBody, assigned);
 							break;
-						case K::Set: case K::Resize: case K::Insert: case K::Remove: valueStatement(c, s, assigned); break;
+						case K::Set: case K::Resize: case K::Insert: case K::Remove: case K::Append: valueStatement(c, s, assigned); break;
 						case K::Echo: echo(s, &c); break;
 						case K::Revert:
 						{
@@ -1850,17 +2076,76 @@ namespace attrib::script
 					case K::Resize:
 					{
 						const Place pl = locate(a, s.path, fieldName, true, steps);
-						if (pl.kind == Place::Kind::AttrArray) resizeAttribute(a, s.count, s.pos, pl.where);
-						else if (pl.kind == Place::Kind::PtrArray) resizePointer(pl, s.count, s.pos);
-						else fail(s.path.pos, pl.where + " has a fixed size");
+						if (pl.kind != Place::Kind::AttrArray && pl.kind != Place::Kind::PtrArray) fail(s.path.pos, pl.where + " has a fixed size");
+						uint32_t n = s.count;
+						if (s.by)
+						{
+							const int64_t want = int64_t(lengthAt(pl, s.path.pos)) + s.number;
+							if (want < 0)
+								fail(s.pos, pl.where + " has " + std::to_string(lengthAt(pl, s.path.pos)) + " elements: it can't lose " +
+									 std::to_string(-s.number));
+							n = uint32_t(want);
+						}
+						if (pl.kind == Place::Kind::AttrArray) resizeAttribute(a, n, s.pos, pl.where);
+						else resizePointer(pl, n, s.pos);
 						break;
 					}
-					case K::Insert:
 					case K::Remove:
+						if (s.value)
+						{
+							// Every element that is the value; none is a note.
+							const Place pl = locate(a, s.path, fieldName, true, steps);
+							if (pl.kind != Place::Kind::AttrArray && (pl.kind != Place::Kind::PtrArray || !pl.countMember))
+								fail(s.path.pos, pl.where + " isn't an array that can lose elements");
+							size_t removed = 0;
+							for (int64_t i = int64_t(lengthAt(pl, s.path.pos)) - 1; i >= 0; --i)
+								if (elementIs(pl, uint32_t(i), *s.value))
+								{
+									Statement one = s;
+									one.kind = K::Remove;
+									insertOrRemove(a, pl, i, one);
+									++removed;
+								}
+							if (!removed) info(label(c) + " " + s.path.text() + " holds no " + PrintValue(*s.value));
+							break;
+						}
+						[[fallthrough]];
+					case K::Insert:
 					{
 						const Place pl = locate(a, s.path, fieldName, true, steps - 1);
-						const int64_t at = s.path.steps.back().index;
+						int64_t at = s.path.steps.back().index;
+						// Counted from the end: insert [-1] goes before the last element.
+						if (at < 0 && (pl.kind == Place::Kind::AttrArray || (pl.kind == Place::Kind::PtrArray && pl.countMember)))
+							at += int64_t(lengthAt(pl, s.path.pos));
 						insertOrRemove(a, pl, at, s);
+						break;
+					}
+					case K::Append:
+					{
+						// At the end; a list adds each of its items, `if missing` only those
+						// the array doesn't hold yet.
+						const Place pl = locate(a, s.path, fieldName, true, steps);
+						if (pl.kind != Place::Kind::AttrArray && (pl.kind != Place::Kind::PtrArray || !pl.countMember))
+							fail(s.path.pos, pl.where + " isn't an array that can grow");
+						std::vector<ValuePtr> items;
+						if (!s.value) items.push_back(nullptr);
+						else if (const Value& r = resolve(*s.value); r.kind == Value::Kind::List) items = r.items;
+						else items.push_back(s.value);
+						for (const ValuePtr& v : items)
+						{
+							if (s.ifMissing)
+							{
+								bool there = false;
+								const uint32_t n = lengthAt(pl, s.path.pos);
+								for (uint32_t i = 0; i < n && !there; ++i)
+									there = v ? elementIs(pl, i, *v) : holdsZero(pl, i);
+								if (there) continue;
+							}
+							Statement one = s;
+							one.kind = K::Insert;
+							one.value = v;
+							insertOrRemove(a, pl, int64_t(lengthAt(pl, s.path.pos)), one);
+						}
 						break;
 					}
 					default: break;
@@ -2050,6 +2335,7 @@ namespace attrib::script
 			std::string file_;
 			Pos at_;
 			Endian endian_ = Endian::Little;
+			bool softRange_ = false;     // a condition reading: an index past the end throws OutOfRange
 			bool everyPlatform_ = false; // the script running names <game>_all
 			bool warnedBytes_ = false;
 		};

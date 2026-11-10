@@ -6,6 +6,7 @@
 
 #include "Edit.h"
 #include "Game.h"
+#include "Curve.h"
 #include "Hash.h"
 
 #include <algorithm>
@@ -16,6 +17,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <optional>
 #include <set>
 #include <sstream>
 #include <stdexcept>
@@ -94,8 +96,23 @@ namespace attrib::nfsms
 		// (NFS-VltEd's Data) the value's bytes.
 		enum class RefPart
 		{
-			Whole, Class, Collection, Data
+			Whole, Class, Collection, Data,
+			// NFS-VltEd compatible: a StringKey's hash or text alone (MODEL's Collision
+			// and Visual), and a RefSpec's pointer word (a list element's Value).
+			Hash, Text, Pointer
 		};
+
+		// NFS-VltEd's own type of a word (PropertyNames::Property::vltType): its size
+		// in the file, 0 when it isn't a single value.
+		uint32_t VltSize(const std::string& t)
+		{
+			const std::string f = t.substr(0, t.find_first_of("/>"));
+			if (f == "u8" || f == "i8" || f == "bool8") return 1;
+			if (f == "u16" || f == "i16") return 2;
+			if (f == "u32" || f == "i32" || f == "f32" || f == "bool32") return 4;
+			if (f == "u64" || f == "i64" || f == "f64") return 8;
+			return 0;
+		}
 
 	} // namespace
 
@@ -383,7 +400,13 @@ namespace attrib::nfsms
 				p.word = w;
 				if (!(in >> p.offset)) bad(w + " needs the offset it sets");
 				std::string k;
-				if (in >> k && k != "list")
+				if (in >> k && k.size() > 1 && k[0] == ':')
+				{
+					// NFS-VltEd's own type at the offset: u32, i32/hex, u32/key, ...
+					p.vltType = k.substr(1);
+					if (!(in >> k)) k.clear();
+				}
+				if (!k.empty() && k != "list")
 				{
 					// The member path: name[.name...], each with an optional [index],
 					// then +bytes into the last one.
@@ -526,6 +549,21 @@ namespace attrib::nfsms
 			}
 
 		private:
+			struct SpareWrite
+			{
+				std::string field;              // the field token, field[i]
+				std::vector<std::string> words; // after it, the value last
+				std::optional<sc::Statement> set; // or a value to put back (a shrunk layout array's)
+			};
+			// Curves as NFS-VltEd holds them: three lists it resizes freely, while the file
+			// keeps the point count each was read with. Per collection and curve path.
+			struct CurveShadow
+			{
+				std::vector<float> lists[3]; // X, Y, Y2
+				uint32_t count = 0;          // what the file keeps
+				bool noted = false;
+			};
+
 			struct Stopped
 			{
 			};
@@ -923,16 +961,19 @@ namespace attrib::nfsms
 					ClassDef& k = cls(c.args[0]);
 					Collection& x = node(k, c.args[1]);
 					if (find(k, c.args[2])) fail("there is already a node called '" + c.args[2] + "'");
-					if (IsHex(c.args[2])) fail("the new name is a name, not a hash");
-					const bool known = db_.names().find(StringHash32(c.args[2])) != nullptr;
+					// A hash is a key, as NFS-VltEd reads it (0x and up to 8 hex digits).
+					const bool hash = IsHex(c.args[2]);
+					const bool known = hash || db_.names().find(StringHash32(c.args[2])) != nullptr;
 					sc::Statement r;
 					r.kind = K::Rename;
 					r.target = targetOf(x);
 					r.word = c.args[2];
 					emit(std::move(r));
-					CollectionEditor(db_).rename(x, c.args[2]);
+					if (hash) CollectionEditor(db_).rename(x, KeyOf(c.args[2]));
+					else CollectionEditor(db_).rename(x, c.args[2]);
 					if (!known) rep_.newNames.push_back(c.args[2]);
-					setCollectionName(x, c.args[2]);
+					const std::string* shown = hash ? db_.names().find(x.key) : nullptr;
+					setCollectionName(x, shown ? *shown : c.args[2]);
 					touch(x.vault);
 					++rep_.renamed;
 				}
@@ -966,11 +1007,22 @@ namespace attrib::nfsms
 					const FieldDef* f = k.field(KeyOf(c.args[2]));
 					if (!f) fail("the class '" + c.args[0] + "' does not contain '" + c.args[2] + "'");
 					if (!f->isArray()) fail("'" + c.args[2] + "' is not an array");
-					sc::Statement r;
-					r.kind = K::Resize;
-					r.path.field = c.args[2];
-					r.count = uint32_t(std::strtoul(c.args[3].c_str(), nullptr, 10));
-					amod(x, { r });
+					if (st_.vltEd)
+					{
+						requireOwn(x, *f, c.args[2]);
+						char* end = nullptr;
+						const long long want = std::strtoll(c.args[3].c_str(), &end, 10);
+						if (c.args[3].empty() || !end || *end) fail("Value cannot be parsed: " + c.args[3] + " isn't a number");
+						resizeCompat(k, x, *f, c.args[2], want);
+					}
+					else
+					{
+						sc::Statement r;
+						r.kind = K::Resize;
+						r.path.field = c.args[2];
+						r.count = uint32_t(std::strtoul(c.args[3].c_str(), nullptr, 10));
+						amod(x, { r });
+					}
 				}
 				else if (n == "resize_collection")
 				{
@@ -978,8 +1030,12 @@ namespace attrib::nfsms
 					ClassDef& k = cls(c.args[0]);
 					Collection& x = node(k, c.args[1]);
 					sc::FieldPath p = fieldPath(x, c.args[2]);
+					const FieldDef* f = k.field(KeyOf(p.field));
+					if (f) requireOwn(x, *f, p.field);
 					RefPart part = RefPart::Whole;
 					for (size_t i = 3; i + 1 < c.args.size(); ++i) property(x, p, c.args[i], part);
+					// NFS-VltEd resizes a curve's list without the point count the file keeps.
+					if (st_.vltEd && f && curvePoint(x, *f, p, nullptr, std::strtoll(c.args.back().c_str(), nullptr, 10))) return;
 					sc::Statement r;
 					r.kind = K::Resize;
 					r.path = p;
@@ -1045,6 +1101,7 @@ namespace attrib::nfsms
 				{
 					if (st_.beforeRemove) st_.beforeRemove(**it);
 					touch((*it)->vault);
+					forgetCompat(*it);
 					ed.remove(**it);
 					++rep_.deleted;
 				}
@@ -1099,9 +1156,51 @@ namespace attrib::nfsms
 				if (parent) cr.under = targetOf(*parent);
 				cr.vault = vault->name;
 				emit(std::move(cr));
+				if (st_.vltEd) layoutFromDefault(k, x);
 				setCollectionName(x, n);
 				touch(vault);
 				++rep_.created;
+			}
+
+			// NFS-VltEd's add_node starts the layout as the class's default collection has it.
+			void layoutFromDefault(ClassDef& k, Collection& x)
+			{
+				const Collection* def = db_.findCollection(k.key, StringHash32("default"));
+				if (!def || def == &x) return;
+				std::vector<uint32_t> copied;
+				for (Attribute& a : x.attributes)
+					if (a.inLayout)
+						if (const Attribute* d = def->find(a.key))
+						{
+							a = *d;
+							DetachCopy(a);
+							copied.push_back(a.key);
+						}
+				if (out_ && !copied.empty())
+				{
+					std::vector<sc::Statement> body;
+					for (uint32_t key : copied)
+						for (sc::Statement& v : sc::ExportValue(db_, x, key).body) body.push_back(std::move(v));
+					emitEdit(x, std::move(body));
+				}
+			}
+			// What NFS-VltEd holds past our model goes with a copy: slots past an array's
+			// count, a curve's lists. `fields`: only those (copy_fields), else all.
+			void copyHeld(const Collection& from, const Collection& to, const std::vector<uint32_t>* fields = nullptr)
+			{
+				auto wanted = [&](uint32_t key)
+				{
+					return !fields || std::find(fields->begin(), fields->end(), key) != fields->end();
+				};
+				std::vector<std::pair<uint32_t, std::map<uint32_t, std::vector<SpareWrite>>>> slots;
+				for (const auto& [key, held] : spare_)
+					if (key.first == &from && wanted(key.second)) slots.push_back({ key.second, held });
+				for (auto& [field, held] : slots) spare_[{ &to, field }] = std::move(held);
+				std::vector<std::pair<std::string, CurveShadow>> lists;
+				for (const auto& [key, sh] : curves_)
+					if (key.first == &from && (!fields || wanted(KeyOf(key.second.substr(0, key.second.find_first_of("[."))))))
+						lists.push_back({ key.second, sh });
+				for (auto& [path, sh] : lists) curves_[{ &to, path }] = std::move(sh);
 			}
 
 			void copyNode(const Command& c, bool overwrite)
@@ -1126,6 +1225,7 @@ namespace attrib::nfsms
 				DetachCopy(x.layout);
 				x.attributes = src.attributes;
 				for (Attribute& a : x.attributes) DetachCopy(a);
+				if (st_.vltEd) copyHeld(src, x);
 				if (parent) ed.move(x, parent);
 				sc::Statement cr;
 				cr.kind = K::Create;
@@ -1191,9 +1291,14 @@ namespace attrib::nfsms
 				const FieldDef* f = k.field(KeyOf(c.args[2]));
 				if (!f) fail("the class '" + c.args[0] + "' does not contain '" + c.args[2] + "'");
 				if (f->inLayout()) fail("only optional fields can be added; '" + c.args[2] + "' is a base field");
-				if (x.find(f->key)) return; // there already
+				if (x.find(f->key))
+				{
+					if (st_.vltEd) fail("The node '" + c.args[1] + "' already contains the '" + c.args[2] + "' field.");
+					return; // there already
+				}
 				const uint32_t count = c.args.size() == 4 ? uint32_t(std::strtoul(c.args[3].c_str(), nullptr, 10)) : 0;
 				if (f->isArray() && count > 0xFFFF) fail("'" + c.args[2] + "' holds at most 65535 elements");
+				if (st_.vltEd && addFieldFromDefault(k, x, *f, count, c.args[2])) return;
 				// A new value of zeros, not a copy of the inherited one.
 				Attribute& a = OverrideAttribute(db_, x, *f);
 				if (std::string w = ElementLimitWarning(a, count, c.args[2]); !w.empty()) warn(w);
@@ -1207,6 +1312,32 @@ namespace attrib::nfsms
 				if (out_) emitEdit(x, sc::ExportValue(db_, x, f->key).body);
 			}
 
+			// NFS-VltEd's add_field: a copy of the class's default collection's own
+			// value. An array gets `count` slots, the first from default's, and default's
+			// count (the slots past it are held, not read). False when default has no
+			// value of its own there: then zeros, as without the switch.
+			bool addFieldFromDefault(ClassDef& k, Collection& x, const FieldDef& f, uint32_t count, const std::string& field)
+			{
+				const Collection* def = db_.findCollection(k.key, StringHash32("default"));
+				const Attribute* dv = def && def != &x ? def->find(f.key) : nullptr;
+				if (!dv) return false;
+				Attribute& a = OverrideAttribute(db_, x, f);
+				a = *dv;
+				DetachCopy(a);
+				if (a.isArray)
+				{
+					if (dv->count > count) // only `count` slots: default's first
+						while (a.count > count) RemoveElement(a, a.count - 1);
+					a.capacity = uint16_t(std::max<uint32_t>(count, a.count));
+				}
+				touch(x.vault);
+				++rep_.valuesSet;
+				if (out_) emitEdit(x, sc::ExportValue(db_, x, f.key).body);
+				note(field + " starts as " + db_.names().format(k.key) + "/default's, as in NFS-VltEd" +
+					 (a.isArray && a.capacity > a.count ? ": " + std::to_string(a.count) + " of " + std::to_string(a.capacity) + " slots are read" : std::string()));
+				return true;
+			}
+
 			void appendArray(const Command& c)
 			{
 				ClassDef& k = cls(c.args[0]);
@@ -1216,10 +1347,11 @@ namespace attrib::nfsms
 				if (!f->isArray()) fail("'" + c.args[2] + "' is not an array");
 				const Attribute* a = x.find(f->key);
 				if (!a) fail(label(x) + " has no entry for " + c.args[2]);
+				// At the end of whatever the array holds (an amod append), so a script
+				// converted from it adds the element on any database.
 				sc::Statement s;
-				s.kind = K::Insert;
+				s.kind = K::Append;
 				s.path.field = c.args[2];
-				s.path.steps.push_back({ std::string(), int64_t(a->count) });
 				if (c.args.size() == 4)
 				{
 					const ValueType vt = TypeOfAttribute(*a, c.args[2]);
@@ -1235,28 +1367,36 @@ namespace attrib::nfsms
 				Collection& src = node(k, c.args[1]);
 				Collection& dst = node(k, c.args[2]);
 				if (&src == &dst) fail("fields cannot be copied to the same node");
+				// As NFS-VltEd (A/_0011_0007.cs): base copies the layout fields;
+				// of the source's own other values, overwrite replaces the ones the
+				// target has and optional adds the ones it lacks. Inherited values
+				// aren't copied. The flags are case-sensitive there.
 				bool base = false, optional = false, overwrite = false;
 				std::stringstream ss(c.args[3]);
 				for (std::string o; std::getline(ss, o, '|');)
 				{
-					o = Lower(o);
+					if (!st_.vltEd) o = Lower(o);
 					base |= o == "base";
 					optional |= o == "optional";
 					overwrite |= o == "overwrite";
 				}
+				if (!base && !optional && !overwrite) fail("copy_fields needs base, optional or overwrite (or several, joined with |)");
 				std::vector<uint32_t> copied;
 				for (const Attribute& a : src.attributes)
 				{
-					if (a.inLayout ? !base : !optional) continue;
+					Attribute* there = dst.find(a.key);
+					if (a.inLayout ? !base : there ? !overwrite : !optional) continue;
 					Attribute copy = a;
 					DetachCopy(copy);
-					Attribute* there = dst.find(a.key);
-					if (there && !a.inLayout && !overwrite) continue;
 					if (there) *there = std::move(copy);
 					else dst.attributes.push_back(std::move(copy));
 					++rep_.valuesSet;
 					copied.push_back(a.key);
 				}
+				// The target keeps its own name in CollectionName, as NFS-VltEd sets it back.
+				if (st_.vltEd) copyHeld(src, dst, &copied);
+				if (const FieldDef* cn = k.field(StringHash32("CollectionName")); base && cn && cn->inLayout())
+					setCollectionName(dst, db_.names().format(dst.key));
 				touch(dst.vault);
 				if (out_)
 				{
@@ -1330,6 +1470,7 @@ namespace attrib::nfsms
 					case TypeKind::RefSpec:
 						if (off == 0) part = RefPart::Class;
 						else if (off == 4) part = RefPart::Collection;
+						else if (off == 8 && st_.vltEd) part = RefPart::Pointer;
 						else fail(word + " is a reference's pointer, which the game sets");
 						return;
 					case TypeKind::ClassRefSpec:
@@ -1345,7 +1486,9 @@ namespace attrib::nfsms
 						p.steps.push_back({ std::string(), int64_t(off % 16 / 4) });
 						return;
 					case TypeKind::StringKey:
-						if (off == 4) return; // its text (the hash follows it)
+						// NFS-VltEd's MODEL words set the hash or the text alone.
+						if (st_.vltEd) part = off == 4 ? RefPart::Text : RefPart::Hash;
+						if (off == 4 || st_.vltEd) return; // its text (the hash follows it)
 						fail(word + " is a StringKey's hash: set its text");
 					case TypeKind::Struct:
 					case TypeKind::Curve:
@@ -1446,6 +1589,11 @@ namespace attrib::nfsms
 						else fail(word + " is a reference's pointer, which the game sets");
 						return;
 					case TypeKind::StringKey:
+						if (st_.vltEd)
+						{
+							part = l == "mstring" ? RefPart::Text : RefPart::Hash;
+							return;
+						}
 						if (l != "mstring") fail(word + " is a StringKey's hash: set its text");
 						return;
 					case TypeKind::Vector2: case TypeKind::Vector3: case TypeKind::Vector4: case TypeKind::Quaternion:
@@ -1489,8 +1637,15 @@ namespace attrib::nfsms
 					const ValueType vt = sc::TypeAt(db_, x, p);
 					const PropertyNames::Type* t = vltType(p, vt);
 					const PropertyNames::Property* pr = t && !t->single ? t->find(token) : nullptr;
-					if (pr) stepToProperty(x, p, vt, *pr, part, token);
-					else p.steps.push_back({ std::string(), std::strtoll(token.c_str(), nullptr, 10) });
+					if (pr)
+					{
+						noteWord(*pr, p, vt);
+						stepToProperty(x, p, vt, *pr, part, token);
+					}
+					else
+					{
+						p.steps.push_back({ std::string(), std::strtoll(token.c_str(), nullptr, 10) });
+					}
 					return;
 				}
 				const size_t lb = token.find('[');
@@ -1506,6 +1661,7 @@ namespace attrib::nfsms
 					else if (pr) idx.clear(); // M[1,1]: the index is part of the word
 					if (pr)
 					{
+						noteWord(*pr, p, vt);
 						stepToProperty(x, p, vt, *pr, part, token);
 						if (!idx.empty()) p.steps.push_back({ std::string(), std::strtoll(idx.c_str(), nullptr, 10) });
 						return;
@@ -1522,7 +1678,9 @@ namespace attrib::nfsms
 						// Group and Name: NFS-VltEd's words for a reference in a list.
 						if (l == "collection" || l == "collectionkey" || l == "name") part = RefPart::Collection;
 						else if (l == "class" || l == "classkey" || l == "group") part = RefPart::Class;
-						else fail("a reference has Class and Collection, not " + prop);
+						// NFS-VltEd's list element writes its third word too, the pointer the game sets.
+						else if (l == "value" && st_.vltEd) part = RefPart::Pointer;
+						else fail("a reference has Class and Collection, not " + prop + (l == "value" ? " (NFS-VltEd compatible runs set its pointer word)" : ""));
 						return;
 					case TypeKind::Vector2: case TypeKind::Vector3: case TypeKind::Vector4: case TypeKind::Quaternion:
 					case TypeKind::FloatColour:
@@ -1600,7 +1758,17 @@ namespace attrib::nfsms
 				const ValueType vt = sc::TypeAt(db_, x, p);
 				const PropertyNames::Type* t = vltType(p, vt);
 				if (!t || !t->single || t->properties.empty() || part != RefPart::Whole) return;
-				if (vt.kind == TypeKind::Struct) stepToProperty(x, p, vt, t->properties[0], part, t->properties[0].word);
+				if (vt.kind == TypeKind::Struct)
+				{
+					noteWord(t->properties[0], p, vt);
+					stepToProperty(x, p, vt, t->properties[0], part, t->properties[0].word);
+				}
+			}
+			void noteWord(const PropertyNames::Property& pr, const sc::FieldPath& p, const ValueType& vt)
+			{
+				lastProp_ = &pr;
+				lastBase_ = p;
+				lastBaseType_ = vt;
 			}
 
 			// nfsms text as a value of the field's kind.
@@ -1635,6 +1803,27 @@ namespace attrib::nfsms
 					auto v = std::make_shared<sc::Value>();
 					v->kind = sc::Value::Kind::Bytes;
 					v->text = t;
+					return v;
+				}
+				if (vt.kind == TypeKind::RefSpec && part == RefPart::Pointer)
+				{
+					// NFS-VltEd writes the u32 after the keys as given (a decimal number).
+					char* end = nullptr;
+					const unsigned long long n = std::strtoull(t.c_str(), &end, 10);
+					if (t.empty() || !end || *end || n > 0xFFFFFFFFull || t[0] == '-') fail("Value cannot be parsed: " + t + " isn't a u32");
+					if (vt.size != 12 || cur.size() < 12) fail("this reference has no 32-bit pointer word after its keys");
+					Bytes b = cur;
+					store32(b.data() + 8, uint32_t(n), e);
+					std::string hex;
+					for (uint8_t ch : b)
+					{
+						char buf[4];
+						std::snprintf(buf, sizeof(buf), "%02X ", ch);
+						hex += buf;
+					}
+					auto v = std::make_shared<sc::Value>();
+					v->kind = sc::Value::Kind::Bytes;
+					v->text = hex;
 					return v;
 				}
 				if (vt.kind == TypeKind::RefSpec)
@@ -1672,13 +1861,25 @@ namespace attrib::nfsms
 						return sc::MakeNumber(Hex32(StringHash32(t)));
 					case TypeKind::Float:
 					case TypeKind::Double:
-						if (IsNumber(t) || IsHex(t)) return sc::MakeNumber(t);
+					{
+						// NFS-VltEd reads 1,000.5 (en-US: the comma groups thousands).
+						std::string n = t;
+						if (st_.vltEd) n.erase(std::remove(n.begin(), n.end(), ','), n.end());
+						if (IsNumber(n) || IsHex(n)) return sc::MakeNumber(n);
 						fail("not a number: " + t);
+					}
 					case TypeKind::Enum: return IsHex(t) || IsNumber(t) ? sc::MakeNumber(t) : sc::MakeString(t);
 					case TypeKind::Text:
 					case TypeKind::StringKey: return sc::MakeString(t);
-					case TypeKind::Key:
 					case TypeKind::BinKey:
+						// NFS-VltEd reads a decimal number in a bin key as the key itself.
+						if (st_.vltEd && !t.empty() && std::all_of(t.begin(), t.end(), [](char ch)
+						{
+							return std::isdigit(static_cast<unsigned char>(ch));
+						}) && std::strtoull(t.c_str(), nullptr, 10) <= 0xFFFFFFFFull)
+							return sc::MakeNumber(t);
+						return keyValue(t);
+					case TypeKind::Key:
 					case TypeKind::ClassRefSpec: return keyValue(t);
 					default: break;
 				}
@@ -1690,24 +1891,448 @@ namespace attrib::nfsms
 				need(c, 4, 64);
 				ClassDef& k = cls(c.args[0]);
 				Collection& x = node(k, c.args[1]);
-				if (!k.field(KeyOf(c.args[2].substr(0, c.args[2].find('[')))))
-					fail("the class '" + c.args[0] + "' does not contain '" + c.args[2].substr(0, c.args[2].find('[')) + "'");
-				sc::FieldPath p = fieldPath(x, c.args[2]);
+				updateIn(k, x, c.args[2], std::vector<std::string>(c.args.begin() + 3, c.args.end()));
+			}
+
+			// update_field in a node: the field token, then the words after it with the value last.
+			void updateIn(ClassDef& k, Collection& x, const std::string& fieldToken, const std::vector<std::string>& rest)
+			{
+				const std::string fieldName = fieldToken.substr(0, fieldToken.find('['));
+				const FieldDef* f = k.field(KeyOf(fieldName));
+				if (!f) fail("the class '" + db_.names().format(k.key) + "' does not contain '" + fieldName + "'");
+				requireOwn(x, *f, fieldName);
+				sc::FieldPath p = fieldPath(x, fieldToken);
+				const std::string& text = rest.back();
+				if (st_.vltEd && spareWrite(x, *f, p, fieldToken, rest)) return;
 				RefPart part = RefPart::Whole;
-				for (size_t i = 3; i + 1 < c.args.size(); ++i) property(x, p, c.args[i], part);
+				for (size_t i = 0; i + 1 < rest.size(); ++i)
+				{
+					lastProp_ = nullptr;
+					property(x, p, rest[i], part);
+				}
+				if (rest.size() == 1) lastProp_ = nullptr;
 				single(x, p, part);
+				if (st_.vltEd)
+				{
+					if (curvePoint(x, *f, p, &text)) return;
+					if (part == RefPart::Hash || part == RefPart::Text)
+					{
+						stringKeyPart(x, *f, p, part, text);
+						return;
+					}
+					if (part == RefPart::Whole && lastProp_ && wideWrite(x, text)) return;
+				}
 				Bytes cur;
 				const ValueType vt = sc::TypeAt(db_, x, p, &cur);
 				sc::Statement s;
 				s.kind = K::Set;
 				s.path = p;
-				s.value = value(c.args.back(), vt, cur, part, x);
+				s.value = value(text, vt, cur, part, x);
 				if (part == RefPart::Data && x.vault && x.vault->raw.endian == Endian::Big)
 					message(sc::Message::Level::Warning, "Data sets the value's bytes as this platform's files hold them, big-endian; "
 							"a script written for the PC gives them little-endian");
 				amod(x, { s });
-				if ((vt.kind == TypeKind::RefSpec || vt.kind == TypeKind::ClassRefSpec) && part != RefPart::Data)
-					setRefs_.push_back({ x.classKey, x.key, p, line_, lineTop_, depth_, source_, path_, c.args.back() });
+				if ((vt.kind == TypeKind::RefSpec || vt.kind == TypeKind::ClassRefSpec) && part != RefPart::Data && part != RefPart::Pointer)
+					setRefs_.push_back({ x.classKey, x.key, p, line_, lineTop_, depth_, source_, path_, text });
+			}
+
+			// ---- NFS-VltEd compatible runs
+
+			// A value command on an array slot past the count but held (below the
+			// capacity): NFS-VltEd writes the slot and the game doesn't read it, until a
+			// resize_field brings it in. Kept for then.
+			bool spareWrite(Collection& x, const FieldDef& f, const sc::FieldPath& p, const std::string& fieldToken,
+							const std::vector<std::string>& rest)
+			{
+				if (!f.isArray() || p.steps.empty() || !p.steps[0].member.empty()) return false;
+				const Attribute* a = x.find(f.key);
+				if (!a) return false;
+				const int64_t i = p.steps[0].index;
+				if (i < int64_t(a->count) || i >= int64_t(SlotsHeld(*a))) return false;
+				auto& slots = spare_[{ &x, f.key }];
+				if (slots.empty())
+					note(fieldToken.substr(0, fieldToken.find('[')) + " holds " + std::to_string(a->count) + " of its " +
+						 std::to_string(SlotsHeld(*a)) + " slots: NFS-VltEd keeps values past them for a resize_field that brings them in");
+				slots[uint32_t(i)].push_back({ fieldToken, rest, std::nullopt });
+				return true;
+			}
+
+			// The slots [from, to) of an array a resize_field brought in: the values
+			// written there before.
+			void replaySpare(ClassDef& k, Collection& x, const FieldDef& f, uint32_t from, uint32_t to)
+			{
+				const auto it = spare_.find({ &x, f.key });
+				if (it == spare_.end()) return;
+				auto& slots = it->second;
+				for (auto sl = slots.lower_bound(from); sl != slots.end() && sl->first < to;)
+				{
+					const std::vector<SpareWrite> writes = std::move(sl->second);
+					sl = slots.erase(sl);
+					for (const SpareWrite& w : writes)
+					{
+						if (w.set) amod(x, { *w.set });
+						else updateIn(k, x, w.field, w.words);
+					}
+				}
+				if (slots.empty()) spare_.erase(it);
+			}
+
+			// NFS-VltEd's resize_field: a layout array's count moves within its slots,
+			// which keep their values; an entry array is cut or grows with zeros, and
+			// its capacity follows.
+			void resizeCompat(ClassDef& k, Collection& x, const FieldDef& f, const std::string& field, long long n)
+			{
+				Attribute* a = x.find(f.key);
+				if (!a) fail("Field '" + field + "' does not exist in the node '" + db_.names().format(x.key) + "'");
+				if (n < 0) fail("Array size must be greater than 0.");
+				const uint32_t old = a->count;
+				if (a->inLayout)
+				{
+					const uint32_t held = SlotsHeld(*a);
+					if (uint64_t(n) > held)
+						fail("Size of the array '" + field + "' cannot be changed to " + std::to_string(n) + ". The correct value is from 0 to " +
+							 std::to_string(held));
+					if (uint32_t(n) < old)
+					{
+						// What the shrink takes out stays in the slots for a later growth.
+						const sc::Statement whole = sc::ExportValue(db_, x, f.key);
+						const sc::Value* list = whole.body.empty() ? nullptr : whole.body[0].value.get();
+						if (list && list->kind == sc::Value::Kind::List)
+							for (uint32_t i = uint32_t(n); i < old && i < list->items.size(); ++i)
+							{
+								sc::Statement set;
+								set.kind = K::Set;
+								set.path.field = field;
+								set.path.steps.push_back({ std::string(), int64_t(i) });
+								set.value = list->items[i];
+								auto& w = spare_[{ &x, f.key }][i];
+								w.insert(w.begin(), SpareWrite{ field, {}, set });
+							}
+					}
+				}
+				else if (n > 32767)
+				{
+					fail("Value cannot be parsed: " + std::to_string(n) + " doesn't fit NFS-VltEd's array size (an Int16)");
+				}
+				sc::Statement r;
+				r.kind = K::Resize;
+				r.path.field = field;
+				r.count = uint32_t(n);
+				amod(x, { r });
+				if (uint32_t(n) > old) replaySpare(k, x, f, old, uint32_t(n));
+				else if (!a->inLayout)
+				{
+					// Cut: the slots past it go.
+					const auto it = spare_.find({ &x, f.key });
+					if (it != spare_.end()) it->second.erase(it->second.lower_bound(uint32_t(n)), it->second.end());
+				}
+			}
+
+			// A path to one of a curve's lists (X, Y, Y2), with or without an index:
+			// the curve's path, which list, and the index (-1 for none).
+			bool curveList(Collection& x, const sc::FieldPath& p, sc::FieldPath& curve, int& list, int64_t& index)
+			{
+				size_t n = p.steps.size();
+				index = -1;
+				if (n && p.steps[n - 1].member.empty())
+				{
+					index = p.steps[n - 1].index;
+					--n;
+				}
+				if (!n || p.steps[n - 1].member.empty()) return false;
+				const std::string m = Lower(p.steps[n - 1].member);
+				list = m == "x" ? 0 : m == "y" ? 1 : m == "y2" ? 2 : -1;
+				if (list < 0) return false;
+				curve = p;
+				curve.steps.resize(n - 1);
+				return sc::TypeAt(db_, x, curve).kind == TypeKind::Curve;
+			}
+			// The curve as NFS-VltEd holds it, read the first time a line touches it.
+			CurveShadow& shadowOf(Collection& x, const FieldDef& f, const sc::FieldPath& curve)
+			{
+				auto [it, made] = curves_.try_emplace({ &x, curve.text() });
+				if (!made) return it->second;
+				const Attribute* a = x.resolve(f.key);
+				const Endian e = x.vault ? x.vault->raw.endian : Endian::Little;
+				if (!a || curve.steps.size() > 1 || (curve.steps.size() == 1 && !curve.steps[0].member.empty()))
+				{
+					curves_.erase(it);
+					fail("NFS-VltEd compatible runs edit a curve field or a curve in an array, not one inside a struct (" + curve.text() + ")");
+				}
+				const CurveValue c = ReadCurve(*a, curve.steps.empty() ? 0 : uint32_t(curve.steps[0].index), e);
+				it->second.lists[0] = c.x;
+				it->second.lists[1] = c.y;
+				it->second.lists[2] = c.y2;
+				it->second.count = uint32_t(c.x.size());
+				return it->second;
+			}
+			// A curve point set (with `text`), or a list resized (`size`): NFS-VltEd
+			// changes its list alone, never works out Y2, and saves each list's count as
+			// read, so the game reads the first count values from where each list starts
+			// in the lists it wrote one after another.
+			bool curvePoint(Collection& x, const FieldDef& f, const sc::FieldPath& p, const std::string* text, int64_t size = -1)
+			{
+				sc::FieldPath curve;
+				int list = 0;
+				int64_t index = -1;
+				if (!curveList(x, p, curve, list, index)) return false;
+				CurveShadow& sh = shadowOf(x, f, curve);
+				std::vector<float>& l = sh.lists[list];
+				if (text)
+				{
+					if (index < 0) fail("a curve list's element needs its index");
+					if (uint64_t(index) >= l.size()) fail("The array index '" + std::to_string(index) + "' out of bounds.");
+					std::string t = *text;
+					t.erase(std::remove(t.begin(), t.end(), ','), t.end());
+					char* end = nullptr;
+					const float v = std::strtof(t.c_str(), &end);
+					if (t.empty() || !end || *end) fail("Value cannot be parsed: " + *text + " isn't a number");
+					l[size_t(index)] = v;
+				}
+				else
+				{
+					if (size < 0 || size > 65536) fail("the size must be from 0 to 65536");
+					l.resize(size_t(size), 0.0f);
+				}
+				// What the game reads from what NFS-VltEd writes.
+				std::vector<float> block;
+				for (const auto& part : sh.lists) block.insert(block.end(), part.begin(), part.end());
+				const Endian e = x.vault ? x.vault->raw.endian : Endian::Little;
+				const Attribute* a = x.resolve(f.key);
+				const CurveValue now = ReadCurve(*a, curve.steps.empty() ? 0 : uint32_t(curve.steps[0].index), e);
+				const std::vector<float>* nowLists[3] = { &now.x, &now.y, &now.y2 };
+				std::vector<sc::Statement> sets;
+				size_t start = 0;
+				bool past = false;
+				for (int i = 0; i < 3; ++i)
+				{
+					std::vector<sc::ValuePtr> items;
+					for (uint32_t j = 0; j < sh.count; ++j)
+					{
+						float v = 0;
+						if (start + j < block.size()) v = block[start + j];
+						else
+						{
+							past = true; // past what NFS-VltEd writes: what follows in the file
+							if (j < nowLists[i]->size()) v = (*nowLists[i])[j];
+						}
+						items.push_back(sc::MakeNumber(sc::NumberText(v, true)));
+					}
+					start += sh.lists[i].size();
+					sc::Statement set;
+					set.kind = K::Set;
+					set.path = curve;
+					set.path.steps.push_back({ i == 0 ? "X" : i == 1 ? "Y" : "Y2", -1 });
+					set.value = sc::MakeList(std::move(items));
+					sets.push_back(std::move(set));
+				}
+				if (!sh.noted && (sh.lists[0].size() != sh.count || sh.lists[1].size() != sh.count || sh.lists[2].size() != sh.count))
+				{
+					sh.noted = true;
+					note(curve.text() + "'s lists are resized, and NFS-VltEd keeps the " + std::to_string(sh.count) +
+						 " points the file has: the game reads each list's " + std::to_string(sh.count) +
+						 " values from where it starts in the lists NFS-VltEd writes one after another" +
+						 (past ? "; the last ones would come from what follows in the file, kept as they were here" : ""));
+				}
+				amod(x, sets);
+				return true;
+			}
+
+			// MODEL's Collision (the hash alone) and Visual (the text alone).
+			void stringKeyPart(Collection& x, const FieldDef& f, const sc::FieldPath& p, RefPart part, const std::string& text)
+			{
+				const Attribute* a = x.resolve(f.key);
+				if (!a || !p.steps.empty() || a->elemSize != 8) fail("NFS-VltEd compatible runs set a StringKey field's hash or text alone");
+				const Endian e = x.vault ? x.vault->raw.endian : Endian::Little;
+				const StringKeyLayout kl = StringKeyAt(a->elemSize);
+				const uint32_t hash = load32(a->data.bytes.data() + kl.hash32, e);
+				const PtrSlot* ts = a->data.ptrAt(kl.text);
+				const std::string oldText = ts && ts->isString ? ts->text : std::string();
+				auto v = std::make_shared<sc::Value>();
+				v->kind = sc::Value::Kind::Tuple;
+				if (part == RefPart::Hash)
+				{
+					// A key: a name hashed, 0x and up to 8 hex digits as the number.
+					v->items = { sc::MakeString(oldText), sc::MakeNumber(Hex32(KeyOf(text))) };
+				}
+				else
+				{
+					v->items = { sc::MakeString(text), sc::MakeNumber(Hex32(hash)) };
+				}
+				sc::Statement s;
+				s.kind = K::Set;
+				s.path = p;
+				s.value = v;
+				amod(x, { s });
+			}
+
+			// NFS-VltEd's word as a number of its own type, its bytes as the PC files
+			// hold them (little-endian).
+			Bytes vltBytes(const std::string& type, const std::string& text)
+			{
+				const uint32_t size = VltSize(type);
+				const std::string base = type.substr(0, type.find_first_of("/>"));
+				const std::string how = type.find('/') != std::string::npos ? type.substr(type.find('/') + 1) : std::string();
+				Bytes b(size, 0);
+				auto put = [&](uint64_t u)
+				{
+					for (uint32_t i = 0; i < size; ++i) b[i] = uint8_t(u >> (8 * i));
+				};
+				if (base == "f32" || base == "f64" || type.find('>') != std::string::npos)
+				{
+					std::string t = text;
+					t.erase(std::remove(t.begin(), t.end(), ','), t.end());
+					char* end = nullptr;
+					const double d = std::strtod(t.c_str(), &end);
+					if (t.empty() || !end || *end) fail("Value cannot be parsed: " + text + " isn't a number");
+					if (base == "f32")
+					{
+						const float f = float(d);
+						uint32_t u;
+						std::memcpy(&u, &f, 4);
+						put(u);
+					}
+					else if (base == "f64")
+					{
+						uint64_t u;
+						std::memcpy(&u, &d, 8);
+						put(u);
+					}
+					else
+					{
+						put(uint64_t(int64_t(d))); // a float NFS-VltEd shows, stored as an integer
+					}
+					return b;
+				}
+				if (base == "bool8" || base == "bool32")
+				{
+					const std::string l = Lower(text);
+					if (l != "true" && l != "false") fail("Value cannot be parsed: a bool is true or false, not " + text);
+					put(l == "true");
+					return b;
+				}
+				if (how == "key")
+				{
+					put(KeyOf(text));
+					return b;
+				}
+				const bool digits = !text.empty() && std::all_of(text.begin() + (text[0] == '-'), text.end(), [](char ch)
+				{
+					return std::isdigit(static_cast<unsigned char>(ch));
+				}) && text != "-";
+				if (how == "binkey" && !digits)
+				{
+					put(IsHex(text) ? KeyOf(text) : BinHash(text));
+					return b;
+				}
+				int64_t v = 0;
+				if (digits)
+				{
+					v = std::strtoll(text.c_str(), nullptr, 10);
+				}
+				else if (IsHex(text))
+				{
+					v = int64_t(std::strtoull(text.c_str() + 2, nullptr, 16));
+				}
+				else
+				{
+					fail("Value cannot be parsed: " + text + " isn't a number");
+				}
+				const bool sign = base[0] == 'i';
+				const uint32_t bits = size * 8;
+				const int64_t lo = sign ? -(int64_t(1) << (bits - 1)) : 0;
+				const int64_t hi = bits >= 64 ? INT64_MAX : sign ? (int64_t(1) << (bits - 1)) - 1 : int64_t((uint64_t(1) << bits) - 1);
+				if (bits < 64 && (v < lo || v > hi)) fail("Value cannot be parsed: " + text + " doesn't fit NFS-VltEd's " + base);
+				put(uint64_t(v));
+				return b;
+			}
+
+			// A word NFS-VltEd writes with another width than our member there has
+			// (FEPartData's 4 is an int32 over tier, drift, drag and grip): its bytes
+			// over our members by offset, each set to what its bytes then say.
+			bool wideWrite(Collection& x, const std::string& text)
+			{
+				const PropertyNames::Property& pr = *lastProp_;
+				const uint32_t size = VltSize(pr.vltType);
+				const StructDef* st = lastBaseType_.st;
+				if (!size || pr.list || !st) return false;
+				for (const MemberDef& m : st->members)
+					if (m.offset == pr.offset && m.count <= 1 && m.elemSize == size) return false; // our member is the word
+				Bytes cur;
+				sc::TypeAt(db_, x, lastBase_, &cur);
+				if (cur.size() < pr.offset + size) return false;
+				const Bytes now = vltBytes(pr.vltType, text);
+				const Endian e = x.vault ? x.vault->raw.endian : Endian::Little;
+				if (db_.target().platform == Platform::PS2 || db_.target().platform == Platform::GameCube)
+					warn(pr.word + " is NFS-VltEd's " + pr.vltType + " at byte " + std::to_string(pr.offset) +
+						 " of the PC's layout, set here over the members at those bytes on " + db_.target().name());
+				std::vector<sc::Statement> sets;
+				for (const MemberDef& m : st->members)
+				{
+					const uint32_t ms = m.elemSize;
+					if (m.count > 1 || !ms || ms > 8 || m.prim == MemberPrim::Ptr || m.isBitfield()) continue;
+					const uint32_t b0 = std::max(m.offset, pr.offset), b1 = std::min(m.offset + ms, pr.offset + size);
+					if (b0 >= b1) continue;
+					// The member as the PC holds it, the word's bytes over it.
+					uint64_t v = 0;
+					for (uint32_t i = 0; i < ms; ++i)
+						v |= uint64_t(cur[m.offset + (e == Endian::Big ? ms - 1 - i : i)]) << (8 * i);
+					for (uint32_t bpos = b0; bpos < b1; ++bpos)
+					{
+						const uint32_t sh = 8 * (bpos - m.offset);
+						v = (v & ~(uint64_t(0xFF) << sh)) | (uint64_t(now[bpos - pr.offset]) << sh);
+					}
+					const ValueType mt = TypeOfMember(m);
+					sc::ValuePtr val;
+					if (mt.kind == TypeKind::Bool && v <= 1) val = sc::MakeWord(v ? "true" : "false");
+					else if (mt.kind == TypeKind::Float && ms == 4)
+					{
+						const uint32_t u = uint32_t(v);
+						float fl;
+						std::memcpy(&fl, &u, 4);
+						val = sc::MakeNumber(sc::NumberText(fl, true));
+					}
+					else if (mt.kind == TypeKind::Int8 || mt.kind == TypeKind::Int16 || mt.kind == TypeKind::Int32 || mt.kind == TypeKind::Int64)
+					{
+						const int64_t sv = ms == 8 ? int64_t(v) : int64_t(v << (64 - 8 * ms)) >> (64 - 8 * ms);
+						val = sc::MakeNumber(std::to_string(sv));
+					}
+					else if (mt.kind == TypeKind::Bool || IsIntegerKind(mt.kind) || mt.kind == TypeKind::Enum || mt.kind == TypeKind::Key ||
+							 mt.kind == TypeKind::BinKey || mt.kind == TypeKind::Unknown)
+					{
+						// A bool holding 2 is a byte all the same: as NFS-VltEd writes it.
+						auto bytes = std::make_shared<sc::Value>();
+						bytes->kind = sc::Value::Kind::Bytes;
+						for (uint32_t i = 0; i < ms; ++i)
+						{
+							char buf[4];
+							std::snprintf(buf, sizeof(buf), "%02X ", unsigned((v >> (8 * (e == Endian::Big ? ms - 1 - i : i))) & 0xFF));
+							bytes->text += buf;
+						}
+						// A key's number in hex (a bare decimal would be a name to hash).
+						val = mt.kind == TypeKind::Bool ? bytes
+							: mt.kind == TypeKind::Key || mt.kind == TypeKind::BinKey ? sc::MakeNumber(Hex32(uint32_t(v)))
+							: sc::MakeNumber(std::to_string(v));
+					}
+					else
+					{
+						continue;
+					}
+					sc::Statement s;
+					s.kind = K::Set;
+					s.path = lastBase_;
+					s.path.steps.push_back({ m.name, -1 });
+					s.value = val;
+					sets.push_back(std::move(s));
+				}
+				if (sets.empty()) return false;
+				amod(x, sets);
+				return true;
+			}
+			static bool IsIntegerKind(TypeKind k)
+			{
+				return k == TypeKind::UInt8 || k == TypeKind::UInt16 || k == TypeKind::UInt32 || k == TypeKind::UInt64 || k == TypeKind::Char ||
+					k == TypeKind::Int8 || k == TypeKind::Int16 || k == TypeKind::Int32 || k == TypeKind::Int64;
 			}
 
 		public:
@@ -1756,6 +2381,38 @@ namespace attrib::nfsms
 			Database& db_;
 			const RunSettings& st_;
 			sc::ApplyReport rep_;
+
+			// ---- NFS-VltEd compatible runs (st_.vltEd): what NFS-VltEd holds that our model doesn't.
+			// An array there holds every slot of its capacity (mAlloc), and a value command may
+			// write a slot past the count; resize_field moves the count over them. Those writes
+			// are kept here (an nfsms line's words, or a value a layout array's shrink left in
+			// its slot) and made when a resize brings the slot in: per collection and field,
+			// by slot, in order.
+			std::map<std::pair<const Collection*, uint32_t>, std::map<uint32_t, std::vector<SpareWrite>>> spare_;
+			std::map<std::pair<const Collection*, std::string>, CurveShadow> curves_;
+			// The last NFS-VltEd word update() stepped through: the value it is in, and the word.
+			const PropertyNames::Property* lastProp_ = nullptr;
+			sc::FieldPath lastBase_;
+			ValueType lastBaseType_;
+
+			void forgetCompat(const Collection* c)
+			{
+				for (auto it = spare_.begin(); it != spare_.end();) it = it->first.first == c ? spare_.erase(it) : std::next(it);
+				for (auto it = curves_.begin(); it != curves_.end();) it = it->first.first == c ? curves_.erase(it) : std::next(it);
+			}
+			// NFS-VltEd's value commands need a field the node has: its layout's, or its own.
+			void requireOwn(const Collection& x, const FieldDef& f, const std::string& field)
+			{
+				if (st_.vltEd && !f.inLayout() && !x.find(f.key))
+					fail("Field '" + field + "' does not exist in the node '" + db_.names().format(x.key) +
+						 "': NFS-VltEd changes only a node's own fields (add_field it first)");
+			}
+			// How many slots NFS-VltEd holds for the array: a layout array its layout's, an entry
+			// array its capacity.
+			static uint32_t SlotsHeld(const Attribute& a)
+			{
+				return a.inLayout ? MaxElements(a, false) : std::max<uint32_t>(a.capacity, a.count);
+			}
 			std::string source_, path_;
 			int line_ = 0, lineTop_ = 0, depth_ = 0;
 		};
@@ -1916,7 +2573,8 @@ namespace attrib::nfsms
 		class Writer
 		{
 		public:
-			Writer(const Database& db, const PropertyNames* names) : db_(db), names_(names)
+			Writer(const Database& db, const PropertyNames* names, bool vltEd, const Database* before)
+				: db_(db), names_(names), vltEd_(vltEd), before_(before)
 			{
 			}
 
@@ -1940,8 +2598,18 @@ namespace attrib::nfsms
 				{
 					case K::Comment: out.push_back("#" + s.comment); break;
 					case K::Edit:
+					{
+						// Fields it only inherited before need add_field first in NFS-VltEd.
+						added_.clear();
+						const ClassDef* k = before_ ? before_->findClass(KeyOf(nameOf(s.target.cls))) : nullptr;
+						const Collection* was = k ? before_->findCollection(k->key, KeyOf(nameOf(s.target.name))) : nullptr;
+						newNode_ = was != nullptr;
+						if (was)
+							for (const Attribute& a : was->attributes) added_.insert(a.key);
 						for (const sc::Statement& b : s.body) body(s.target, b);
+						newNode_ = false;
 						break;
+					}
 					case K::Create:
 					case K::Collection:
 					{
@@ -1997,6 +2665,21 @@ namespace attrib::nfsms
 				{
 					case K::Set:
 					{
+						// NFS-VltEd never works a curve's Y2 out: the whole curve as it is now.
+						if (vltEd_ && !inCurve_)
+							if (const std::optional<sc::FieldPath> root = curveRoot(t, b.path))
+								if (sc::ValuePtr whole = curveNow(t, *root))
+								{
+									sc::Statement w = b;
+									w.path = *root;
+									w.value = whole;
+									w.was.reset();
+									inCurve_ = true;
+									body(t, w);
+									inCurve_ = false;
+									target_ = &t;
+									break;
+								}
 						if (b.op != '=')
 						{
 							out.push_back("# " + b.path.text() + " " + b.op + "= can't be written in nfsms");
@@ -2011,7 +2694,10 @@ namespace attrib::nfsms
 						const FieldDef* f = k ? k->field(KeyOf(nameOf(b.path.field))) : nullptr;
 						if (!b.path.steps.empty() && b.path.steps[0].member.empty() && (!f || f->isArray()))
 						{
-							field += "[" + std::to_string(b.path.steps[0].index) + "]";
+							// From the end: [^] is the last element; others by the count now.
+							int64_t index = b.path.steps[0].index;
+							if ((index < -1 || (index == -1 && vltEd_)) && f) index += int64_t(lengthNow(t, *f)); // NFS-VltEd has no [^]
+							field += index == -1 ? std::string("[^]") : "[" + std::to_string(index) + "]";
 							i = 1;
 						}
 						for (; i < b.path.steps.size(); ++i)
@@ -2045,13 +2731,84 @@ namespace attrib::nfsms
 						break;
 					}
 					case K::Revert: out.push_back("delete_field " + head + " " + Token(nameOf(b.path.field))); break;
+					case K::Remove:
+					case K::Insert:
+					{
+						// nfsms can't take elements out or put them in the middle: the
+						// array as it is now, once.
+						const ClassDef* k = db_.findClass(KeyOf(nameOf(t.cls)));
+						const FieldDef* f = k ? k->field(KeyOf(nameOf(b.path.field))) : nullptr;
+						const Collection* x = k ? db_.findCollection(k->key, KeyOf(nameOf(t.name))) : nullptr;
+						const bool fieldArray = b.path.steps.empty() || (b.path.steps.size() == 1 && b.path.steps[0].member.empty());
+						const char* what = b.kind == K::Remove ? "remove " : "insert ";
+						if (!f || !x || !fieldArray)
+						{
+							out.push_back("# not in nfsms: " + std::string(what) + b.path.text());
+							break;
+						}
+						if (!whole_.insert({ x, f->key }).second) break;
+						out.push_back("# " + std::string(what) + b.path.text() + (b.value ? " = " + sc::PrintValue(*b.value) : std::string()) +
+									  ": nfsms has no command for it, so the whole array as it is now");
+						for (const sc::Statement& e : sc::ExportValue(db_, *x, f->key).body) body(t, e);
+						break;
+					}
 					case K::Resize:
 					{
 						const ClassDef* k = db_.findClass(KeyOf(nameOf(t.cls)));
 						const FieldDef* f = k ? k->field(KeyOf(nameOf(b.path.field))) : nullptr;
+						if (!b.path.steps.empty())
+						{
+							out.push_back("# resize " + b.path.text() + ": nfsms resizes a field's array (resize_collection a list in it)");
+							break;
+						}
+						// `resize ... by n`: the length it has now.
+						const uint32_t n = b.by ? (f ? lengthNow(t, *f) : 0) : b.count;
+						if (b.by && !f)
+						{
+							out.push_back("# resize " + b.path.text() + " by " + std::to_string(b.number) + ": no such field");
+							break;
+						}
 						const size_t at = out.size();
-						out.push_back("resize_field " + head + " " + Token(nameOf(b.path.field)) + " " + std::to_string(b.count));
+						out.push_back("resize_field " + head + " " + Token(nameOf(b.path.field)) + " " + std::to_string(n));
 						if (f) addField(head, *f, b, at);
+						break;
+					}
+					case K::Append:
+					{
+						const ClassDef* k = db_.findClass(KeyOf(nameOf(t.cls)));
+						const FieldDef* f = k ? k->field(KeyOf(nameOf(b.path.field))) : nullptr;
+						const std::string field = Token(nameOf(b.path.field));
+						if (!b.path.steps.empty() || !f)
+						{
+							out.push_back("# append " + b.path.text() + ": nfsms appends to a field's array only");
+							break;
+						}
+						if (b.ifMissing) out.push_back("# append " + b.path.text() + " if missing: nfsms adds it even where the array holds it");
+						std::vector<sc::ValuePtr> items;
+						if (!b.value) items.push_back(nullptr);
+						else if (b.value->kind == sc::Value::Kind::List) items = b.value->items;
+						else items.push_back(b.value);
+						if (vltEd_)
+						{
+							// NFS-VltEd has no append_array: the length it has now, then each new element.
+							const uint32_t n = lengthNow(t, *f);
+							out.push_back("resize_field " + head + " " + field + " " + std::to_string(n));
+							for (size_t i = 0; i < items.size(); ++i)
+								if (items[i] && n >= items.size())
+									value("update_field " + head, field + "[" + std::to_string(n - items.size() + i) + "]", {}, *items[i], false);
+							break;
+						}
+						for (const sc::ValuePtr& v : items)
+						{
+							// Attribulator's append_array, then the new last element's parts.
+							if (v && v->kind == sc::Value::Kind::Number)
+							{
+								out.push_back("append_array " + head + " " + field + " " + Token(v->text));
+								continue;
+							}
+							out.push_back("append_array " + head + " " + field);
+							if (v) value("update_field " + head, field + "[^]", {}, *v, false);
+						}
 						break;
 					}
 					case K::Comment: out.push_back("#" + b.comment); break;
@@ -2083,9 +2840,12 @@ namespace attrib::nfsms
 					if (count < 0 && !b.path.steps.empty() && b.path.steps[0].member.empty()) count = b.path.steps[0].index + 1;
 					if (count < 0) count = 0;
 					line += " " + std::to_string(count);
-					// add_field gives it that length already.
-					if (at < out.size() && out[at] == "resize_field " + head + " " + field + " " + std::to_string(count))
-						out.erase(out.begin() + std::ptrdiff_t(at));
+					const std::string resize = "resize_field " + head + " " + field + " " + std::to_string(count);
+					const bool resized = at < out.size() && out[at] == resize;
+					// add_field gives it that length already; NFS-VltEd's gives it the class's
+					// default collection's count, so there the resize stays.
+					if (resized && !vltEd_) out.erase(out.begin() + std::ptrdiff_t(at));
+					if (!resized && vltEd_) out.insert(out.begin() + std::ptrdiff_t(at), resize);
 				}
 				out.insert(out.begin() + std::ptrdiff_t(at), line);
 				added_.insert(f.key);
@@ -2107,7 +2867,8 @@ namespace attrib::nfsms
 				if (lb != std::string::npos) p.steps.push_back({ std::string(), std::strtoll(field.c_str() + lb + 1, nullptr, 10) });
 				try
 				{
-					const ValueType top = sc::TypeAt(db, *x, p);
+					Bytes topBytes;
+					const ValueType top = sc::TypeAt(db, *x, p, &topBytes);
 					const PropertyNames::Type* t = names_->find(top.typeName);
 					if (!t) return false;
 					if (t->single)
@@ -2213,11 +2974,92 @@ namespace attrib::nfsms
 						if (const PropertyNames::Property* q = inner.empty() ? nullptr : t->atPath(path + "." + inner); q && !q->list) pr = q;
 					}
 					if (pr) ps = { pr->word };
+					// NFS-VltEd writes this word wider than our member (FEPartData's 4 over
+					// tier, drift, drag and grip): the whole word, as the value has it now.
+					if (pr && vltEd_ && !pr->list && VltSize(pr->vltType) && VltSize(pr->vltType) != vt.size)
+						wideValue_ = wordNow(*pr, top, topBytes, x->vault ? x->vault->raw.endian : Endian::Little);
 				}
 				catch (const std::exception&)
 				{
 				}
 				return false;
+			}
+
+			// An NFS-VltEd word's value in a value's bytes, as NFS-VltEd shows it (its
+			// type, the PC's little-endian bytes).
+			std::optional<std::string> wordNow(const PropertyNames::Property& pr, const ValueType& top, const Bytes& b, Endian e) const
+			{
+				const uint32_t size = VltSize(pr.vltType);
+				if (b.size() < pr.offset + size) return std::nullopt;
+				Bytes le(b.begin() + pr.offset, b.begin() + pr.offset + size);
+				if (e == Endian::Big)
+				{
+					// Each member's bytes the PC's way round.
+					if (!top.st) return std::nullopt;
+					for (const MemberDef& m : top.st->members)
+					{
+						const uint32_t ms = m.elemSize;
+						if (m.count > 1 || !ms || ms > 8) continue;
+						for (uint32_t i = 0; i < ms; ++i)
+						{
+							const uint32_t at = m.offset + i;
+							if (at >= pr.offset && at < pr.offset + size) le[at - pr.offset] = b[m.offset + ms - 1 - i];
+						}
+					}
+				}
+				uint64_t u = 0;
+				for (uint32_t i = 0; i < size; ++i) u |= uint64_t(le[i]) << (8 * i);
+				const std::string base = pr.vltType.substr(0, pr.vltType.find_first_of("/>"));
+				const std::string how = pr.vltType.find('/') != std::string::npos ? pr.vltType.substr(pr.vltType.find('/') + 1) : std::string();
+				if (base == "f32")
+				{
+					const uint32_t w = uint32_t(u);
+					float f;
+					std::memcpy(&f, &w, 4);
+					return sc::NumberText(f, true);
+				}
+				if (base == "f64")
+				{
+					double d;
+					std::memcpy(&d, &u, 8);
+					return sc::NumberText(d);
+				}
+				if (base == "bool8" || base == "bool32") return std::string(u ? "true" : "false");
+				if (how == "key")
+				{
+					const std::string* n = db_.names().find(uint32_t(u));
+					return n ? *n : Hex32(uint32_t(u));
+				}
+				if (how == "hex" && size == 4) return Hex32(uint32_t(u));
+				if (base[0] == 'i' && size < 8) return std::to_string(int64_t(u << (64 - 8 * size)) >> (64 - 8 * size));
+				return std::to_string(u);
+			}
+
+			// The curve at `path` of the target as it is now, Y2 included (NFS-VltEd
+			// never works Y2 out), or null when the path isn't a curve.
+			sc::ValuePtr curveNow(const sc::Target& t, const sc::FieldPath& path) const
+			{
+				const ClassDef* k = db_.findClass(KeyOf(nameOf(t.cls)));
+				const FieldDef* f = k ? k->field(KeyOf(nameOf(path.field))) : nullptr;
+				const Collection* x = k ? db_.findCollection(k->key, KeyOf(nameOf(t.name))) : nullptr;
+				const Attribute* a = x && f ? x->resolve(f->key) : nullptr;
+				if (!a || TypeOfAttribute(*a, nameOf(path.field)).kind != TypeKind::Curve) return nullptr;
+				if (path.steps.size() > 1 || (path.steps.size() == 1 && !path.steps[0].member.empty())) return nullptr;
+				const uint32_t index = path.steps.empty() ? 0 : uint32_t(path.steps[0].index);
+				if (index >= std::max<uint32_t>(a->count, 1)) return nullptr;
+				const CurveValue c = ReadCurve(*a, index, x->vault ? x->vault->raw.endian : Endian::Little);
+				auto list = [](const std::vector<float>& v)
+				{
+					std::vector<sc::ValuePtr> items;
+					for (float f : v) items.push_back(sc::MakeNumber(sc::NumberText(f, true)));
+					return sc::MakeList(std::move(items));
+				};
+				auto v = std::make_shared<sc::Value>();
+				v->kind = sc::Value::Kind::Struct;
+				v->members = { { "xMin", sc::MakeNumber(sc::NumberText(c.xMin, true)) }, { "xMax", sc::MakeNumber(sc::NumberText(c.xMax, true)) },
+							   { "yMin", sc::MakeNumber(sc::NumberText(c.yMin, true)) }, { "yMax", sc::MakeNumber(sc::NumberText(c.yMax, true)) },
+							   { "X", list(c.x) }, { "Y", list(c.y) }, { "Y2", list(c.y2) } };
+				return v;
 			}
 
 			// One value as update_field lines: compound values one line per part.
@@ -2226,9 +3068,10 @@ namespace attrib::nfsms
 				auto line = [&](std::vector<std::string> ps, const std::string& val)
 				{
 					std::string s = head + " " + field;
+					wideValue_.reset();
 					if (vltWords(field, ps)) s = "update_collection" + s.substr(std::strlen("update_field"));
 					for (const std::string& p : ps) s += " " + p;
-					out.push_back(s + " " + Token(val));
+					out.push_back(s + " " + Token(wideValue_ ? *wideValue_ : val));
 				};
 				using VK = sc::Value::Kind;
 				switch (v.kind)
@@ -2340,21 +3183,62 @@ namespace attrib::nfsms
 
 			const Database& db_;
 			const PropertyNames* names_;
+			const bool vltEd_; // NFS-VltEd's form (FromStatements)
+			const Database* before_; // the database the statements change (FromStatements)
 			const sc::Target* target_ = nullptr;
+			// The value an NFS-VltEd word wider than our member has now (vltWords, vltEd_).
+			mutable std::optional<std::string> wideValue_;
+			bool inCurve_ = false;
+
+			// The curve a path leads into (or is), as a path.
+			std::optional<sc::FieldPath> curveRoot(const sc::Target& t, const sc::FieldPath& path) const
+			{
+				const ClassDef* k = db_.findClass(KeyOf(nameOf(t.cls)));
+				Collection* x = k ? const_cast<Database&>(db_).findCollection(k->key, KeyOf(nameOf(t.name))) : nullptr;
+				if (!x) return std::nullopt;
+				for (size_t n = path.steps.size() + 1; n-- > 0;)
+				{
+					sc::FieldPath p = path;
+					p.field = nameOf(path.field);
+					p.steps.resize(n);
+					try
+					{
+						if (sc::TypeAt(const_cast<Database&>(db_), *x, p).kind == TypeKind::Curve) return p;
+					}
+					catch (const std::exception&)
+					{
+					}
+				}
+				return std::nullopt;
+			}
 			// In the body of a node add_node or copy_node makes, and the fields it
 			// has besides its layout's (added, or copied from the source).
 			bool newNode_ = false;
 			std::set<uint32_t> added_;
+			std::set<std::pair<const Collection*, uint32_t>> whole_; // arrays written whole for a `remove`
+
+			// The length of the target's array in the field now (0 without a value).
+			uint32_t lengthNow(const sc::Target& t, const FieldDef& f) const
+			{
+				const ClassDef* k = db_.findClass(KeyOf(nameOf(t.cls)));
+				const Collection* x = k ? db_.findCollection(k->key, KeyOf(nameOf(t.name))) : nullptr;
+				const Attribute* a = x ? x->resolve(f.key) : nullptr;
+				return a ? a->count : 0;
+			}
 		};
 
 	} // namespace
 
 	std::vector<std::string> FromStatements(const Database& db, const std::vector<script::Statement>& statements,
-											const PropertyNames* names)
+											const PropertyNames* names, bool vltEd, const Database* before)
 	{
-		Writer w(db, names);
+		Writer w(db, names, vltEd, before);
 		w.statements(statements);
-		return w.out;
+		// A word over several members comes once for each of them: one line.
+		std::vector<std::string> out;
+		for (std::string& l : w.out)
+			if (out.empty() || out.back() != l || l.empty() || l[0] == '#') out.push_back(std::move(l));
+		return out;
 	}
 
 } // namespace attrib::nfsms

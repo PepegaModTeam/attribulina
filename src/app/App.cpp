@@ -213,6 +213,7 @@ namespace app
 			else if (k == "WindowPlacement") self->settings_.windowPlacement = v;
 			else if (k == "NfsmsFollow") self->nfsmsFollow_ = v == "1";
 			else if (k == "NfsmsStrict") self->nfsmsStrict_ = v == "1";
+			else if (k == "NfsmsVltEd") self->nfsmsVltEd_ = v == "1";
 			else if (k == "RecordScript") self->recordAmod_ = v == "1";
 			else if (k == "RecordNfsms") self->recordNfsms_ = v == "1";
 			else if (k == "OpenPanels") self->setOpenPanels(v);
@@ -231,8 +232,8 @@ namespace app
 			out->appendf("ArraysPastLimit=%d\n", self->arraysPastLimit_ ? 1 : 0);
 			out->appendf("SaveOnlyChanged=%d\n", self->saveOnlyChanged_ ? 1 : 0);
 			out->appendf("OpenPanels=%s\n", self->openPanels().c_str());
-			out->appendf("NfsmsFollow=%d\nNfsmsStrict=%d\nRecordScript=%d\nRecordNfsms=%d\n", self->nfsmsFollow_ ? 1 : 0,
-				self->nfsmsStrict_ ? 1 : 0, self->recordAmod_ ? 1 : 0, self->recordNfsms_ ? 1 : 0);
+			out->appendf("NfsmsFollow=%d\nNfsmsStrict=%d\nNfsmsVltEd=%d\nRecordScript=%d\nRecordNfsms=%d\n", self->nfsmsFollow_ ? 1 : 0,
+				self->nfsmsStrict_ ? 1 : 0, self->nfsmsVltEd_ ? 1 : 0, self->recordAmod_ ? 1 : 0, self->recordNfsms_ ? 1 : 0);
 			if (!self->settings_.windowPlacement.empty()) out->appendf("WindowPlacement=%s\n", self->settings_.windowPlacement.c_str());
 			for (const auto& [name, colour] : self->prefs_.colour)
 				out->appendf("%s=%s\n", colour ? "ShowAsColour" : "ShowAsNumbers", name.c_str());

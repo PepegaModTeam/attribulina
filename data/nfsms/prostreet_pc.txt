@@ -15,7 +15,7 @@
 # game <code>
 # type <AttribSys type name>      Attrib::StringKey(MODEL): a StringKey field named MODEL
 #   single                        one property: NFS-VltEd ignores the word after the field
-#   <word> <offset> [<path>] [list <element words>]
+#   <word> <offset> :<type> [<path>] [list <element words>]
 # end
 #
 # <path>: member names joined with ".", [i] for an element of an inline array, down
@@ -25,6 +25,14 @@
 # word's members have nothing in common but the value itself, or the type has no
 # struct in our schema (enums, vectors, simple values), where the offset is the same
 # on every platform.
+#
+# <type>: what NFS-VltEd itself reads and writes at the offset, which its NFS-VltEd
+# compatible reading uses (doc/nfsms.md): u8, i8, u16, i16, u32, i32, u64, i64, f32,
+# f64, bool8 (a byte, 1 is true), bool32; then /key (a name, hashed with
+# StringHash32; 0x and 8 hex digits is the number), /binkey (a decimal number is
+# itself, else bStringHash), /key64 or /hex (0x hex or decimal). i32>f32: the file
+# holds an i32 that NFS-VltEd shows as a float. A list word has the list's kind
+# (f32list, keylist, refspeclist, ...), string a char* and blob a size and pointer.
 #
 # The comments give where each class was read and how sure the game assignment is:
 # "read" means registered for Pro Street or for every game, or in a compiled array
@@ -41,30 +49,30 @@ game PS
 type AICollisionReactionRecord
   # A/_001D_0019.cs
   # read (registered for ALL; registry line 184)
-  Goal 0 Goal
-  ClassKey 4 Reaction.mClassKey
-  DefinitionKey 8 Reaction.mCollectionKey
+  Goal 0 :u32 Goal
+  ClassKey 4 :u32/key Reaction.mClassKey
+  DefinitionKey 8 :u32/key Reaction.mCollectionKey
 end
 
 type Attrib::Blob
   # A/_0012_0012.cs
   # inferred (game list is a static array (_001A/4); MW,C,PS,UC: its field and _000D/4 after it sort between _000D/3 (UC,W,WB) and _001D/3 (MW,C,PS), where only MW,C,PS,UC and C,UC,W,WB do; registry line 753)
   single
-  Blob 0  # mSize,mData
+  Blob 0 :blob  # mSize,mData
 end
 
 type Attrib::RefSpec
   # A/_0010_0012.cs
   # read (registered for ALL; registry line 169)
-  Class 0 mClassKey
-  Collection 4 mCollectionKey
+  Class 0 :u32/key mClassKey
+  Collection 4 :u32/key mCollectionKey
 end
 
 type Attrib::StringKey
   # A/_0001_0012.cs
   # inferred (game list is a static array (_000D/5); C,PS,UC,W,WB: the complement of the MW-only ControllerDataRecord/JunkmanMod/StringKey classes; fits the SHA-1 order; registry line 87)
   single
-  Value 4 mString
+  Value 4 :string mString
   # note: the hash at 0 is recomputed from the text when written.
 end
 
@@ -73,192 +81,192 @@ type Attrib::Types::Colour
   # no struct of this name in our schema (database kind: colour)
   # read (registered for PS; registry line 316)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type Attrib::Types::FloatColour
   # A/_0015_0012.cs
   # no struct of this name in our schema (database kind: float colour)
   # inferred (game list is a static array (_0013/4); PS,UC,W,WB: only these games have its types; fits the SHA-1 order; registry line 841)
-  R 0
-  G 4
-  B 8
-  A 12
+  R 0 :f32
+  G 4 :f32
+  B 8 :f32
+  A 12 :f32
 end
 
 type Attrib::Types::Matrix
   # A/_000F_0012.cs
   # no struct of this name in our schema (database kind: matrix)
   # read (registered for ALL; registry line 172)
-  M[1,1] 0
-  M[1,2] 4
-  M[1,3] 8
-  M[1,4] 12
-  M[2,1] 16
-  M[2,2] 20
-  M[2,3] 24
-  M[2,4] 28
-  M[3,1] 32
-  M[3,2] 36
-  M[3,3] 40
-  M[3,4] 44
-  M[4,1] 48
-  M[4,2] 52
-  M[4,3] 56
-  M[4,4] 60
+  M[1,1] 0 :f32
+  M[1,2] 4 :f32
+  M[1,3] 8 :f32
+  M[1,4] 12 :f32
+  M[2,1] 16 :f32
+  M[2,2] 20 :f32
+  M[2,3] 24 :f32
+  M[2,4] 28 :f32
+  M[3,1] 32 :f32
+  M[3,2] 36 :f32
+  M[3,3] 40 :f32
+  M[3,4] 44 :f32
+  M[4,1] 48 :f32
+  M[4,2] 52 :f32
+  M[4,3] 56 :f32
+  M[4,4] 60 :f32
 end
 
 type Attrib::Types::Vector2
   # A/_0009_001B.cs
   # no struct of this name in our schema (database kind: vector2)
   # read (registered for ALL; registry line 175)
-  X 0
-  Y 4
+  X 0 :f32
+  Y 4 :f32
 end
 
 type Attrib::Types::Vector3
   # A/_001A_001B.cs
   # no struct of this name in our schema (database kind: vector3)
   # read (registered for ALL; registry line 178)
-  X 0
-  Y 4
-  Z 8
+  X 0 :f32
+  Y 4 :f32
+  Z 8 :f32
 end
 
 type Attrib::Types::Vector4
   # A/_000D_001B.cs
   # no struct of this name in our schema (database kind: vector4)
   # read (registered for ALL; registry line 181)
-  X 0
-  Y 4
-  Z 8
-  W 12
+  X 0 :f32
+  Y 4 :f32
+  Z 8 :f32
+  W 12 :f32
 end
 
 type AUDENGLOOPVOLUMESst
   # A/_0016_0006.cs
   # inferred (game list is a static array (_0005/4); C,PS,W,WB: only these games have its types; fits the SHA-1 order; registry line 845)
-  IDLE_VOL 0 IDLE_VOL
-  CRZ_LOW_VOL 4 CRZ_LOW_VOL
-  CRZ_MED_VOL 8 CRZ_MED_VOL
-  CRZ_HI_VOL 12 CRZ_HI_VOL
-  LD_LOW_VOL 16 LD_LOW_VOL
-  LD_MED_VOL 20 LD_MED_VOL
-  LD_HI_VOL 24 LD_HI_VOL
-  REVLMT_VOL 28 REVLMT_VOL
+  IDLE_VOL 0 :i32 IDLE_VOL
+  CRZ_LOW_VOL 4 :i32 CRZ_LOW_VOL
+  CRZ_MED_VOL 8 :i32 CRZ_MED_VOL
+  CRZ_HI_VOL 12 :i32 CRZ_HI_VOL
+  LD_LOW_VOL 16 :i32 LD_LOW_VOL
+  LD_MED_VOL 20 :i32 LD_MED_VOL
+  LD_HI_VOL 24 :i32 LD_HI_VOL
+  REVLMT_VOL 28 :i32 REVLMT_VOL
 end
 
 type AUDENGRPMRANGEst
   # A/_0003_0006.cs
   # inferred (game list is a static array (_0005/4); C,PS,W,WB: only these games have its types; fits the SHA-1 order; registry line 849)
-  IDLE_RPM 0 IDLE_RPM
-  CRZ_LO_RPM 4 CRZ_LO_RPM
-  CRZ_MED_RPM 8 CRZ_MED_RPM
-  CRZ_HI_RPM 12 CRZ_HI_RPM
-  LD_LOW_RPM 16 LD_LOW_RPM
-  LD_MED_RPM 20 LD_MED_RPM
-  LD_HI_RPM 24 LD_HI_RPM
-  REVLMT_RPM 28 REVLMT_RPM
+  IDLE_RPM 0 :i32 IDLE_RPM
+  CRZ_LO_RPM 4 :i32 CRZ_LO_RPM
+  CRZ_MED_RPM 8 :i32 CRZ_MED_RPM
+  CRZ_HI_RPM 12 :i32 CRZ_HI_RPM
+  LD_LOW_RPM 16 :i32 LD_LOW_RPM
+  LD_MED_RPM 20 :i32 LD_MED_RPM
+  LD_HI_RPM 24 :i32 LD_HI_RPM
+  REVLMT_RPM 28 :i32 REVLMT_RPM
 end
 
 type Audio::CornerType
   # A/_001B_001B.cs
   # read (registered for PS; registry line 319)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type Audio::State
   # A/_000C_001B.cs
   # read (registered for PS; registry line 322)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type AxlePair
   # A/_0017_0012.cs
   # read (registered for ALL; registry line 187)
-  Front 0 Front
-  Rear 4 Rear
+  Front 0 :f32 Front
+  Rear 4 :f32 Rear
 end
 
 type BluePrintType
   # A/_0015_000F.cs
   # read (registered for PS,UC; registry line 669)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type CameraReactionRecord
   # A/_0003_0019.cs
   # read (registered for PS,UC; registry line 673)
-  Type 0 Type
-  InputMin 4 InputMin
-  ValueMin1 8 ValueMin[0]
-  ValueMin2 12 ValueMin[1]
-  InputMax 16 InputMax
-  ValueMax1 20 ValueMax[0]
-  ValueMax2 24 ValueMax[1]
+  Type 0 :u32 Type
+  InputMin 4 :f32 InputMin
+  ValueMin1 8 :f32 ValueMin[0]
+  ValueMin2 12 :f32 ValueMin[1]
+  InputMax 16 :f32 InputMax
+  ValueMax1 20 :f32 ValueMax[0]
+  ValueMax2 24 :f32 ValueMax[1]
 end
 
 type CameraSpeedReactionRecord
   # A/_001C_0019.cs
   # read (registered for PS,UC; registry line 677)
-  SpeedMin 0 SpeedMin
-  ValueMin 4 ValueMin
-  SpeedMax 8 SpeedMax
-  ValueMax 12 ValueMax
+  SpeedMin 0 :f32 SpeedMin
+  ValueMin 4 :f32 ValueMin
+  SpeedMax 8 :f32 SpeedMax
+  ValueMax 12 :f32 ValueMax
 end
 
 type CAR_SLOT_ID
   # A/_0006_000F.cs
   # inferred (game list is a static array (_0013/4); PS,UC,W,WB: only these games have its types; fits the SHA-1 order; registry line 853)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type CarBodyMotion
   # A/_001B_0012.cs
   # read (registered for ALL; registry line 190)
-  DegPerG 0 DegPerG
-  DegPerSec 4 MaxGs
-  MaxG 8 DegPerSec
+  DegPerG 0 :f32 DegPerG
+  DegPerSec 4 :f32 MaxGs
+  MaxG 8 :f32 DegPerSec
   # note: the game's order is DegPerG, MaxGs, DegPerSec (PS, UC, MW and Carbon headers alike). NFS-VltEd declares DegPerG, DegPerSec, MaxG and its setters are proxies, so the decompilation can't show whether DegPerSec lands at 4 or 8. Taken in declaration order here; may be swapped.
 end
 
 type CCarDamageLevels
   # A/_0015_0019.cs
   # read (registered for PS,UC; registry line 681)
-  Speed0 0 speed0
-  Speed1 4 speed1
-  Speed2 8 speed2
-  Influence 12 influence
-  LightCrack 16 lightcrack
-  LightShatter 20 lightshatter
-  WindowCrack 24 windowcrack
-  WindowShatter 28 windowshatter
+  Speed0 0 :f32 speed0
+  Speed1 4 :f32 speed1
+  Speed2 8 :f32 speed2
+  Influence 12 :f32 influence
+  LightCrack 16 :f32 lightcrack
+  LightShatter 20 :f32 lightshatter
+  WindowCrack 24 :f32 windowcrack
+  WindowShatter 28 :f32 windowshatter
 end
 
 type CCarDamageThreshold
   # A/_0019_0019.cs
   # read (registered for PS,UC; registry line 685)
-  Threshold0 0 threshold0
-  Threshold1 4 threshold1
-  Threshold2 8 threshold2
-  Threshold3 12 threshold3
-  DeltaThreshold0 16 deltaThreshold0
-  DeltaThreshold1 20 deltaThreshold1
-  DeltaThreshold2 24 deltaThreshold2
-  DeltaThreshold3 28 deltaThreshold3
+  Threshold0 0 :f32 threshold0
+  Threshold1 4 :f32 threshold1
+  Threshold2 8 :f32 threshold2
+  Threshold3 12 :f32 threshold3
+  DeltaThreshold0 16 :f32 deltaThreshold0
+  DeltaThreshold1 20 :f32 deltaThreshold1
+  DeltaThreshold2 24 :f32 deltaThreshold2
+  DeltaThreshold3 28 :f32 deltaThreshold3
 end
 
 type CCarKitSlotEntry
   # A/_0017_0019.cs
   # read (registered for PS,UC; registry line 689)
-  Group 0 part.mClassKey
-  Name 4 part.mCollectionKey
-  Value 8 part.mCollectionPtr
-  Type 12 slotName
+  Group 0 :u32/key part.mClassKey
+  Name 4 :u32/key part.mCollectionKey
+  Value 8 :u32 part.mCollectionPtr
+  Type 12 :string slotName
   # note: out of declaration order: Value1 read before Value4
   # note: out of declaration order: Value2 read before Value4
   # note: out of declaration order: Value3 read before Value4
@@ -268,126 +276,126 @@ end
 type CCarSlotEntry
   # A/_0007_0006.cs
   # read (registered for PS,UC; registry line 693)
-  Parts 0 parts list Group Name Value  # parts.mArray,parts.mLength
-  Type 8 slotName
+  Parts 0 :refspeclist parts list Group Name Value  # parts.mArray,parts.mLength
+  Type 8 :string slotName
 end
 
 type CollisionReactionRecord
   # A/_0012_0019.cs
   # inferred (game list is a static array (_0009/5); MW,C,PS,W,WB: the complement of the UC-only CollisionReactionRecord class; fits the SHA-1 order; registry line 43)
-  Elasticity 0 Elasticity
-  RollHeight 4 RollHeight
-  WeightBias 8 WeightBias
-  MassScale 12 MassScale
-  StunSpeed 16 StunSpeed
-  StunTime 20 StunTime
+  Elasticity 0 :f32 Elasticity
+  RollHeight 4 :f32 RollHeight
+  WeightBias 8 :f32 WeightBias
+  MassScale 12 :f32 MassScale
+  StunSpeed 16 :u32>f32 StunSpeed
+  StunTime 20 :u32>f32 StunTime
 end
 
 type COLLISIONSFX_LAYERS
   # A/_0019_000F.cs
   # inferred (game list is a static array (_0013/4); PS,UC,W,WB: only these games have its types; fits the SHA-1 order; registry line 857)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type CollisionStream
   # A/_001C_0006.cs
   # read (game list is a static array (_001D/3); MW,C,PS: the same 12 bytes are the message box's Abort, Retry, Ignore buttons (DialogResult 3, 4, 5; A/_0008.cs:96); registry line 861)
-  1 0 StreamMoment.mClassKey
-  2 4 StreamMoment.mCollectionKey
-  3 8 StreamMoment.mCollectionPtr
-  4 12 Threshold
+  1 0 :u32/key StreamMoment.mClassKey
+  2 4 :u32/key StreamMoment.mCollectionKey
+  3 8 :i32 StreamMoment.mCollectionPtr
+  4 12 :i32 Threshold
 end
 
 type ControllerDataRecord
   # A/_001B_0019.cs
   # inferred (game list is a static array (_000D/5); C,PS,UC,W,WB: the complement of the MW-only ControllerDataRecord/JunkmanMod/StringKey classes; fits the SHA-1 order; registry line 50)
-  DeviceName 4 mDeviceID.mString
-  UpdateType 8 mUpdateType
-  LowerDZ 12 mLowerDZ
-  UpperDZ 16 mUpperDZ
+  DeviceName 4 :string mDeviceID.mString
+  UpdateType 8 :u32 mUpdateType
+  LowerDZ 12 :f32 mLowerDZ
+  UpperDZ 16 :f32 mUpperDZ
 end
 
 type CPartsPackageEntry
   # A/_000F_0019.cs
   # read (registered for PS,UC; registry line 697)
-  PartClass 0 part.mClassKey
-  PartCollection 4 part.mCollectionKey
-  KitNumber 12 kitNum
+  PartClass 0 :u32/key part.mClassKey
+  PartCollection 4 :u32/key part.mCollectionKey
+  KitNumber 12 :u32 kitNum
 end
 
 type Csis::Type_CarTypeA
   # A/_0017_000F.cs
   # read (registered for PS; registry line 325)
   single
-  Value 0
+  Value 0 :u32/hex
 end
 
 type Csis::Type_CarTypeB
   # A/_0012_000F.cs
   # read (registered for PS; registry line 328)
   single
-  Value 0
+  Value 0 :u32/hex
 end
 
 type Csis::Type_CarTypeC
   # A/_001B_000F.cs
   # read (registered for PS; registry line 331)
   single
-  Value 0
+  Value 0 :u32/hex
 end
 
 type Csis::Type_FishOutOfWater
   # A/_000C_000F.cs
   # read (registered for PS; registry line 334)
   single
-  Value 0
+  Value 0 :u32/hex
 end
 
 type Csis::Type_SameMake
   # A/_0008_000F.cs
   # read (registered for PS; registry line 337)
   single
-  Value 0
+  Value 0 :u32/hex
 end
 
 type Curve
   # A/_0008_0015.cs
   # read (registered for PS; registry line 39)
-  MinX 0 xMin
-  MaxX 4 xMax
-  MinY 8 yMin
-  MaxY 12 yMax
-  XValues 16 X list Value  # X.mArray,X.mLength
-  YValues 24 Y list Value  # Y.mArray,Y.mLength
-  Y2Values 32 Y2 list Value  # Y2.mArray,Y2.mLength
-  AllocatedMemory 40 allocatedMemory
+  MinX 0 :f32 xMin
+  MaxX 4 :f32 xMax
+  MinY 8 :f32 yMin
+  MaxY 12 :f32 yMax
+  XValues 16 :f32list X list Value  # X.mArray,X.mLength
+  YValues 24 :f32list Y list Value  # Y.mArray,Y.mLength
+  Y2Values 32 :f32list Y2 list Value  # Y2.mArray,Y2.mLength
+  AllocatedMemory 40 :u32 allocatedMemory
   # note: no GraphScale: that is A/_0019_0012.cs, registered for UC/W/WB. update_collection <class> <node> TORQUE YValues 6 Value 0.98 sets element 6 of Y. That the list property yields its Items list is inferred (the property iterator isn't in the decompilation; A/_000C_0001.cs:290-298 needs an IList).
 end
 
 type DamageScaleRecord
   # A/_0001_0019.cs
   # read (registered for ALL; registry line 199)
-  VisualScale 0 VisualScale
-  HitPointScale 4 HitPointScale
+  VisualScale 0 :f32 VisualScale
+  HitPointScale 4 :f32 HitPointScale
 end
 
 type DefinitionKey
   # A/_000C_0012.cs
   # read (registered for PS; registry line 340)
   single
-  Value 0 mKey
+  Value 0 :u32/key mKey
 end
 
 type DriverAssistLevelValues
   # A/_0014_0006.cs
   # read (registered for PS; registry line 346)
-  1 0 TractionControlLevel
-  2 4 AntilockBrakeLevel
-  3 8 StabilityControlLevel
-  4 12 RaceLineAssist
-  5 16 BrakingAssist
-  6 20 DriftAssist
+  1 0 :i32 TractionControlLevel
+  2 4 :i32 AntilockBrakeLevel
+  3 8 :i32 StabilityControlLevel
+  4 12 :i32 RaceLineAssist
+  5 16 :i32 BrakingAssist
+  6 20 :i32 DriftAssist
 end
 
 type EA::Reflection::Bool
@@ -395,7 +403,7 @@ type EA::Reflection::Bool
   # no struct of this name in our schema (database kind: bool)
   # read (registered for ALL; registry line 136)
   single
-  Value 0
+  Value 0 :bool8
 end
 
 type EA::Reflection::Double
@@ -403,7 +411,7 @@ type EA::Reflection::Double
   # no struct of this name in our schema (database kind: double)
   # read (registered for ALL; registry line 163)
   single
-  Value 0
+  Value 0 :f64
 end
 
 type EA::Reflection::Float
@@ -411,7 +419,7 @@ type EA::Reflection::Float
   # no struct of this name in our schema (database kind: float)
   # read (registered for ALL; registry line 139)
   single
-  Value 0
+  Value 0 :f32
 end
 
 type EA::Reflection::Int16
@@ -419,7 +427,7 @@ type EA::Reflection::Int16
   # no struct of this name in our schema (database kind: int16)
   # read (registered for ALL; registry line 142)
   single
-  Value 0
+  Value 0 :i16
 end
 
 type EA::Reflection::Int32
@@ -427,7 +435,7 @@ type EA::Reflection::Int32
   # no struct of this name in our schema (database kind: int32)
   # read (registered for ALL; registry line 145)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type EA::Reflection::Int64
@@ -435,7 +443,7 @@ type EA::Reflection::Int64
   # no struct of this name in our schema (database kind: int64)
   # read (registered for ALL; registry line 166)
   single
-  Value 0
+  Value 0 :i64
 end
 
 type EA::Reflection::Int8
@@ -443,7 +451,7 @@ type EA::Reflection::Int8
   # no struct of this name in our schema (database kind: int8)
   # read (registered for ALL; registry line 148)
   single
-  Value 0
+  Value 0 :i8
 end
 
 type EA::Reflection::Text
@@ -451,7 +459,7 @@ type EA::Reflection::Text
   # no struct of this name in our schema (database kind: text)
   # read (registered for ALL; registry line 151)
   single
-  Value 0
+  Value 0 :string
 end
 
 type EA::Reflection::UInt16
@@ -459,7 +467,7 @@ type EA::Reflection::UInt16
   # no struct of this name in our schema (database kind: uint16)
   # read (registered for ALL; registry line 154)
   single
-  Value 0
+  Value 0 :u16
 end
 
 type EA::Reflection::UInt32
@@ -467,7 +475,7 @@ type EA::Reflection::UInt32
   # no struct of this name in our schema (database kind: uint32)
   # read (registered for ALL; registry line 157)
   single
-  Value 0
+  Value 0 :u32
 end
 
 type EA::Reflection::UInt8
@@ -475,241 +483,241 @@ type EA::Reflection::UInt8
   # no struct of this name in our schema (database kind: uint8)
   # read (registered for ALL; registry line 160)
   single
-  Value 0
+  Value 0 :u8
 end
 
 type EAIBreakerType
   # A/_000F_000F.cs
   # inferred (game list is a static array (_000D/5); C,PS,UC,W,WB: the complement of the MW-only ControllerDataRecord/JunkmanMod/StringKey classes; fits the SHA-1 order; registry line 881)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type eControllerHudType
   # A/_0020_0008.cs
   # inferred (game list is a static array (_0009/4); C,PS,UC,WB: its field sorts between _0011/5 (MW,C,PS,UC,WB) and _000D/3 (UC,W,WB), where the 4-game lists are C,PS,UC,WB and MW,UC,W,WB, and MW has none of its types; registry line 885)
   single
-  Value 0
+  Value 0 :u32/hex
 end
 
 type eControllerTypeMask
   # A/_0011_000F.cs
   # inferred (game list is a static array (_0009/4); C,PS,UC,WB: its field sorts between _0011/5 (MW,C,PS,UC,WB) and _000D/3 (UC,W,WB), where the 4-game lists are C,PS,UC,WB and MW,UC,W,WB, and MW has none of its types; registry line 889)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type eDecalType
   # A/_0009_000F.cs
   # inferred (game list is a static array (_0013/4); PS,UC,W,WB: only these games have its types; fits the SHA-1 order; registry line 893)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type eDRIVE_BY_TYPE
   # A/_001A_000F.cs
   # read (registered for ALL; registry line 202)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type eENGINE_GROUP
   # A/_000D_000F.cs
   # inferred (game list is a static array (_0009/5); MW,C,PS,W,WB: the complement of the UC-only CollisionReactionRecord class; fits the SHA-1 order; registry line 897)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type EffectLinkageRecord
   # A/_0018_0015.cs
   # read (game list is a static array (_001D/3); MW,C,PS: the same 12 bytes are the message box's Abort, Retry, Ignore buttons (DialogResult 3, 4, 5; A/_0008.cs:96); registry line 83)
-  SurfaceClassKey 0 mSurface.mClassKey
-  SurfaceCollectionKey 4 mSurface.mCollectionKey
-  EffectClassKey 12 mEffect.mClassKey
-  EffectCollectionKey 16 mEffect.mCollectionKey
-  MinSpeed 24 mMinSpeed
-  MaxSpeed 28 mMaxSpeed
+  SurfaceClassKey 0 :u32/key mSurface.mClassKey
+  SurfaceCollectionKey 4 :u32/key mSurface.mCollectionKey
+  EffectClassKey 12 :u32/key mEffect.mClassKey
+  EffectCollectionKey 16 :u32/key mEffect.mCollectionKey
+  MinSpeed 24 :f32 mMinSpeed
+  MaxSpeed 28 :f32 mMaxSpeed
 end
 
 type EffectParticleConstraint
   # A/_0010_000F.cs
   # read (registered for ALL; registry line 205)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type eLiveryID
   # A/_001D_000F.cs
   # read (registered for PS,UC; registry line 709)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type EmittedGeometryRecord
   # A/_000A_0019.cs
   # inferred (game list is a static array (_000D/5); C,PS,UC,W,WB: the complement of the MW-only ControllerDataRecord/JunkmanMod/StringKey classes; fits the SHA-1 order; registry line 901)
-  1 0 mEnum
-  2 4 mIndex
+  1 0 :u32/hex mEnum
+  2 4 :i32 mIndex
 end
 
 type EmitterPostProcessingEffect
   # A/_0001_000F.cs
   # read (registered for PS,UC; registry line 705)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type EngineLFOParams
   # A/_0020_0019.cs
   # inferred (game list is a static array (_0009/3); its field sorts before _0011/5 (MW,C,PS,UC,WB); of the lists that do, PS,W,WB and PS,UC,W name only games that have EngineLFOParams (PS,UC,W alone if _0011/3 is the message box's OK, Yes, Retry); both with PS; registry line 905)
-  FrequencyStart 0 frequency_start
-  FrequencyEnd 4 frequency_end
-  RpmAmplitude 8 RPM_amplitude
-  VolumeAmplitude 12 vol_amplitude
-  Lifespan 16 lifespan
+  FrequencyStart 0 :f32 frequency_start
+  FrequencyEnd 4 :f32 frequency_end
+  RpmAmplitude 8 :f32 RPM_amplitude
+  VolumeAmplitude 12 :f32 vol_amplitude
+  Lifespan 16 :f32 lifespan
 end
 
 type EnginePosition
   # A/_0007_000F.cs
   # read (registered for PS; registry line 343)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type ePackageType
   # A/_0013_000F.cs
   # read (registered for PS,UC; registry line 701)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type ePresetCarFilter
   # A/_000E_000F.cs
   # inferred (game list is a static array (_0009/4); C,PS,UC,WB: its field sorts between _0011/5 (MW,C,PS,UC,WB) and _000D/3 (UC,W,WB), where the 4-game lists are C,PS,UC,WB and MW,UC,W,WB, and MW has none of its types; registry line 909)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type ePS_NIS_en_index
   # A/_0005_000F.cs
   # read (registered for PS; registry line 241)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type eRewardCardArea
   # A/_000B_000F.cs
   # inferred (game list is a static array (_0013/3); C,PS,UC: only these games have the eRewardCard* types; fits the SHA-1 order; registry line 757)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type eRewardCardConditionModifyer
   # A/_001F_000F.cs
   # inferred (game list is a static array (_0013/3); C,PS,UC: only these games have the eRewardCard* types; fits the SHA-1 order; registry line 761)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type eRewardCardConditions
   # A/_0002_000F.cs
   # inferred (game list is a static array (_0013/3); C,PS,UC: only these games have the eRewardCard* types; fits the SHA-1 order; registry line 765)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type eRewardCardDifficulty
   # A/_0018_000F.cs
   # inferred (game list is a static array (_0013/3); C,PS,UC: only these games have the eRewardCard* types; fits the SHA-1 order; registry line 769)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type eRewardCardOnlineStat
   # A/_001E_000F.cs
   # inferred (game list is a static array (_0013/3); C,PS,UC: only these games have the eRewardCard* types; fits the SHA-1 order; registry line 773)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type eRewardCardUnit
   # A/_0016_000F.cs
   # inferred (game list is a static array (_0013/3); C,PS,UC: only these games have the eRewardCard* types; fits the SHA-1 order; registry line 777)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type eSkyStyle
   # A/_0003_000F.cs
   # read (registered for PS,UC; registry line 713)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type eSongPlayability
   # A/_001C_000F.cs
   # inferred (game list is a static array (_001F/3); C,PS,WB: its field and _0002/3 after it sort between _001D/5 (MW,C,UC,W,WB) and _0005/4 (C,PS,W,WB), where only C,PS,WB and MW,C,W do; registry line 921)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type eTURN_DIRECTION
   # A/_0008_001B.cs
   # read (registered for PS; registry line 235)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type eTURN_INDICATORS
   # A/_000F_001B.cs
   # read (registered for PS; registry line 238)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type eUnlockableEntity
   # A/_0017_000C.cs
   # inferred (game list is a static array (_000E/4); MW,C,PS,WB: the only 4-game list whose SHA-1 sorts between _000D/5 (C,PS,UC,W,WB) and _001D/5 (MW,C,UC,W,WB), as its field does; registry line 925)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type eVOL_MOMENT
   # A/_0004_000F.cs
   # inferred (game list is a static array (_0009/5); MW,C,PS,W,WB: the complement of the UC-only CollisionReactionRecord class; fits the SHA-1 order; registry line 929)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type FEMsgToSoundTrigger
   # A/_0009_0017.cs
   # inferred (game list is a static array (_000D/5); C,PS,UC,W,WB: the complement of the MW-only ControllerDataRecord/JunkmanMod/StringKey classes; fits the SHA-1 order; registry line 937)
-  1 0 FEngMsg.hash
-  2 4 SoundTrigger
+  1 0 :u32/key FEngMsg.hash
+  2 4 :u32 SoundTrigger
 end
 
 type FEPartCamera
   # A/_0016_0015.cs
   # read (registered for PS; registry line 108)
-  SlotName 0 SlotName
-  CameraClassKey 4 Camera.mClassKey
-  CameraCollectionKey 8 Camera.mCollectionKey
+  SlotName 0 :string SlotName
+  CameraClassKey 4 :u32/key Camera.mClassKey
+  CameraCollectionKey 8 :u32/key Camera.mCollectionKey
 end
 
 type FEPartData
   # A/_000D_0017.cs
   # read (registered for PS; registry line 358)
-  HAL_ID 0 HAL_ID.hash
-  CF_HAL_ID 4 CF_HAL_ID.hash
-  Price 8 price
-  4 12  # tier,drift,drag,grip
-  5 16 speed
-  6 20 BrandHALId.hash
-  7 24 LogoTextureId.hash
-  9 32 autosculptCamera1 list Value
-  10 36 autosculptCamera2 list Value
-  11 40 autosculptCamera3 list Value
-  12 44 DetailHash.hash
+  HAL_ID 0 :u32/hex HAL_ID.hash
+  CF_HAL_ID 4 :u32/hex CF_HAL_ID.hash
+  Price 8 :i32 price
+  4 12 :i32  # tier,drift,drag,grip
+  5 16 :i32 speed
+  6 20 :i32 BrandHALId.hash
+  7 24 :u32/hex LogoTextureId.hash
+  9 32 :keylist autosculptCamera1 list Value
+  10 36 :keylist autosculptCamera2 list Value
+  11 40 :keylist autosculptCamera3 list Value
+  12 44 :i32 DetailHash.hash
   # 13 48: ptr2u32, not editable  # PartDetails
   # Value14 (no attribute: not a script property) 52 string (char* string pointer; property String) schema=OfferID
   # not on ps2: word 4 has no path, and drift,drag,grip are elsewhere there
@@ -720,298 +728,298 @@ end
 type FETuningSlider
   # A/_0013_0017.cs
   # read (registered for PS,UC; registry line 721)
-  Group 0 Ref.mClassKey
-  Name 4 Ref.mCollectionKey
-  3 8 Ref.mCollectionPtr
-  4 12 TitleHash.hash
-  5 16 LeftHash.hash
-  6 20 RightHash.hash
-  7 24 HelpHash.hash
+  Group 0 :u32/key Ref.mClassKey
+  Name 4 :u32/key Ref.mCollectionKey
+  3 8 :i32 Ref.mCollectionPtr
+  4 12 :u32/key TitleHash.hash
+  5 16 :u32/key LeftHash.hash
+  6 20 :u32/key RightHash.hash
+  7 24 :u32/key HelpHash.hash
 end
 
 type FEVinylRegionData
   # A/_0004_0006.cs
   # read (registered for PS; registry line 244)
-  1 0 regionHash.hash
-  Group 4 camera.mClassKey
-  Name 8 camera.mCollectionKey
-  4 12 camera.mCollectionPtr
+  1 0 :u32/key regionHash.hash
+  Group 4 :u32/key camera.mClassKey
+  Name 8 :u32/key camera.mCollectionKey
+  4 12 :u32 camera.mCollectionPtr
 end
 
 type FFBWaveRecord
   # A/_0005_0017.cs
   # read (registered for ALL; registry line 208)
-  FrequencyA 0 Frequency_A
-  AmplitudeA 4 Amplitude_A
-  OffsetA 8 Offset_A
-  ThresholdA 12 Threshold_A
-  FrequencyB 16 Frequency_B
-  AmplitudeB 20 Amplitude_B
-  OffsetB 24 Offset_B
-  ThresholdB 28 Threshold_B
+  FrequencyA 0 :f32 Frequency_A
+  AmplitudeA 4 :f32 Amplitude_A
+  OffsetA 8 :f32 Offset_A
+  ThresholdA 12 :f32 Threshold_A
+  FrequencyB 16 :f32 Frequency_B
+  AmplitudeB 20 :f32 Amplitude_B
+  OffsetB 24 :f32 Offset_B
+  ThresholdB 28 :f32 Threshold_B
 end
 
 type Gameplay::Region
   # A/_0010_001B.cs
   # read (registered for PS; registry line 247)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type GCollectionKey
   # A/_0007_0010.cs
   # inferred (game list is a static array (_001A/4); MW,C,PS,UC: its field and _000D/4 after it sort between _000D/3 (UC,W,WB) and _001D/3 (MW,C,PS), where only MW,C,PS,UC and C,UC,W,WB do; registry line 749)
   single
-  Value 0 mCollectionKey
+  Value 0 :u32/key mCollectionKey
 end
 
 type GRace::AI_AggressionLevel
   # A/_0001_001B.cs
   # read (registered for PS; registry line 250)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type GRace::AI_MistakeLevel
   # A/_0007_001B.cs
   # read (registered for PS; registry line 253)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type GRace::Behaviour
   # A/_000A_001B.cs
   # read (registered for PS; registry line 280)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type GRace::CareerElementDrawStyle
   # A/_0020_001B.cs
   # read (registered for PS; registry line 256)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type GRace::Difficulty
   # A/_0011_000C.cs
   # read (registered for PS; registry line 259)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type GRace::EventStyle
   # A/_0009_000C.cs
   # read (registered for PS; registry line 262)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type GRace::HandicapMode
   # A/_001A_000C.cs
   # read (registered for PS; registry line 265)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type GRace::Mode
   # A/_000D_000C.cs
   # read (registered for PS; registry line 268)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type GRace::OpponentGender
   # A/_001D_000C.cs
   # read (registered for PS; registry line 271)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type GRace::OpponentTeam
   # A/_0013_000C.cs
   # read (registered for PS; registry line 274)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type GRace::OpponentType
   # A/_000E_000C.cs
   # read (registered for PS; registry line 277)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type GRace::RaceCarClass
   # A/_000A_000F.cs
   # inferred (game list is a static array (_000D/5); C,PS,UC,W,WB: the complement of the MW-only ControllerDataRecord/JunkmanMod/StringKey classes; fits the SHA-1 order; registry line 953)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type GRace::RaceLigthingMode
   # A/_000B_0008.cs
   # inferred (game list is a static array (_0013/3); C,PS,UC: only these games have the eRewardCard* types; fits the SHA-1 order; registry line 781)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type GRace::ShortcutType
   # A/_001F_0008.cs
   # inferred (game list is a static array (_0013/3); C,PS,UC: only these games have the eRewardCard* types; fits the SHA-1 order; registry line 785)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type GRace::Tier
   # A/_0020_000F.cs
   # inferred (game list is a static array (_000D/5); C,PS,UC,W,WB: the complement of the MW-only ControllerDataRecord/JunkmanMod/StringKey classes; fits the SHA-1 order; registry line 957)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type GRace::Variant
   # A/_0011_0010.cs
   # read (registered for PS; registry line 301)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type GRace::WingmanShortcutTriggerHint
   # A/_0010_000C.cs
   # read (registered for C,PS; registry line 965)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type HelpBarButtonGroup
   # A/_0015_0006.cs
   # read (registered for PS; registry line 283)
-  1 0 TextureHash
-  2 4 LanguageHash.hash
-  3 8 TextSizeX
+  1 0 :u32/key TextureHash
+  2 4 :u32/key LanguageHash.hash
+  3 8 :f32/key TextSizeX
 end
 
 type Hub::HubLocation
   # A/_0005_000C.cs
   # read (registered for PS; registry line 286)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type Hub::HubType
   # A/_000B_000C.cs
   # read (registered for PS; registry line 289)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type Hub::LocationType
   # A/_001F_000C.cs
   # read (registered for PS; registry line 292)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type Hub::OrgBody
   # A/_0009_0010.cs
   # read (registered for PS; registry line 295)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type Hub::PlayType
   # A/_0002_000C.cs
   # read (registered for PS; registry line 298)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type JunkmanMod
   # A/_0008_0012.cs
   # inferred (game list is a static array (_000D/5); C,PS,UC,W,WB: the complement of the MW-only ControllerDataRecord/JunkmanMod/StringKey classes; fits the SHA-1 order; registry line 65)
-  Class 0 ClassKey
-  Definition 4 DefinitionKey
-  ScaleF 8 ScaleF
-  ScaleR 12 ScaleR
+  Class 0 :u32/key ClassKey
+  Definition 4 :u32/key DefinitionKey
+  ScaleF 8 :f32 ScaleF
+  ScaleR 12 :f32 ScaleR
 end
 
 type KIT_TYPE
   # A/_001A_0010.cs
   # read (registered for PS,UC; registry line 629)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type LightStreakSplineRecord
   # A/_0008_0006.cs
   # inferred (game list is a static array (_0005/4); C,PS,W,WB: only these games have its types; fits the SHA-1 order; registry line 981)
-  1 0 mEnum
-  2 4 mIndex
+  1 0 :u32/hex mEnum
+  2 4 :i32 mIndex
 end
 
 type MovieVolume
   # A/_001E_0017.cs
   # inferred (game list is a static array (_000D/5); C,PS,UC,W,WB: the complement of the MW-only ControllerDataRecord/JunkmanMod/StringKey classes; fits the SHA-1 order; registry line 985)
-  1 0 Name.hash
-  2 4 Volume
+  1 0 :u32/key Name.hash
+  2 4 :u32 Volume
 end
 
 type NIS::eCAR_COUNT_CATEGORY
   # A/_000D_0010.cs
   # inferred (game list is a static array (_0005/4); C,PS,W,WB: only these games have its types; fits the SHA-1 order; registry line 989)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type NIS::eMULTICLASS_GROUP
   # A/_001D_0010.cs
   # read (registered for PS; registry line 304)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type NIS::eNIS_STYLE
   # A/_0013_0010.cs
   # read (registered for PS; registry line 307)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type NIS::ePIP_EVENT_CATEGORY
   # A/_0005_0010.cs
   # inferred (game list is a static array (_0005/4); C,PS,W,WB: only these games have its types; fits the SHA-1 order; registry line 993)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type NIS::ePIPTrigger
   # A/_000E_0010.cs
   # inferred (game list is a static array (_0005/4); C,PS,W,WB: only these games have its types; fits the SHA-1 order; registry line 997)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type ParticleAnimationInfo
   # A/_0004_0017.cs
   # read (registered for ALL; registry line 193)
-  AnimType 0 AnimType
-  FPS 4 FPS
-  RandomStartFrame 5 RandomStartFrame
+  AnimType 0 :i32 AnimType
+  FPS 4 :u8 FPS
+  RandomStartFrame 5 :u8 RandomStartFrame
 end
 
 type ParticleTextureRecord
   # A/_0015_0017.cs
   # read (registered for ALL; registry line 196)
-  TextureType 0 mEnum
-  Index 4 mIndex
+  TextureType 0 :u32/binkey mEnum
+  Index 4 :u32 mIndex
 end
 
 type PartType
   # A/_000B_0010.cs
   # read (registered for PS,UC; registry line 717)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type PathEventEnum
@@ -1019,332 +1027,332 @@ type PathEventEnum
   # no struct of this name in our schema (database kind: bytes)
   # inferred (game list is a static array (_0011/5); MW,C,PS,UC,WB: the only 5-game list whose SHA-1 sorts before _000D/3 (UC,W,WB), as its field does; registry line 1001)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type PerformanceStatsRange
   # A/_0006_0017.cs
   # read (registered for PS,UC; registry line 633)
-  PerformanceType 0 mPerformanceType
-  Min 4 mMin
-  Max 8 mMax
+  PerformanceType 0 :u32 mPerformanceType
+  Min 4 :f32 mMin
+  Max 8 :f32 mMax
 end
 
 type PerformanceWeight
   # A/_0019_0017.cs
   # read (registered for PS,UC; registry line 637)
-  PerformanceType 0 mPerformanceType
-  Percentage 4 mPercentage
+  PerformanceType 0 :u32 mPerformanceType
+  Percentage 4 :f32 mPercentage
 end
 
 type PerformanceWeightWithDirection
   # A/_0017_0017.cs
   # read (registered for PS,UC; registry line 641)
-  PerformanceType 0 mPerformanceType
-  Inverse 4 mInverse
-  Percentage 8 mPercentage
+  PerformanceType 0 :u32 mPerformanceType
+  Inverse 4 :bool32 mInverse
+  Percentage 8 :f32 mPercentage
 end
 
 type Physics::ePerformanceType
   # A/_0002_0010.cs
   # read (registered for PS,UC; registry line 645)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type Physics::Info::eInductionType
   # A/_0018_0010.cs
   # read (registered for PS,UC; registry line 649)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type PhysicsTuningDescription
   # A/_0012_0017.cs
   # read (registered for PS,UC; registry line 653)
-  1 0 mPhysicsTuning.mClassKey
-  2 4 mPhysicsTuning.mCollectionKey
-  3 8 mPhysicsTuning.mCollectionPtr
-  4 12 mIncrease
+  1 0 :u32/key mPhysicsTuning.mClassKey
+  2 4 :u32/key mPhysicsTuning.mCollectionKey
+  3 8 :u32 mPhysicsTuning.mCollectionPtr
+  4 12 :u32 mIncrease
 end
 
 type PhysicsTuningPreset
   # A/_0006_0006.cs
   # read (registered for PS; registry line 310)
-  Group 0 mPhysicsTuningSlider.mClassKey
-  Name 4 mPhysicsTuningSlider.mCollectionKey
-  3 8 mPhysicsTuningSlider.mCollectionPtr
-  4 12 mCenteredAroundPreset
-  5 16 mPosition
+  Group 0 :u32/key mPhysicsTuningSlider.mClassKey
+  Name 4 :u32/key mPhysicsTuningSlider.mCollectionKey
+  3 8 :u32 mPhysicsTuningSlider.mCollectionPtr
+  4 12 :u32 mCenteredAroundPreset
+  5 16 :u32 mPosition
 end
 
 type PhysicsTuningSliderUnlock
   # A/_0019_0006.cs
   # read (registered for PS; registry line 313)
-  Group 0 mPhysicsTuningSlider.mClassKey
-  Name 4 mPhysicsTuningSlider.mCollectionKey
-  3 8 mPhysicsTuningSlider.mCollectionPtr
-  4 12 mRange
+  Group 0 :u32/key mPhysicsTuningSlider.mClassKey
+  Name 4 :u32/key mPhysicsTuningSlider.mCollectionKey
+  3 8 :f32 mPhysicsTuningSlider.mCollectionPtr
+  4 12 :f32 mRange
 end
 
 type PhysicsUpgrade
   # A/_0014_0015.cs
   # read (registered for PS; registry line 102)
-  ClassKey 0 mClassKey
-  DefinitionKey 4 mDefinitionKey
-  IsMember 8 mIsMember
-  MemberIndex 12 mMemberIndex
-  BlendingPower 16 mBlendingPower
+  ClassKey 0 :u32/key mClassKey
+  DefinitionKey 4 :u32/key mDefinitionKey
+  IsMember 8 :u32 mIsMember
+  MemberIndex 12 :u32 mMemberIndex
+  BlendingPower 16 :f32 mBlendingPower
 end
 
 type PresetRideAutosculpt
   # A/_000C_0017.cs
   # read (registered for PS; registry line 127)
-  RegionID 0 mRegionID
-  Zone1 4 mSculptZone0
-  Zone2 8 mSculptZone1
-  Zone3 12 mSculptZone2
-  Zone4 16 mSculptZone3
-  Zone5 20 mSculptZone4
-  Zone6 24 mSculptZone5
-  Zone7 28 mSculptZone6
-  Zone8 32 mSculptZone7
-  Zone9 36 mSculptZone8
-  Zone10 40 mSculptZone9
+  RegionID 0 :u32 mRegionID
+  Zone1 4 :f32 mSculptZone0
+  Zone2 8 :f32 mSculptZone1
+  Zone3 12 :f32 mSculptZone2
+  Zone4 16 :f32 mSculptZone3
+  Zone5 20 :f32 mSculptZone4
+  Zone6 24 :f32 mSculptZone5
+  Zone7 28 :f32 mSculptZone6
+  Zone8 32 :f32 mSculptZone7
+  Zone9 36 :f32 mSculptZone8
+  Zone10 40 :f32 mSculptZone9
 end
 
 type PresetRidePaint
   # A/_0015_0015.cs
   # read (registered for PS; registry line 133)
-  1 0 mSlotID
-  2 4 mGroup.mClassKey
-  3 8 mGroup.mCollectionKey
-  4 12 mGroup.mCollectionPtr
-  5 16 mSwatch.mClassKey
-  6 20 mSwatch.mCollectionKey
-  7 24 mSwatch.mCollectionPtr
-  8 28 mKitNumber
-  9 32 mSaturation
-  10 36 mVariance
+  1 0 :u32 mSlotID
+  2 4 :u32/key mGroup.mClassKey
+  3 8 :u32/key mGroup.mCollectionKey
+  4 12 :u32 mGroup.mCollectionPtr
+  5 16 :u32/key mSwatch.mClassKey
+  6 20 :u32/key mSwatch.mCollectionKey
+  7 24 :f32 mSwatch.mCollectionPtr
+  8 28 :u32 mKitNumber
+  9 32 :f32 mSaturation
+  10 36 :f32 mVariance
 end
 
 type PresetRidePart
   # A/_0006_0015.cs
   # read (registered for PS; registry line 121)
-  SlotID 0 mSlotID
-  PartClassKey 4 mPart.mClassKey
-  PartCollectionKey 8 mPart.mCollectionKey
-  Unk 16 mPartArrayIndex
-  KitNumber 20 mKitNumber
+  SlotID 0 :i32 mSlotID
+  PartClassKey 4 :u32/key mPart.mClassKey
+  PartCollectionKey 8 :u32/key mPart.mCollectionKey
+  Unk 16 :u32 mPartArrayIndex
+  KitNumber 20 :u32 mKitNumber
 end
 
 type RoadNoiseRecord
   # A/_001A_0012.cs
   # read (registered for ALL; registry line 211)
-  Frequency 0 Frequency
-  Amplitude 4 Amplitude
-  MinSpeed 8 MinSpeed
-  MaxSpeed 12 MaxSpeed
+  Frequency 0 :f32 Frequency
+  Amplitude 4 :f32 Amplitude
+  MinSpeed 8 :f32 MinSpeed
+  MaxSpeed 12 :f32 MaxSpeed
 end
 
 type ROLLFX_LOOP
   # A/_001E_0010.cs
   # inferred (game list is a static array (_0013/4); PS,UC,W,WB: only these games have its types; fits the SHA-1 order; registry line 1005)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type RPMLOOPPOINTSst
   # A/_000F_0006.cs
   # inferred (game list is a static array (_0005/4); C,PS,W,WB: only these games have its types; fits the SHA-1 order; registry line 1009)
-  Point1 0 RPM_LD_LOW_PEAK
-  Point2 4 RPM_LD_LOW_OUT
-  Point3 8 RPM_LD_MED_IN
-  Point4 12 RPM_LD_MED_PEAK
-  Point5 16 RPM_LD_MED_OUT
-  Point6 20 RPM_LD_HI_IN
-  Point7 24 RPM_LD_HI_PEAK
-  Point8 28 RPM_LD_HI_OUT
-  Point9 32 RPM_IDLE_PEAK
-  Point10 36 RPM_IDLE_OUT
-  Point11 40 RPM_CRZ_LOW_IN
-  Point12 44 RPM_CRZ_LOW_PEAK
-  Point13 48 RPM_CRZ_LOW_OUT
-  Point14 52 RPM_CRZ_MED_IN
-  Point15 56 RPM_CRZ_MED_PEAK
-  Point16 60 RPM_CRZ_MED_OUT
-  Point17 64 RPM_CRZ_HI_IN
-  Point18 68 RPM_CRZ_HI_PEAK
-  Point19 72 RPM_CRZ_HI_OUT
+  Point1 0 :i32 RPM_LD_LOW_PEAK
+  Point2 4 :i32 RPM_LD_LOW_OUT
+  Point3 8 :i32 RPM_LD_MED_IN
+  Point4 12 :i32 RPM_LD_MED_PEAK
+  Point5 16 :i32 RPM_LD_MED_OUT
+  Point6 20 :i32 RPM_LD_HI_IN
+  Point7 24 :i32 RPM_LD_HI_PEAK
+  Point8 28 :i32 RPM_LD_HI_OUT
+  Point9 32 :i32 RPM_IDLE_PEAK
+  Point10 36 :i32 RPM_IDLE_OUT
+  Point11 40 :i32 RPM_CRZ_LOW_IN
+  Point12 44 :i32 RPM_CRZ_LOW_PEAK
+  Point13 48 :i32 RPM_CRZ_LOW_OUT
+  Point14 52 :i32 RPM_CRZ_MED_IN
+  Point15 56 :i32 RPM_CRZ_MED_PEAK
+  Point16 60 :i32 RPM_CRZ_MED_OUT
+  Point17 64 :i32 RPM_CRZ_HI_IN
+  Point18 68 :i32 RPM_CRZ_HI_PEAK
+  Point19 72 :i32 RPM_CRZ_HI_OUT
 end
 
 type RUMBLEFX
   # A/_0016_0010.cs
   # inferred (game list is a static array (_0013/4); PS,UC,W,WB: only these games have its types; fits the SHA-1 order; registry line 1013)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type SCRAPE_SURFACES
   # A/_0003_0010.cs
   # inferred (game list is a static array (_0013/4); PS,UC,W,WB: only these games have its types; fits the SHA-1 order; registry line 1021)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type SlotStats
   # A/_0007_0015.cs
   # read (registered for PS; registry line 355)
-  1 0 SlotName
-  2 4 ModeFlags
-  3 8 SlotDesc.hash
-  4 12 TuningSliderListString.hash
-  5 16 Stats[0]
-  6 20 Stats[1]
+  1 0 :i32 SlotName
+  2 4 :i32 ModeFlags
+  3 8 :i32 SlotDesc.hash
+  4 12 :i32 TuningSliderListString.hash
+  5 16 :i32 Stats[0]
+  6 20 :i32 Stats[1]
 end
 
 type SPCHType_1_EventID
   # A/_001C_0010.cs
   # read (registered for ALL; registry line 217)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type SpecialSliderType
   # A/_0014_0010.cs
   # read (registered for PS,UC; registry line 665)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type SPEECH_CAR_GENERATION
   # A/_0004_0010.cs
   # read (registered for PS; registry line 349)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type SPEECH_RIVAL_MAKE
   # A/_0015_0010.cs
   # read (registered for PS; registry line 352)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type SPLICE_DAMAGE
   # A/_0012_0010.cs
   # inferred (game list is a static array (_0013/4); PS,UC,W,WB: only these games have its types; fits the SHA-1 order; registry line 1057)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type Splicer_Collision_Core
   # A/_0006_0010.cs
   # inferred (game list is a static array (_0013/4); PS,UC,W,WB: only these games have its types; fits the SHA-1 order; registry line 1061)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type Splicer_Collision_Object
   # A/_0019_0010.cs
   # inferred (game list is a static array (_0013/4); PS,UC,W,WB: only these games have its types; fits the SHA-1 order; registry line 1065)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type Splicer_Collision_Surface
   # A/_0017_0010.cs
   # inferred (game list is a static array (_0013/4); PS,UC,W,WB: only these games have its types; fits the SHA-1 order; registry line 1069)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type STICH_COLLISION_TYPE
   # A/_001B_0010.cs
   # inferred (game list is a static array (_0009/5); MW,C,PS,W,WB: the complement of the UC-only CollisionReactionRecord class; fits the SHA-1 order; registry line 1077)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type StitchCollisionVol
   # A/_0001_0006.cs
   # read (game list is a static array (_001D/3); MW,C,PS: the same 12 bytes are the message box's Abort, Retry, Ignore buttons (DialogResult 3, 4, 5; A/_0008.cs:96); registry line 1081)
-  1 0 Vol1
-  2 2 Vol2
-  3 4 Vol3
-  4 6 Vol4
+  1 0 :u16 Vol1
+  2 2 :u16 Vol2
+  3 4 :u16 Vol3
+  4 6 :u16 Vol4
 end
 
 type SURFACE_SFX
   # A/_0008_0010.cs
   # inferred (game list is a static array (_0013/4); PS,UC,W,WB: only these games have its types; fits the SHA-1 order; registry line 1089)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type SurfaceEffectType
   # A/_000C_0010.cs
   # read (registered for ALL; registry line 220)
   single
-  Value 0
+  Value 0 :i32
 end
 
 type TargetTimeOverrides
   # A/_0018_0012.cs
   # read (registered for PS,UC; registry line 657)
-  1 0 mCar.mClassKey
-  2 4 mCar.mCollectionKey
-  3 8 mCar.mCollectionPtr
-  4 12 mEvent
-  5 16 mMinDelta
-  6 20 mMaxDelta
-  7 24 mShift
+  1 0 :u32/key mCar.mClassKey
+  2 4 :i32 mCar.mCollectionKey
+  3 8 :i32 mCar.mCollectionPtr
+  4 12 :string mEvent
+  5 16 :i32 mMinDelta
+  6 20 :i32 mMaxDelta
+  7 24 :f32 mShift
 end
 
 type TireEffectRecord
   # A/_0012_0015.cs
   # read (registered for PS,UC; registry line 61)
-  TireCondition 0 mTireCondition
-  EmitterClass 4 mEmitter.mClassKey
-  EmitterCollection 8 mEmitter.mCollectionKey
-  EmitterLowLodClass 16 mEmitterLowLod.mClassKey
-  EmitterLowLodCollection 20 mEmitterLowLod.mCollectionKey
-  MinSpeed 28 mMinSpeed
-  MaxSpeed 32 mMaxSpeed
+  TireCondition 0 :u32 mTireCondition
+  EmitterClass 4 :u32/key mEmitter.mClassKey
+  EmitterCollection 8 :u32/key mEmitter.mCollectionKey
+  EmitterLowLodClass 16 :u32/key mEmitterLowLod.mClassKey
+  EmitterLowLodCollection 20 :u32/key mEmitterLowLod.mCollectionKey
+  MinSpeed 28 :f32 mMinSpeed
+  MaxSpeed 32 :f32 mMaxSpeed
 end
 
 type TireTimeEffectRecord
   # A/_0016_0012.cs
   # inferred (game list is a static array (_0013/4); PS,UC,W,WB: only these games have its types; fits the SHA-1 order; registry line 1093)
-  TireCondition 0 mTireCondition
-  EmitterClass 4 mEmitter.mClassKey
-  EmitterCollection 8 mEmitter.mCollectionKey
-  EmitterLowLodClass 16 mEmitterLowLod.mClassKey
-  EmitterLowLodCollection 20 mEmitterLowLod.mCollectionKey
-  MinTime 28 mMinTime
-  MaxTime 32 mMaxTime
+  TireCondition 0 :u32 mTireCondition
+  EmitterClass 4 :u32/key mEmitter.mClassKey
+  EmitterCollection 8 :u32/key mEmitter.mCollectionKey
+  EmitterLowLodClass 16 :u32/key mEmitterLowLod.mClassKey
+  EmitterLowLodCollection 20 :u32/key mEmitterLowLod.mCollectionKey
+  MinTime 28 :f32 mMinTime
+  MaxTime 32 :f32 mMaxTime
 end
 
 type type_bStringHash
   # A/_0014_000F.cs
   # read (registered for ALL; registry line 214)
   single
-  Value 0 hash
+  Value 0 :u32/hex hash
 end
 
 type UpgradeDescription
   # A/_001C_0012.cs
   # read (registered for PS,UC; registry line 661)
-  Set 0 mPhysicsUpgradeSet.mClassKey
-  Type 4 mPhysicsUpgradeSet.mCollectionKey
-  3 8 mPhysicsUpgradeSet.mCollectionPtr
-  4 12 mBlendingPower
+  Set 0 :u32/key mPhysicsUpgradeSet.mClassKey
+  Type 4 :u32/key mPhysicsUpgradeSet.mCollectionKey
+  3 8 :i32 mPhysicsUpgradeSet.mCollectionPtr
+  4 12 :f32 mBlendingPower
   # note: '3' and '4' are the author's member numbers (1-based), not offsets.
 end
 
 type Attrib::StringKey(MODEL)
   # A/_0007_0012.cs
   # read (A/_0007_0014.cs:1293)
-  Collision 0 mHash32
-  Visual 4 mString
+  Collision 0 :u32/key mHash32
+  Visual 4 :string mString
 end

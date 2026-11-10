@@ -924,6 +924,207 @@ TEST("nfsms: a collection written as nfsms is made with add_node and add_field, 
     CHECK(copied.find("add_field pvehicle ns_copy HornType") == std::string::npos);
     CHECK(copied.find("update_field pvehicle ns_copy HornType 2\n") != std::string::npos);
     CHECK(copied.find("add_field pvehicle ns_copy " + other + "\nupdate_field pvehicle ns_copy " + other + " 3\n") != std::string::npos);
+
+    // A car added to a list (an amod append) is Attribulator's append_array and
+    // the new last element, so it adds to whatever list the script runs on.
+    auto grown = sc::CloneDatabase(*base);
+    CHECK(sc::Apply(*grown, sc::Parse("attribulina 2\nedit car_list/all_cars { append Cars = pvehicle/street }\n")).ok);
+    std::string appended;
+    for (const std::string& l : ns::FromStatements(*grown, sc::Diff(*base, *grown).statements, st.names.get())) appended += l + "\n";
+    if (appended.find("append_array car_list all_cars Cars\nupdate_field car_list all_cars Cars[^] Class pvehicle\n"
+                      "update_field car_list all_cars Cars[^] Collection street\n") == std::string::npos)
+        std::fprintf(stderr, "%s", appended.c_str());
+    CHECK(appended.find("append_array car_list all_cars Cars\nupdate_field car_list all_cars Cars[^] Class pvehicle\n"
+                        "update_field car_list all_cars Cars[^] Collection street\n") != std::string::npos);
+    auto onBase = sc::CloneDatabase(*base);
+    const sc::ApplyReport ar = Run(*onBase, appended, st);
+    CHECK_RUN(ar);
+    CHECK_EQ(Changes(sc::Diff(*onBase, *grown)), size_t(0));
+    // And converted to a mod script, it is an append again.
+    ns::RunSettings conv = st;
+    auto scratch = sc::CloneDatabase(*base);
+    const std::string amod = sc::Print(ns::ToModScript(*scratch, ns::Parse("append_array car_list all_cars Cars\n", "a.nfsms"), conv));
+    CHECK(amod.find("append Cars\n") != std::string::npos);
+}
+
+TEST("nfsms: NFS-VltEd compatible runs read values as NFS-VltEd 4.6 does") {
+    auto base = Load();
+    ns::RunSettings ext;
+    ext.names = ns::PropertyNames::Load(test::DataPath("data/nfsms/prostreet_pc.txt"));
+    ns::RunSettings vlt = ext;
+    vlt.vltEd = true;
+    auto fresh = [&]() { return sc::CloneDatabase(*base); };
+    auto U8 = [](const Attribute& a, uint32_t i, uint32_t off) { return unsigned(a.data.bytes[i * a.elemSize + off]); };
+
+    // FEPartData's 4 is an int32 over tier, drift, drag and grip in NFS-VltEd.
+    {
+        auto db = fresh();
+        const std::string line = "update_field part_fedata generic_spoiler_evo partData[0] 4 16777474\n"; // 0x01000102
+        CHECK(!Run(*db, line, ext).ok || Run(*db, line, ext).errors() > 0);
+        auto d2 = fresh();
+        const sc::ApplyReport r = Run(*d2, line, vlt);
+        CHECK_RUN(r);
+        CHECK_EQ(r.errors(), size_t(0));
+        const Attribute& pd = Own(Col(*d2, "part_fedata", "generic_spoiler_evo"), "partData");
+        CHECK_EQ(U8(pd, 0, 12), 2u); // tier
+        CHECK_EQ(U8(pd, 0, 13), 1u); // drift
+        CHECK_EQ(U8(pd, 0, 14), 0u); // drag
+        CHECK_EQ(U8(pd, 0, 15), 1u); // grip
+        // And the editor writes that word whole for NFS-VltEd.
+        const sc::Statement e = sc::ExportValue(*d2, Col(*d2, "part_fedata", "generic_spoiler_evo"), StringHash32("partData"));
+        std::string text;
+        for (const std::string& l : ns::FromStatements(*d2, {e}, ext.names.get(), true)) text += l + "\n";
+        if (text.find("update_field part_fedata generic_spoiler_evo partData[0] 4 16777474\n") == std::string::npos) std::fprintf(stderr, "%s", text.c_str());
+        CHECK(text.find("update_field part_fedata generic_spoiler_evo partData[0] 4 16777474\n") != std::string::npos);
+        auto d3 = fresh();
+        CHECK_RUN(Run(*d3, text, vlt));
+        CHECK_EQ(Changes(sc::Diff(*d3, *d2)), size_t(0));
+    }
+
+    // A layout array holds its capacity: writes past the count wait for a
+    // resize_field, and a shrink keeps the values for a later growth.
+    {
+        auto db = fresh();
+        const std::string script = "update_field table_data steering_input_remap_table data[30] 0.5\n"
+                                   "resize_field table_data steering_input_remap_table data 31\n"
+                                   "resize_field table_data steering_input_remap_table data 27\n"
+                                   "resize_field table_data steering_input_remap_table data 31\n";
+        CHECK_EQ(Run(*fresh(), script, ext).errors(), size_t(1));
+        const sc::ApplyReport r = Run(*db, script, vlt);
+        CHECK_RUN(r);
+        CHECK_EQ(r.errors(), size_t(0));
+        const Attribute& data = Own(Col(*db, "table_data", "steering_input_remap_table"), "data");
+        CHECK_EQ(data.count, 31u);
+        CHECK(F32(data, 30) == 0.5f);
+        CHECK(F32(data, 27) == 0.0f);
+        CHECK(!Run(*db, "resize_field table_data steering_input_remap_table data 101\n", vlt).errors() == 0);
+    }
+
+    // copy_fields: overwrite replaces the target's own values that the source has
+    // (both readings); a value command on an inherited field fails in NFS-VltEd.
+    for (const ns::RunSettings* st : {&ext, &vlt}) {
+        auto db = fresh();
+        const sc::ApplyReport r = Run(*db, "copy_node vehicle dbr9_track dbr9 ns_a\n"
+                                           "copy_fields vehicle zonda_track_highend ns_a base|overwrite\n", *st);
+        CHECK_RUN(r);
+        CHECK_EQ(Own(Col(*db, "vehicle", "ns_a"), "TOE").count, Own(Col(*db, "vehicle", "zonda_track_highend"), "TOE").count);
+        CHECK(!Run(*db, "copy_fields vehicle zonda_track_highend ns_a nothing\n", *st).errors() == 0);
+    }
+    {
+        auto db = fresh();
+        CHECK_EQ(Run(*db, "update_field vehicle ccx_draghpfall STEERING_SPEED[0] 1\n", vlt).errors(), size_t(1));
+        CHECK_EQ(Run(*db, "update_field vehicle ccx_draghpfall STEERING_SPEED[0] 1\n", ext).errors(), size_t(0));
+    }
+
+    // add_field starts as the class's default collection has it: its values and
+    // its count, the rest of the slots held.
+    {
+        auto db = fresh();
+        CHECK_RUN(Run(*db, "add_field vehicle ccx_draghpfall STEERING_SPEED 12\n"
+                           "update_field vehicle ccx_draghpfall STEERING_SPEED[11] 9\n", vlt));
+        const Attribute& a = Own(Col(*db, "vehicle", "ccx_draghpfall"), "STEERING_SPEED");
+        const Attribute& def = Own(Col(*db, "vehicle", "default"), "STEERING_SPEED");
+        CHECK_EQ(a.count, def.count);
+        CHECK(F32(a, 3) == F32(def, 3));
+        CHECK_EQ(Run(*db, "add_field vehicle ccx_draghpfall STEERING_SPEED 12\n", vlt).errors(), size_t(1)); // it has it now
+        // A slot past the count comes in with a resize_field later in the run.
+        auto held = fresh();
+        CHECK_RUN(Run(*held, "add_field vehicle ccx_draghpfall STEERING_SPEED 12\n"
+                             "update_field vehicle ccx_draghpfall STEERING_SPEED[11] 9\n"
+                             "resize_field vehicle ccx_draghpfall STEERING_SPEED 12\n", vlt));
+        CHECK(F32(Own(Col(*held, "vehicle", "ccx_draghpfall"), "STEERING_SPEED"), 11) == 9.0f);
+        auto e = fresh();
+        CHECK_RUN(Run(*e, "add_field vehicle ccx_draghpfall STEERING_SPEED 12\n", ext));
+        CHECK_EQ(Own(Col(*e, "vehicle", "ccx_draghpfall"), "STEERING_SPEED").count, 12u);
+        CHECK(F32(Own(Col(*e, "vehicle", "ccx_draghpfall"), "STEERING_SPEED"), 3) == 0.0f);
+    }
+
+    // rename_node to a hash (both readings), and MODEL's Collision and Visual alone.
+    {
+        auto db = fresh();
+        CHECK_RUN(Run(*db, "copy_node pvehicle street ns_r\nrename_node pvehicle ns_r 0x12345678\n", ext));
+        CHECK(db->findCollection(StringHash32("pvehicle"), 0x12345678u) != nullptr);
+        Collection& r = *db->findCollection(StringHash32("pvehicle"), 0x12345678u);
+        const uint32_t hash = U32(Own(r, "MODEL"));
+        CHECK_RUN(Run(*db, "update_field pvehicle 0x12345678 MODEL Visual NS_TEXT\n", vlt));
+        CHECK_EQ(U32(Own(r, "MODEL")), hash);
+        CHECK(Own(r, "MODEL").data.ptrAt(4) && Own(r, "MODEL").data.ptrAt(4)->text == "NS_TEXT");
+        CHECK_RUN(Run(*db, "update_field pvehicle 0x12345678 MODEL Collision NS_OTHER\n", vlt));
+        CHECK_EQ(U32(Own(r, "MODEL")), StringHash32("NS_OTHER"));
+        CHECK(Own(r, "MODEL").data.ptrAt(4)->text == "NS_TEXT");
+    }
+
+    // A curve point leaves Y2 as it is; a list resized keeps the point count the
+    // file has, so the game reads X's last point from Y's first.
+    {
+        auto db = fresh();
+        Collection& bmw = Col(*db, "vehicle", "bmwm3e92_drifthigh");
+        const CurveValue before = ReadCurve(Own(bmw, "TORQUE"), 0, Endian::Little);
+        CHECK_RUN(Run(*db, "update_collection vehicle bmwm3e92_drifthigh TORQUE YValues 3 Value 0.5\n", vlt));
+        CurveValue c = ReadCurve(Own(bmw, "TORQUE"), 0, Endian::Little);
+        CHECK(c.y[3] == 0.5f);
+        CHECK(c.y2 == before.y2);
+        CHECK_RUN(Run(*db, "resize_collection vehicle bmwm3e92_drifthigh TORQUE XValues 8\n"
+                           "resize_collection vehicle bmwm3e92_drifthigh TORQUE YValues 8\n", vlt));
+        c = ReadCurve(Own(bmw, "TORQUE"), 0, Endian::Little);
+        CHECK_EQ(c.x.size(), before.x.size());
+        CHECK(c.x[8] == c.y[0]);           // X's last from Y's first
+        CHECK(c.y.back() == before.y2[0]); // Y's last from Y2's first
+        auto e = fresh();
+        CHECK_RUN(Run(*e, "update_collection vehicle bmwm3e92_drifthigh TORQUE YValues 3 Value 0.5\n", ext));
+        CHECK(ReadCurve(Own(Col(*e, "vehicle", "bmwm3e92_drifthigh"), "TORQUE"), 0, Endian::Little).y2 != before.y2);
+    }
+
+    // What the editor writes for NFS-VltEd: no [^] or append_array, an array
+    // given its length after add_field, and a value a collection only inherited
+    // added first.
+    {
+        auto db = fresh();
+        auto before = fresh();
+        CHECK(sc::Apply(*db, sc::Parse("attribulina 2\nedit car_list/all_cars { append Cars = pvehicle/street }\n"
+                                       "edit vehicle/ccx_draghpfall { STEERING_SPEED[0] = 1 }\n")).ok);
+        std::string text;
+        for (const std::string& l : ns::FromStatements(*db, sc::Diff(*before, *db).statements, ext.names.get(), true, before.get()))
+            text += l + "\n";
+        CHECK(text.find("[^]") == std::string::npos);
+        CHECK(text.find("append_array") == std::string::npos);
+        const uint32_t n = Own(Col(*db, "car_list", "all_cars"), "Cars").count;
+        CHECK(text.find("resize_field car_list all_cars Cars " + std::to_string(n) + "\n") != std::string::npos);
+        CHECK(text.find("update_field car_list all_cars Cars[" + std::to_string(n - 1) + "] Collection street\n") != std::string::npos);
+        CHECK(text.find("add_field vehicle ccx_draghpfall STEERING_SPEED 10\nresize_field vehicle ccx_draghpfall STEERING_SPEED 10\n") != std::string::npos);
+        auto again = fresh();
+        const sc::ApplyReport r = Run(*again, text, vlt);
+        if (r.errors()) std::fprintf(stderr, "%s---\n%s", Messages(r).c_str(), text.c_str());
+        CHECK_EQ(r.errors(), size_t(0));
+        CHECK_EQ(Changes(sc::Diff(*again, *db)), size_t(0));
+    }
+}
+
+TEST("nfsms: the Shifted mod (nfsms/Shifted, when present) runs NFS-VltEd compatible with no failed line") {
+    namespace fs = std::filesystem;
+    const std::string mod = test::DataPath("nfsms/Shifted/VLT Data Install.nfsms");
+    if (!fs::exists(fs::path(mod))) {
+        std::printf("        (skipped: no %s)\n", mod.c_str());
+        return;
+    }
+    auto db = Load(true);
+    std::ifstream in(fs::path(mod), std::ios::binary);
+    std::ostringstream ss;
+    ss << in.rdbuf();
+    const ns::Script s = ns::Parse(ss.str(), "VLT Data Install.nfsms", fs::path(mod).parent_path().string());
+    ns::RunSettings st;
+    st.names = ns::PropertyNames::Load(test::DataPath("data/nfsms/prostreet_pc.txt"));
+    st.vltEd = true;
+    st.choices = ns::DefaultChoices(s);
+    const sc::ApplyReport r = ns::Run(*db, s, st);
+    if (r.errors()) std::fprintf(stderr, "%s", Messages(r).substr(0, 2000).c_str());
+    CHECK_EQ(r.errors(), size_t(0));
+    CHECK(r.valuesSet > 50000);
+    // Read with Attribulina's own words, the lines that rely on NFS-VltEd's fail.
+    auto other = Load(true);
+    ns::RunSettings ext = st;
+    ext.vltEd = false;
+    CHECK(ns::Run(*other, s, ext).errors() > 400);
 }
 
 TEST("nfsms: World's scripts edit its packs and event vaults, and record back as nfsms") {

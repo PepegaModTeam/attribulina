@@ -150,6 +150,9 @@ namespace attrib
 		bool remove(Collection& col);
 		// Throws if the name is taken in the same class.
 		void rename(Collection& col, const std::string& newName);
+		// To a key whose name may not be known (an nfsms rename_node to 0x...):
+		// the export id is the key's name's, or its hex's.
+		void rename(Collection& col, uint32_t newKey);
 		// Puts `col` under `newParent` (null: a root collection). Its own values
 		// stay; what it inherits changes. False when newParent is of another
 		// class, is col, or is under col.
