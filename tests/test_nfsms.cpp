@@ -596,6 +596,61 @@ TEST("nfsms: ToModScript writes a mod script that does what the nfsms script doe
     }
 }
 
+TEST("nfsms: ToModScript names a field, key, bin key, reference or new name given as its hash, when the name is known") {
+    // Shifted's dlc_car.nfsms writes car's isBoosterPack as 0x767fffc1.
+    auto db = Load();
+    for (const auto& e : std::filesystem::directory_iterator(test::DataPath("data/bin_keys")))
+        if (e.path().extension() == ".txt") db->binNames().loadFile(e.path().string());
+    const std::string script =
+        "version 4.6\n"
+        "game PS\n"
+        "update_field car 997gt3 0x767fffc1 False\n"
+        "update_field part_fedata 0xda362f22 partData[0] HAL_ID 0xdac3d6ae\n"
+        "update_field car_part forced_induction_package_cuda fe_data Collection 0xf6946335\n"
+        "update_field car_part forced_induction_package_chevelle fe_data Collection 0x0badf00d\n" // a name no list has
+        "add_node pvehicle 240sx kid_tmp\n"
+        "rename_node pvehicle kid_tmp 0xd1f15a23\n";
+    for (const bool vltEd : {false, true}) {
+        ns::RunSettings st;
+        st.names = ns::PropertyNames::Load(test::DataPath("data/nfsms/prostreet_pc.txt"));
+        st.vltEd = vltEd;
+        // MODEL's Visual and Collision (compatible runs) setting the same name: the name alone.
+        const std::string text0 = script + (vltEd ? "update_field pvehicle 240sx MODEL Visual S7\nupdate_field pvehicle 240sx MODEL Collision S7\n" : "");
+        const ns::Script s = ns::Parse(text0, "names.nfsms");
+        sc::ApplyReport conv;
+        auto scratch = sc::CloneDatabase(*db);
+        const std::string text = sc::Print(ns::ToModScript(*scratch, s, st, &conv));
+        if (conv.errors()) std::fprintf(stderr, "%s\n%s", Messages(conv).c_str(), text.c_str());
+        CHECK_EQ(conv.errors(), size_t(0));
+        auto has = [&](const char* what) {
+            const bool found = text.find(what) != std::string::npos;
+            if (!found) std::fprintf(stderr, "vltEd %d: no \"%s\" in\n%s", int(vltEd), what, text.c_str());
+            CHECK(found);
+        };
+        has("isBoosterPack = false");
+        has("edit part_fedata/t2_high_brake_package {");
+        has("partData[0].HAL_ID = \"CAR_PART_STOCK\""); // a bin key, by its bStringHash name
+        has("fe_data = \"part_fedata\"/\"t3_low_forced_induction_package_2\"");
+        has("fe_data = \"part_fedata\"/0x0badf00d");
+        has("rename pvehicle/kid_tmp to t3_low_drivetrain_package");
+        // A new node under a parent: made as a root and moved, so it doesn't start from the parent's layout.
+        has("create pvehicle/kid_tmp in vault db\nmove pvehicle/kid_tmp under pvehicle/240sx\n");
+        CHECK(text.find("0x767fffc1") == std::string::npos && text.find("0xdac3d6ae") == std::string::npos);
+        if (vltEd) has("MODEL = \"S7\"\n");
+        // The same database as the nfsms run.
+        const sc::Script back = sc::Parse(text, "names.amod");
+        auto viaAmod = sc::CloneDatabase(*db);
+        const sc::ApplyReport ar = sc::Apply(*viaAmod, back);
+        if (!ar.ok) std::fprintf(stderr, "%s", Messages(ar).c_str());
+        CHECK(ar.ok);
+        auto viaNfsms = sc::CloneDatabase(*db);
+        Run(*viaNfsms, text0, st);
+        const sc::Script diff = sc::Diff(*viaNfsms, *viaAmod);
+        if (Changes(diff)) std::fprintf(stderr, "%s", sc::Print(diff).c_str());
+        CHECK_EQ(Changes(diff), size_t(0));
+    }
+}
+
 TEST("nfsms: update_field reaches each kind of value") {
     auto db = Load();
     Database& d = *db;
@@ -1120,6 +1175,9 @@ TEST("nfsms: the Shifted mod (nfsms/Shifted, when present) runs NFS-VltEd compat
     if (r.errors()) std::fprintf(stderr, "%s", Messages(r).substr(0, 2000).c_str());
     CHECK_EQ(r.errors(), size_t(0));
     CHECK(r.valuesSet > 50000);
+    // shifted_tech.nfsms:219, `partData[0] 6 -1`: NFS-VltEd's 6 is an int32, so -1 is 0xFFFFFFFF
+    // in the bin key our schema has there (read as a name, it was bStringHash("-1")).
+    CHECK_EQ(U32(Own(Col(*db, "part_fedata", "generic_widebody"), "partData"), 0, 20), 0xFFFFFFFFu);
     // Read with Attribulina's own words, the lines that rely on NFS-VltEd's fail.
     auto other = Load(true);
     ns::RunSettings ext = st;
@@ -1391,4 +1449,177 @@ TEST("nfsms: a field the schema gives an enum (light_flares_cg's flare_texture) 
         sc::Apply(*mw, sc::Parse("attribulina 1\nedit light_flares_cg/headlight_outer { flare_texture = ESLF_TEX_CATSEYE }\n", "a.amod"));
     CHECK(!none.ok);
     CHECK(Messages(none).find("has no value ESLF_TEX_CATSEYE") != std::string::npos);
+}
+
+TEST("nfsms: the word under the caret leads to its node, the value its words set, an included script or a control") {
+    auto db = Load();
+    ns::RunSettings st;
+    st.names = ns::PropertyNames::Load(test::DataPath("data/nfsms/prostreet_pc.txt"));
+    const ns::Script s = ns::Parse("ui_control checkbox loud false \"Longer cut\"\n"
+                                   "ui_control radiobutton tier race \"Race tires\"\n",
+                                   "test.nfsms", "/mods/x");
+    auto on = [&](const std::string& line, const std::string& word, size_t into = 0) {
+        const ns::Command c = ns::ParseLine(line, 7);
+        const size_t at = word.empty() ? 0 : line.find(word) + into;
+        return ns::TargetOfLine(*db, s, c, at, st);
+    };
+    auto value = [&](const ns::LineTarget& t) {
+        if (!t.collection) return "(none: " + t.why + ")";
+        return db->names().format(t.collection->classKey) + "/" + db->names().format(t.collection->key) +
+               (t.hasPath ? " " + t.path.text() : std::string());
+    };
+    const std::string kit = "update_field presetride player_d_day Parts[7] KitNumber 3";
+    // On the command, the class, a word or the value: the value the line sets, in our members.
+    CHECK_EQ(value(on(kit, "")), std::string("presetride/player_d_day Parts[7].mKitNumber"));
+    CHECK_EQ(value(on(kit, "presetride")), std::string("presetride/player_d_day Parts[7].mKitNumber"));
+    CHECK_EQ(value(on(kit, "KitNumber", 2)), std::string("presetride/player_d_day Parts[7].mKitNumber"));
+    CHECK_EQ(value(on(kit, " 3", 1)), std::string("presetride/player_d_day Parts[7].mKitNumber"));
+    // On the field, the element; on the node, the collection.
+    CHECK_EQ(value(on(kit, "Parts")), std::string("presetride/player_d_day Parts[7]"));
+    CHECK_EQ(value(on(kit, "player_d_day")), std::string("presetride/player_d_day"));
+    // A list's word and index.
+    CHECK_EQ(value(on("update_collection vehicle 240sx TORQUE YValues 2 Value 0.9", "YValues")),
+             std::string("vehicle/240sx TORQUE.Y"));
+    // Words that lead nowhere: the field alone.
+    CHECK_EQ(value(on("update_field vehicle 240sx TORQUE NoSuchWord 1", "NoSuchWord")), std::string("vehicle/240sx TORQUE"));
+    // add_node: the new node once it's there, its parent before.
+    CHECK_EQ(value(on("add_node presetride player_d_day not_made_yet", "not_made_yet")), std::string("presetride/player_d_day"));
+    CHECK_EQ(value(on("copy_node presetride player_d_day not_made_yet", "")), std::string("presetride/player_d_day"));
+    CHECK_EQ(value(on("copy_fields pvehicle street default base", "street")), std::string("pvehicle/street"));
+    CHECK_EQ(value(on("copy_fields pvehicle street default base", "")), std::string("pvehicle/default"));
+    CHECK_EQ(value(on("update_field pvehicle nope HornType 1", "nope")), std::string("(none: no collection pvehicle/nope)"));
+    CHECK_EQ(value(on("update_field nope street HornType 1", "")), std::string("(none: no class nope)"));
+    CHECK(!on("delete_nodes pvehicle", "pvehicle").collection);
+    // An included script; the control a ui_option tests.
+    CHECK_EQ(on("script \"Main\\x.nfsms\"", "Main").file, ns::ScriptFile("/mods/x", "Main\\x.nfsms"));
+    CHECK_EQ(on("ui_option loud", "loud").controlLine, 1);
+    CHECK_EQ(on("ui_option tier race", "race").controlLine, 2);
+    CHECK_EQ(on("ui_option quiet", "quiet").why, std::string("no ui_control quiet in this script"));
+}
+
+TEST("nfsms: NFS-VltEd compatible runs read values, words, indices and commands as NFS-VltEd does, and refuse what its installer refuses") {
+    auto base = Load(true);
+    ns::RunSettings ext, vlt;
+    ext.names = vlt.names = ns::PropertyNames::Load(test::DataPath("data/nfsms/prostreet_pc.txt"));
+    vlt.vltEd = true;
+    auto errorsOf = [&](Database& d, const std::string& text, const ns::RunSettings& st) {
+        const sc::ApplyReport r = Run(d, text, st);
+        return r.errors();
+    };
+    // One copy for each reading: a line that fails changes nothing, and the lines
+    // the other reading runs change nodes no other line uses.
+    auto dv = sc::CloneDatabase(*base);
+    auto de = sc::CloneDatabase(*base);
+    auto failsHere = [&](const std::string& line, const char* why, bool extendedRuns) {
+        Database* d = dv.get();
+        const sc::ApplyReport r = Run(*d, line + "\n", vlt);
+        const std::string m = Messages(r);
+        if (r.errors() != 1 || m.find(why) == std::string::npos) std::fprintf(stderr, "%s\n%s", line.c_str(), m.c_str());
+        CHECK_EQ(r.errors(), size_t(1));
+        CHECK(m.find(why) != std::string::npos);
+        const bool runs = errorsOf(*de, line + "\n", ext) == 0;
+        if (runs != extendedRuns) std::fprintf(stderr, "the other reading %s: %s\n", runs ? "runs" : "fails", line.c_str());
+        CHECK_EQ(runs, extendedRuns);
+    };
+
+    // A word is read by NFS-VltEd's type: FEPartData's 6 is an int32 over our bin key.
+    {
+        auto d = sc::CloneDatabase(*base);
+        CHECK_RUN(Run(*d, "update_field part_fedata generic_body partData[0] 6 -1\n", vlt));
+        CHECK_EQ(U32(Own(Col(*d, "part_fedata", "generic_body"), "partData"), 0, 20), 0xFFFFFFFFu);
+        auto e = sc::CloneDatabase(*base);
+        CHECK_RUN(Run(*e, "update_field part_fedata generic_body partData[0] 6 -1\n", ext));
+        CHECK_EQ(U32(Own(Col(*e, "part_fedata", "generic_body"), "partData"), 0, 20), BinHash("-1"));
+    }
+    // .NET's parsing: no names in an enum, no hex or fractions in an integer, true or false.
+    failsHere("update_field pvehicle default ENGINE_POSITION ENGINE_FRONT", "isn't a whole number", true);
+    failsHere("update_field pvehicle street HornType 0x10", "isn't a whole number", true);
+    failsHere("update_field pvehicle street HornType 1.0", "isn't a whole number", true);
+    failsHere("update_field pvehicle default isRateable 1", "a bool is true or false", true);
+    failsHere("update_field pvehicle default OnHitGround[2] MaxSpeed inf", "isn't a number", true);
+    // Its words as written, and only its own.
+    failsHere("update_field vehicle default TORQUE miny 90", "Value 'miny' cannot be found", true);
+    failsHere("update_field vehicle default TORQUE yMin 91", "Value 'yMin' cannot be found", true);
+    failsHere("update_collection vehicle default TORQUE YValues 3 Foo 0.5", "Value 'Foo' cannot be found", false);
+    failsHere("update_collection vehicle default GEAR_RATIO 3 Value 1.5", "is not a collection", true);
+    failsHere("update_field pvehicle 997 frontend vehicles", "Value '' cannot be found", true);
+    // Commands as NFS-VltEd has them.
+    failsHere("move_node pvehicle 997tt", "takes 3 parameters", true); // to the root
+    failsHere("change_vault pvehicle 997gt2 cars", "is not supported", true);
+    failsHere("change_vault gameplay custom_script_activity db", "one of the following: db, frontend, cars, commerce", true);
+    failsHere("delete_field pvehicle bmwm3 HornType", "does not contain 'HornType' field", true); // nothing to do
+    failsHere("convert_field pvehicle 997 x 1", "not supported", true); // a warning
+    {
+        // An array given no index is its element 0; an index on a value that isn't
+        // an array is ignored, as is a word on a one-value type.
+        auto d = sc::CloneDatabase(*base);
+        CHECK_RUN(Run(*d, "update_field vehicle default GEAR_RATIO 3 1.5\nupdate_field pvehicle default isRateable[3] true\n", vlt));
+        CHECK_EQ(F32(Own(Col(*d, "vehicle", "default"), "GEAR_RATIO"), 0), 1.5f);
+        // Attribulator's commands are comments to NFS-VltEd.
+        const uint32_t n = Own(Col(*d, "pvehicle", "997"), "HandlingRating").count;
+        const sc::ApplyReport r = Run(*d, "append_array pvehicle 997 HandlingRating 5\n", vlt);
+        CHECK_EQ(r.errors(), size_t(0));
+        CHECK_EQ(Own(Col(*d, "pvehicle", "997"), "HandlingRating").count, n);
+        // A new node's CollectionName is its name as NFS-VltEd shows it.
+        CHECK_RUN(Run(*d, "add_node pvehicle default 0xABCDEF12\n", vlt));
+        Collection* made = d->findCollection(StringHash32("pvehicle"), 0xABCDEF12);
+        CHECK(made);
+        if (made) {
+            const Attribute* cn = made->find(StringHash32("CollectionName"));
+            CHECK(cn && !cn->data.ptrs.empty() && cn->data.ptrs[0].text == "0xabcdef12");
+        }
+    }
+    // White space in a name, in either reading.
+    failsHere("rename_node pvehicle 997tt \"a b\"", "white space", false);
+
+    // What NFS-VltEd's installer refuses runs nothing.
+    auto refused = [&](const std::string& text, const char* why) {
+        auto d = sc::CloneDatabase(*base);
+        const sc::ApplyReport r = Run(*d, text, vlt);
+        const std::string m = Messages(r);
+        if (m.find(why) == std::string::npos) std::fprintf(stderr, "%s", m.c_str());
+        CHECK(m.find(why) != std::string::npos);
+        CHECK(!r.ok);
+        CHECK_EQ(r.valuesSet, size_t(0));
+        auto e = sc::CloneDatabase(*base);
+        CHECK(Run(*e, text, ext).valuesSet > 0); // the other reading runs it
+    };
+    const std::string body = "update_field pvehicle 997 DefaultPresetRide refused\n";
+    refused("version 4.7\n" + body, "NFS-VltEd v4.7 or higher is required");
+    refused("game MW\n" + body, "This mod supports for the following game(s): MW");
+    refused("game ps\n" + body, "The parameter is not valid: ps");
+    refused("ui_control checkbox a true \"A\"\nui_option nosuch\n" + body + "ui_option nosuch\n" + body,
+            "The control with the specified name wasn't found: nosuch");
+    refused("ui_control checkbox a true \"A\"\nui_control checkbox b true \"B\"\nui_option a\n" + body + "ui_option b\n" + body,
+            "Missing closing ui_option: b");
+    refused("ui_control checkbox a true \"A\"\nui_control checkbox a false \"B\"\n" + body, "Duplicate control name has been found: a");
+    // An older version, and a file saved with a byte order mark, run.
+    {
+        auto d = sc::CloneDatabase(*base);
+        CHECK_RUN(Run(*d, "\xEF\xBB\xBFversion 4.5\ngame PS C\n" + body, vlt));
+        CHECK(Run(*d, "version 4.6.0.0\n", ext).warnings() == 0);
+    }
+
+    // Most Wanted's MODEL is 16 bytes: Collision64, Collision and Visual each set their part alone.
+    const std::string mwDir = test::DataPath("attrib/databases/pc/mw-vanilla");
+    if (std::filesystem::exists(mwDir)) {
+        auto mw = LoadFolder(mwDir);
+        ns::RunSettings st;
+        st.names = ns::PropertyNames::Load(test::DataPath("data/nfsms/mw_pc.txt"));
+        st.vltEd = true;
+        Collection& car = Col(*mw, "pvehicle", "copgto");
+        const Attribute& model = *car.resolve(StringHash32("MODEL"));
+        const uint64_t h64 = load64(model.data.bytes.data(), Endian::Little);
+        const uint32_t h32 = load32(model.data.bytes.data() + 8, Endian::Little);
+        CHECK_RUN(Run(*mw, "add_field pvehicle copgto MODEL\nupdate_field pvehicle copgto MODEL Visual foo\n", st));
+        const Attribute& m1 = Own(car, "MODEL");
+        CHECK(m1.data.ptrAt(12) && m1.data.ptrAt(12)->text == "foo");
+        CHECK_EQ(load32(m1.data.bytes.data() + 8, Endian::Little), h32);
+        CHECK_EQ(load64(m1.data.bytes.data(), Endian::Little), h64);
+        CHECK_RUN(Run(*mw, "update_field pvehicle copgto MODEL Collision bar\nupdate_field pvehicle copgto MODEL Collision64 baz\n", st));
+        const Attribute& m2 = Own(car, "MODEL");
+        CHECK_EQ(load32(m2.data.bytes.data() + 8, Endian::Little), StringHash32("bar"));
+        CHECK_EQ(load64(m2.data.bytes.data(), Endian::Little), StringHash64("baz"));
+        CHECK(m2.data.ptrAt(12) && m2.data.ptrAt(12)->text == "foo");
+    }
 }

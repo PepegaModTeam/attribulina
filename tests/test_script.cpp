@@ -1562,3 +1562,107 @@ TEST("script: include runs other scripts, from the including script's folder") {
     CHECK_OK(sc::Apply(*db, sc::Parse("attribulina 1\ninclude " + sc::Quote((dir / "parts" / "b.amod").string()) + "\n", "Script panel")));
     fs::remove_all(dir);
 }
+
+TEST("script: PlaceAt names the collection or value under the caret, in a script with a mistake elsewhere too") {
+    const std::string text = "attribulina 2\n"                                                    // 1
+                             "game prostreet_pc\n"                                                // 2
+                             "edit pvehicle/911gt3 {\n"                                           // 3
+                             "    MAX_RPM = 9000 was 8400\n"                                      // 4
+                             "    Cars = [vehicle/a, vehicle/b]\n"                                // 5
+                             "    Parts[7] = { mKitNumber = 3, mPart = car_part/body }\n"        // 6
+                             "}\n"                                                                // 7
+                             "create pvehicle/x from pvehicle/911gt3 under pvehicle/default\n"   // 8
+                             "# a comment\n"                                                      // 9
+                             "if exists vehicle/240sx {\n"                                        // 10
+                             "    edit vehicle/240sx {\n"                                         // 11
+                             "        TORQUE.yMax = 300\n"                                        // 12
+                             "    }\n"                                                            // 13
+                             "}\n"                                                                // 14
+                             "edit pvehicle/911gt3 {\n"                                           // 15
+                             "    append Cars = [vehicle/c, vehicle/d]\n"                         // 16
+                             "}\n";                                                               // 17
+    auto at = [](const std::string& t, int line, int col) { return sc::PlaceAt(t, sc::Pos{line, col}); };
+    auto value = [](const sc::ScriptPlace& p) { return p.target.text() + (p.hasPath ? " " + p.path.text() : std::string()); };
+    for (const std::string& t : {text, text + "edit pvehicle/ {\n"}) {
+        CHECK_EQ(value(at(t, 4, 6)), std::string("pvehicle/911gt3 MAX_RPM"));
+        CHECK_EQ(value(at(t, 4, 15)), std::string("pvehicle/911gt3 MAX_RPM")); // the value is the field's
+        CHECK_EQ(value(at(t, 4, 1)), std::string("pvehicle/911gt3 MAX_RPM")); // before the first word: the line's first
+        CHECK_EQ(value(at(t, 3, 10)), std::string("pvehicle/911gt3"));
+        CHECK_EQ(value(at(t, 5, 6)), std::string("pvehicle/911gt3 Cars"));
+        const sc::ScriptPlace b = at(t, 5, 26);
+        CHECK_EQ(value(b), std::string("pvehicle/911gt3 Cars[1]"));
+        CHECK(b.named && b.named->text() == "vehicle/b");
+        CHECK_EQ(value(at(t, 6, 20)), std::string("pvehicle/911gt3 Parts[7].mKitNumber"));
+        CHECK_EQ(value(at(t, 6, 35)), std::string("pvehicle/911gt3 Parts[7].mPart"));
+        const sc::ScriptPlace part = at(t, 6, 45);
+        CHECK_EQ(value(part), std::string("pvehicle/911gt3 Parts[7].mPart"));
+        CHECK(part.named && part.named->text() == "car_part/body");
+        CHECK_EQ(value(at(t, 8, 3)), std::string("pvehicle/x"));
+        CHECK_EQ(value(at(t, 8, 30)), std::string("pvehicle/911gt3"));
+        CHECK_EQ(value(at(t, 8, 50)), std::string("pvehicle/default"));
+        CHECK(at(t, 9, 3).target.cls.empty());
+        CHECK(at(t, 7, 1).target.cls.empty());
+        CHECK_EQ(value(at(t, 10, 13)), std::string("vehicle/240sx"));
+        CHECK_EQ(value(at(t, 12, 12)), std::string("vehicle/240sx TORQUE.yMax"));
+        // An appended list's items aren't the array's first elements.
+        const sc::ScriptPlace d = at(t, 16, 34);
+        CHECK_EQ(value(d), std::string("pvehicle/911gt3 Cars"));
+        CHECK(d.named && d.named->text() == "vehicle/d");
+    }
+    // A statement that doesn't read itself names nothing.
+    CHECK(at(text + "edit pvehicle/ {\n", 18, 6).target.cls.empty());
+
+    // Its collections in a database: one, every match of a wildcard, or none.
+    auto db = std::make_unique<Database>();
+    db->names().loadFile(test::DataPath("data/attrib_keys.txt"));
+    db->loadPack(test::DataPath("attrib/databases/pc/prostreet-vanilla/ATTRIBUTES.BIN"));
+    sc::Target t;
+    t.cls = "pvehicle";
+    t.name = "street";
+    CHECK_EQ(sc::TargetCollections(*db, t).size(), size_t(1));
+    t.name = "*";
+    CHECK(sc::TargetCollections(*db, t).size() > 1);
+    t.name = "no_such_car";
+    CHECK(sc::TargetCollections(*db, t).empty());
+    t.cls = "no_such_class";
+    CHECK(sc::TargetCollections(*db, t).empty());
+    CHECK_EQ(sc::NameKey("0x12345678"), 0x12345678u);
+    CHECK_EQ(sc::NameKey("\"0x12345678\""), StringHash32("0x12345678"));
+}
+
+TEST("script: PlaceAt reads the statement around the caret, inside a long if, past a handler's Lua and a mistake in the same block") {
+    // A converted nfsms script is one long if per ui_option block; F12 parsed all of it.
+    std::string text = "attribulina 2\n"                                       // 1
+                       "game prostreet_pc\n"                                   // 2
+                       "if $big {\n"                                           // 3
+                       "    edit gameplay/h {\n"                               // 4
+                       "        bytecode = lua \"\"\"\n"                       // 5
+                       "function f() local t = { \"}\" } # not a comment\n"     // 6
+                       "edit pvehicle/inside_the_string {\n"                   // 7
+                       "end\n"                                                 // 8
+                       "        \"\"\"\n"                                       // 9
+                       "    }\n";                                              // 10
+    const int cars = 5000;
+    for (int i = 0; i < cars; ++i) text += "    edit pvehicle/car" + std::to_string(i) + " {\n        MAX_RPM = " + std::to_string(i) + "\n    }\n";
+    const int after = 11 + 3 * cars;
+    text += "    edit pvehicle/broken {\n"                 // after
+            "        MAX_RPM = = 3\n"                      // after + 1
+            "    }\n"                                      // after + 2
+            "    edit pvehicle/last {\n"                   // after + 3
+            "        Parts[2] = { mKitNumber = 4 }\n"      // after + 4
+            "    }\n"
+            "}\n";
+    auto value = [&](int line, int col) {
+        const sc::ScriptPlace p = sc::PlaceAt(text, sc::Pos{line, col});
+        return p.target.text() + (p.hasPath ? " " + p.path.text() : std::string());
+    };
+    CHECK_EQ(value(11 + 3 * 1234, 12), std::string("pvehicle/car1234"));
+    CHECK_EQ(value(12 + 3 * 1234, 9), std::string("pvehicle/car1234 MAX_RPM"));
+    CHECK_EQ(value(after + 3, 12), std::string("pvehicle/last"));
+    CHECK_EQ(value(after + 4, 22), std::string("pvehicle/last Parts[2].mKitNumber"));
+    CHECK_EQ(value(4, 12), std::string("gameplay/h"));
+    CHECK_EQ(value(5, 9), std::string("gameplay/h bytecode"));
+    // Inside the Lua: no statement, whatever it looks like.
+    CHECK(sc::PlaceAt(text, sc::Pos{7, 3}).target.cls.empty());
+    CHECK(sc::PlaceAt(text, sc::Pos{after + 1, 9}).target.cls.empty()); // the mistake
+}

@@ -157,6 +157,8 @@ To Mod Script (in the window), or `attribcli convert GLOBAL mod.nfsms -o mod.amo
 - A `ui_option` block becomes an `if` on its option: `if $dif == "Hard" { ... }`.
 - Included scripts are written in place, after a `# from` comment.
 - Values come out as Attribulina's paths (`TORQUE.yMin`, `Parts[8].mKitNumber`), typed by their fields, and commands as `create`, `create ... from`, `delete ... with children`, `rename`, `move` and `move ... to vault`. `append_array` is an `append` (format 2), so the element goes at the end of the array on any database. Consecutive values of one collection share an `edit` block.
+- `add_node` with a parent is a `create` and then a `move` under the parent. A `create ... under` would start the node from the parent's layout values, and nfsms starts it from zeros (NFS-VltEd compatible: from the class's `default`).
+- A name written as its hash comes out as the name when the database's name lists know it, since both are the same key: a field (`0x767fffc1 = false` is `isBoosterPack = false`), a reference's collection (`"part_fedata"/"t3_low_forced_induction_package_2"`), a key, `rename_node`'s new name, and a bin key by the bin key names (`HAL_ID 0xdac3d6ae` is `HAL_ID = "CAR_PART_STOCK"`). A hash no list knows stays as written. MODEL's Visual and Collision set to the same text come out as the text alone.
 - To read values by their fields' types and to find what earlier lines made, it runs the script on a copy of the database, with every setup block taken. A line that fails there comes out as a comment saying why.
 - `file_copy`, `folder_create` and `ui_image` have no mod script form and come out as comments.
 

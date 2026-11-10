@@ -1222,7 +1222,8 @@ namespace attrib::nfsms
 					sc::Statement r;
 					r.kind = K::Rename;
 					r.target = targetOf(x);
-					r.word = c.args[2];
+					const std::string* named = hash ? db_.names().find(KeyOf(c.args[2])) : nullptr;
+					r.word = named ? *named : c.args[2];
 					emit(std::move(r));
 					if (hash) CollectionEditor(db_).rename(x, KeyOf(c.args[2]));
 					else CollectionEditor(db_).rename(x, c.args[2]);
@@ -1425,10 +1426,19 @@ namespace attrib::nfsms
 				sc::Statement cr;
 				cr.kind = K::Create;
 				cr.target = targetOf(x);
-				cr.hasUnder = parent != nullptr;
-				if (parent) cr.under = targetOf(*parent);
 				cr.vault = vault->name;
 				emit(std::move(cr));
+				if (parent)
+				{
+					// A mod script's create under the parent would start from the parent's
+					// layout values: made as a root and moved, as here.
+					sc::Statement mv;
+					mv.kind = K::Move;
+					mv.target = targetOf(x);
+					mv.hasUnder = true;
+					mv.under = targetOf(*parent);
+					emit(std::move(mv));
+				}
 				if (st_.vltEd) layoutFromDefault(k, x);
 				setCollectionName(x, n);
 				touch(vault);
@@ -2108,9 +2118,16 @@ namespace attrib::nfsms
 			sc::ValuePtr value(const std::string& t, const ValueType& vt, const Bytes& cur, RefPart part, Collection& x)
 			{
 				const Endian e = x.vault ? x.vault->raw.endian : Endian::Little;
-				auto keyValue = [&](const std::string& s)
+				// A hash by its name when the list knows it, so a converted script reads
+				// "isBoosterPack" where the nfsms line had 0x767fffc1 (the same key).
+				auto keyValue = [&](const std::string& s, const KeyNames& names)
 				{
-					return IsHex(s) ? sc::MakeNumber(s) : s.empty() ? sc::MakeNumber("0") : sc::MakeString(s);
+					if (IsHex(s))
+					{
+						const std::string* n = names.find(KeyOf(s));
+						return n ? sc::MakeString(*n) : sc::MakeNumber(s);
+					}
+					return s.empty() ? sc::MakeNumber("0") : sc::MakeString(s);
 				};
 				auto ref = [&](sc::ValuePtr a, sc::ValuePtr b)
 				{
@@ -2197,11 +2214,11 @@ namespace attrib::nfsms
 						const std::string* n = db_.names().find(key);
 						return n ? sc::MakeString(*n) : sc::MakeNumber(Hex32(key));
 					};
-					if (part == RefPart::Class) return ref(keyValue(t), k ? keep(k) : sc::MakeNumber("0"));
+					if (part == RefPart::Class) return ref(keyValue(t, db_.names()), k ? keep(k) : sc::MakeNumber("0"));
 					// The collection alone, as these tools set it: the class stays.
 					if (!ck && part == RefPart::Whole) fail("the reference has no class yet; set its Class first");
 					const std::string* className = db_.names().find(ck); // by name, so messages read "vehicle/x"
-					return ref(className ? sc::MakeString(*className) : sc::MakeNumber(Hex32(ck)), keyValue(t));
+					return ref(className ? sc::MakeString(*className) : sc::MakeNumber(Hex32(ck)), keyValue(t, db_.names()));
 				}
 				switch (vt.kind)
 				{
@@ -2238,9 +2255,9 @@ namespace attrib::nfsms
 							return std::isdigit(static_cast<unsigned char>(ch));
 						}) && std::strtoull(t.c_str(), nullptr, 10) <= 0xFFFFFFFFull)
 							return sc::MakeNumber(t);
-						return keyValue(t);
+						return keyValue(t, db_.binNames());
 					case TypeKind::Key:
-					case TypeKind::ClassRefSpec: return keyValue(t);
+					case TypeKind::ClassRefSpec: return keyValue(t, db_.names());
 					default: break;
 				}
 				fail((vt.typeName.empty() ? std::string("this value") : vt.typeName) + " takes more than one value: name a property");
@@ -2570,10 +2587,15 @@ namespace attrib::nfsms
 				{
 					t = text;
 				}
-				auto v = std::make_shared<sc::Value>();
-				v->kind = sc::Value::Kind::Tuple;
-				v->items = { sc::MakeString(t), sc::MakeNumber(Hex32(hash)) };
-				if (kl.hash64)
+				// The text alone when the hashes are its own (Visual and Collision both set).
+				const bool own = !t.empty() && hash == StringHash32(t) && (!kl.hash64 || hash64 == StringHash64(t));
+				auto v = own ? sc::MakeString(t) : std::make_shared<sc::Value>();
+				if (!own)
+				{
+					v->kind = sc::Value::Kind::Tuple;
+					v->items = { sc::MakeString(t), sc::MakeNumber(Hex32(hash)) };
+				}
+				if (!own && kl.hash64)
 				{
 					char b[24];
 					std::snprintf(b, sizeof(b), "0x%016llX", static_cast<unsigned long long>(hash64));
@@ -2765,7 +2787,7 @@ namespace attrib::nfsms
 			// Our value of kind `mt` holding the bits `v` (its `ms` bytes as a
 			// little-endian number), as a script value; null for a kind that isn't a
 			// number.
-			static sc::ValuePtr BitsValue(const ValueType& mt, uint32_t ms, uint64_t v, Endian e)
+			sc::ValuePtr BitsValue(const ValueType& mt, uint32_t ms, uint64_t v, Endian e) const
 			{
 				if (mt.kind == TypeKind::Bool && v <= 1) return sc::MakeWord(v ? "true" : "false");
 				if (mt.kind == TypeKind::Float && ms == 4)
@@ -2801,10 +2823,14 @@ namespace attrib::nfsms
 					}
 					return bytes;
 				}
-				// A key's number in hex (a bare decimal would be a name to hash).
+				// A key's name, else its number in hex (a bare decimal would be a name to hash).
 				if (mt.kind == TypeKind::Key || mt.kind == TypeKind::BinKey)
 				{
-					if (ms != 8) return sc::MakeNumber(Hex32(uint32_t(v)));
+					if (ms != 8)
+					{
+						const std::string* n = (mt.kind == TypeKind::BinKey ? db_.binNames() : db_.names()).find(uint32_t(v));
+						return n ? sc::MakeString(*n) : sc::MakeNumber(Hex32(uint32_t(v)));
+					}
 					char b[24];
 					std::snprintf(b, sizeof(b), "0x%016llX", static_cast<unsigned long long>(v));
 					return sc::MakeNumber(b);
@@ -2877,9 +2903,6 @@ namespace attrib::nfsms
 				amod(x, { s });
 				return true;
 			}
-			// A word NFS-VltEd writes with another width than our member there has
-			// (FEPartData's 4 is an int32 over tier, drift, drag and grip): its bytes
-			// over our members by offset, each set to what its bytes then say.
 			// A word NFS-VltEd writes with another width than our member there has
 			// (FEPartData's 4 is an int32 over tier, drift, drag and grip): its bytes
 			// over our members by offset, each set to what its bytes then say.
@@ -2957,6 +2980,9 @@ namespace attrib::nfsms
 			// Value statements through the mod script engine.
 			void amod(Collection& x, std::vector<sc::Statement> body)
 			{
+				// A field written as its hash goes by its name when it has one (the same key).
+				for (sc::Statement& b : body)
+					if (IsHex(b.path.field)) b.path.field = name(KeyOf(b.path.field));
 				sc::Script s;
 				s.source = source_;
 				sc::Statement e;

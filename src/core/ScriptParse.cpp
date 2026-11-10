@@ -2129,7 +2129,8 @@ namespace attrib::script
 		class PlaceFinder
 		{
 		public:
-			explicit PlaceFinder(std::string_view text) : text_(text)
+			// Only items on `line` are kept (the caret's), so a long script costs its walk.
+			PlaceFinder(std::string_view text, int line) : text_(text), line_(line)
 			{
 			}
 
@@ -2148,13 +2149,17 @@ namespace attrib::script
 		private:
 			using K = Statement::Kind;
 
+			bool wanted(Pos p) const
+			{
+				return p.line > 0 && p.line == line_;
+			}
 			void add(Pos p, ScriptPlace place)
 			{
-				if (p.line > 0) items.push_back({ p, std::move(place) });
+				if (wanted(p)) items.push_back({ p, std::move(place) });
 			}
 			void addTarget(const Target& t)
 			{
-				if (t.root || t.cls.empty()) return;
+				if (t.root || t.cls.empty() || !wanted(t.pos)) return;
 				ScriptPlace pl;
 				pl.target = t;
 				add(t.pos, std::move(pl));
@@ -2169,15 +2174,16 @@ namespace attrib::script
 			}
 
 			// Where `name = value` starts on the value's line: the name before it.
-			Pos memberPos(const std::string& name, Pos valuePos) const
+			Pos memberPos(const std::string& name, Pos valuePos)
 			{
-				size_t b = 0;
-				for (int l = 1; l < valuePos.line && b != std::string_view::npos; ++l)
+				if (lineStarts_.empty())
 				{
-					b = text_.find('\n', b);
-					if (b != std::string_view::npos) ++b;
+					lineStarts_.push_back(0);
+					for (size_t i = 0; i < text_.size(); ++i)
+						if (text_[i] == '\n') lineStarts_.push_back(i + 1);
 				}
-				if (b == std::string_view::npos || valuePos.col < 1) return valuePos;
+				if (valuePos.line < 1 || size_t(valuePos.line) > lineStarts_.size() || valuePos.col < 1) return valuePos;
+				const size_t b = lineStarts_[size_t(valuePos.line - 1)];
 				const std::string_view before = text_.substr(b, std::min(text_.size() - b, size_t(valuePos.col - 1)));
 				const size_t at = before.rfind(name);
 				return at == std::string_view::npos ? valuePos : Pos{ valuePos.line, int(at) + 1 };
@@ -2188,7 +2194,8 @@ namespace attrib::script
 			void value(const Value& v, const Target& block, const FieldPath& path, bool steps)
 			{
 				using V = Value::Kind;
-				ScriptPlace pl = valuePlace(block, path);
+				if (v.kind == V::Binary && v.op == '/' && !wanted(v.pos)) return;
+				ScriptPlace pl = wanted(v.pos) ? valuePlace(block, path) : ScriptPlace{};
 				if (v.kind == V::Binary && v.op == '/')
 				{
 					// class/name: a reference, when the first part is a word.
@@ -2219,7 +2226,7 @@ namespace attrib::script
 					add(v.pos, std::move(pl));
 					return;
 				}
-				if (v.kind == V::String && v.text.find('/') != std::string::npos)
+				if (v.kind == V::String && wanted(v.pos) && v.text.find('/') != std::string::npos)
 				{
 					// "class/name" in quotes: a reference, or a gameplay path.
 					const size_t slash = v.text.find('/');
@@ -2246,7 +2253,7 @@ namespace attrib::script
 						if (!mv) continue;
 						FieldPath p = path;
 						if (steps) p.steps.push_back({ name, -1 });
-						add(memberPos(name, mv->pos), valuePlace(block, p));
+						if (wanted(mv->pos)) add(memberPos(name, mv->pos), valuePlace(block, p));
 						value(*mv, block, p, steps);
 					}
 				}
@@ -2256,7 +2263,7 @@ namespace attrib::script
 			{
 				using C = Condition::Kind;
 				if (c.kind == C::ExistsCollection) addTarget(c.target);
-				if (block && c.hasPath && !c.path.field.empty()) add(c.path.pos, valuePlace(*block, c.path));
+				if (block && c.hasPath && !c.path.field.empty() && wanted(c.path.pos)) add(c.path.pos, valuePlace(*block, c.path));
 				for (const Condition& x : c.items) condition(x, block);
 			}
 
@@ -2284,7 +2291,7 @@ namespace attrib::script
 						return;
 					case K::Set: case K::Revert: case K::Resize: case K::Insert: case K::Remove: case K::Append:
 						if (!block || s.path.field.empty()) return;
-						add(s.path.pos, valuePlace(*block, s.path));
+						if (wanted(s.path.pos)) add(s.path.pos, valuePlace(*block, s.path));
 						// What an append, insert or remove gives isn't at the path's
 						// elements: its items stay the array's.
 						if (s.value) value(*s.value, *block, s.path, s.kind == K::Set && s.op == '=');
@@ -2296,33 +2303,41 @@ namespace attrib::script
 			}
 
 			std::string_view text_;
+			int line_;
+			std::vector<size_t> lineStarts_;
 		};
 
-		// The text with only the top-level statement around `line` left (the
-		// other lines emptied, so positions hold): brackets of every kind
-		// counted outside strings and comments.
-		std::string StatementAround(std::string_view text, int line)
+		// Each line's bracket depth at its start, counted outside strings and
+		// comments, and whether a statement can start there (it has a token and
+		// doesn't begin inside a """ string).
+		struct ScriptLines
 		{
-			std::vector<int> depthAt; // at each line's start
-			std::vector<bool> blank;
+			std::vector<int> depth;
+			std::vector<bool> starts;
+			std::vector<size_t> begin;
+		};
+
+		ScriptLines ScanLines(std::string_view text)
+		{
+			ScriptLines out;
 			int depth = 0;
-			bool inString = false, lineHasToken = false;
-			depthAt.push_back(0);
+			bool token = false;
+			auto newLine = [&](size_t at)
+			{
+				out.depth.push_back(depth);
+				out.begin.push_back(at);
+				token = false;
+			};
+			newLine(0);
+			bool rawLine = false; // the line began inside a """ string
 			for (size_t i = 0; i < text.size(); ++i)
 			{
 				const char c = text[i];
 				if (c == '\n')
 				{
-					blank.push_back(!lineHasToken);
-					lineHasToken = false;
-					inString = false;
-					depthAt.push_back(depth);
-					continue;
-				}
-				if (inString)
-				{
-					if (c == '\\') ++i;
-					else if (c == '"') inString = false;
+					out.starts.push_back(token && !rawLine);
+					newLine(i + 1);
+					rawLine = false;
 					continue;
 				}
 				if (c == '#')
@@ -2330,32 +2345,65 @@ namespace attrib::script
 					while (i + 1 < text.size() && text[i + 1] != '\n') ++i;
 					continue;
 				}
-				if (c != ' ' && c != '\t' && c != '\r') lineHasToken = true;
-				if (c == '"') inString = true;
-				else if (c == '{' || c == '[' || c == '(') ++depth;
+				if (c != ' ' && c != '\t' && c != '\r') token = true;
+				if (c == '"' && text.substr(i, 3) == "\"\"\"")
+				{
+					// Raw, to the next """, over lines.
+					const size_t e = text.find("\"\"\"", i + 3);
+					const size_t end = e == std::string_view::npos ? text.size() : e + 3;
+					for (size_t k = i + 3; k < end && k < text.size(); ++k)
+						if (text[k] == '\n')
+						{
+							out.starts.push_back(token && !rawLine);
+							newLine(k + 1);
+							rawLine = true;
+							token = true;
+						}
+					i = end - 1;
+					continue;
+				}
+				if (c == '"')
+				{
+					for (++i; i < text.size() && text[i] != '"' && text[i] != '\n'; ++i)
+						if (text[i] == '\\') ++i;
+					if (i < text.size() && text[i] == '\n') --i; // unterminated: the line ends it
+					continue;
+				}
+				if (c == '{' || c == '[' || c == '(') ++depth;
 				else if ((c == '}' || c == ']' || c == ')') && depth > 0) --depth;
 			}
-			blank.push_back(!lineHasToken);
-			const int lines = int(depthAt.size());
-			if (line < 1 || line > lines) return {};
-			auto starts = [&](int l)
+			out.starts.push_back(token && !rawLine);
+			return out;
+		}
+
+		// The lines of the statement at bracket depth `d` that `line` is in: from
+		// the last line at or above it that starts one at that depth, down over
+		// the deeper lines after it. False when `line` isn't inside one.
+		bool StatementLines(const ScriptLines& s, int line, int d, int& first, int& last)
+		{
+			const int lines = int(s.depth.size());
+			if (line < 1 || line > lines || s.depth[size_t(line - 1)] < d) return false;
+			first = line;
+			for (;;)
 			{
-				return depthAt[size_t(l - 1)] == 0 && !blank[size_t(l - 1)];
-			};
-			int first = line;
-			while (first > 1 && !starts(first)) --first;
-			int last = line;
-			while (last < lines && !starts(last + 1)) ++last;
-			std::string out;
-			size_t b = 0;
-			for (int l = 1; l <= lines; ++l)
-			{
-				size_t e = text.find('\n', b);
-				if (e == std::string_view::npos) e = text.size();
-				if (l >= first && l <= last) out.append(text.substr(b, e - b));
-				if (l < lines) out += '\n';
-				b = e + 1;
+				const int at = s.depth[size_t(first - 1)];
+				if (at < d) return false;
+				if (at == d && s.starts[size_t(first - 1)]) break;
+				if (first == 1) return false;
+				--first;
 			}
+			last = line;
+			while (last < lines && (s.depth[size_t(last)] > d || !s.starts[size_t(last)])) ++last;
+			return true;
+		}
+
+		// Those lines alone, at their own line numbers (the lines before them empty).
+		std::string LinesOnly(std::string_view text, const ScriptLines& s, int first, int last)
+		{
+			const size_t b = s.begin[size_t(first - 1)];
+			const size_t e = size_t(last) < s.begin.size() ? s.begin[size_t(last)] : text.size();
+			std::string out(size_t(first - 1), '\n');
+			out.append(text.substr(b, e - b));
 			return out;
 		}
 
@@ -2363,36 +2411,58 @@ namespace attrib::script
 
 	ScriptPlace PlaceAt(std::string_view text, Pos caret)
 	{
-		Script s;
+		auto pick = [&](const Script& s, bool& found)
+		{
+			PlaceFinder f(text, caret.line);
+			f.statements(s.statements, nullptr);
+			// The item that starts last at or before the caret on its line, else the
+			// line's first; a later item at the same place is the deeper one.
+			const PlaceFinder::Item* best = nullptr;
+			const PlaceFinder::Item* first = nullptr;
+			for (const PlaceFinder::Item& it : f.items)
+			{
+				if (!first || it.pos.col < first->pos.col) first = &it;
+				if (it.pos.col <= caret.col && (!best || it.pos.col >= best->pos.col)) best = &it;
+			}
+			if (!best) best = first;
+			found = best != nullptr;
+			return best ? best->place : ScriptPlace{};
+		};
+		// The statement around the caret, the innermost first (an edit in a long
+		// if), then the ones around it: parsing a whole long script for one line
+		// took seconds. A script with a mistake elsewhere reads the same way.
+		const ScriptLines lines = ScanLines(text);
+		bool parsedTop = false;
+		if (caret.line >= 1 && size_t(caret.line) <= lines.depth.size())
+			for (int d = lines.depth[size_t(caret.line - 1)]; d >= 0; --d)
+			{
+				int first, last;
+				if (!StatementLines(lines, caret.line, d, first, last)) continue;
+				Script s;
+				try
+				{
+					s = Parse(LinesOnly(text, lines, first, last), "script");
+				}
+				catch (const ScriptError&)
+				{
+					continue;
+				}
+				if (d == 0) parsedTop = true;
+				bool found = false;
+				ScriptPlace p = pick(s, found);
+				if (found) return p;
+			}
+		if (parsedTop) return {};
+		// The brackets didn't say where the statement is: the whole script.
 		try
 		{
-			s = Parse(text, "script");
+			bool found = false;
+			return pick(Parse(text, "script"), found);
 		}
 		catch (const ScriptError&)
 		{
-			try
-			{
-				s = Parse(StatementAround(text, caret.line), "script");
-			}
-			catch (const ScriptError&)
-			{
-				return {};
-			}
+			return {};
 		}
-		PlaceFinder f(text);
-		f.statements(s.statements, nullptr);
-		// The item that starts last at or before the caret on its line, else the
-		// line's first; a later item at the same place is the deeper one.
-		const PlaceFinder::Item* best = nullptr;
-		const PlaceFinder::Item* first = nullptr;
-		for (const PlaceFinder::Item& it : f.items)
-		{
-			if (it.pos.line != caret.line) continue;
-			if (!first || it.pos.col < first->pos.col) first = &it;
-			if (it.pos.col <= caret.col && (!best || it.pos.col >= best->pos.col)) best = &it;
-		}
-		if (!best) best = first;
-		return best ? best->place : ScriptPlace{};
 	}
 
 } // namespace attrib::script
