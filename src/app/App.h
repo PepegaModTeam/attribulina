@@ -910,6 +910,8 @@ namespace app
 		};
 		std::vector<SetupImage> setupImages_;
 		std::vector<ImTextureData*> retiredTextures_;
+		ImVec2 setupSize_;           // the setup prompt's size last frame
+		bool setupResized_ = false;  // it changed: centre it again
 
 		// Elements taken off the end of an array by shrinking it in the inspector,
 		// last first, so that growing it again brings them back rather than

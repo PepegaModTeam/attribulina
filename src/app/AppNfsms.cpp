@@ -832,8 +832,19 @@ namespace app
 	void App::drawNfsmsModals()
 	{
 		const ImGuiViewport* vp = ImGui::GetMainViewport();
-		ImGui::SetNextWindowPos(vp->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-		if (!ImGui::BeginPopupModal("nfsms Setup", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
+		// Centred again while it grows: its scrolling child takes a few frames
+		// to reach its height, and centring only on appearing left a long
+		// setup's Run and Cancel below the screen (Undercover Reformed's).
+		ImGui::SetNextWindowPos(vp->GetCenter(), setupResized_ ? ImGuiCond_Always : ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+		if (!ImGui::BeginPopupModal("nfsms Setup", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+		{
+			setupSize_ = ImVec2();
+			setupResized_ = false;
+			return;
+		}
+		const ImVec2 promptSize = ImGui::GetWindowSize();
+		setupResized_ = promptSize.x != setupSize_.x || promptSize.y != setupSize_.y;
+		setupSize_ = promptSize;
 		auto done = [&]()
 		{
 			pending_ = Pending::None;
@@ -871,7 +882,10 @@ namespace app
 				}
 				if (x > 0 && x + size.x <= ImGui::GetContentRegionAvail().x) ImGui::SameLine();
 				else x = 0;
-				if (si.tex && si.w > 0) ImGui::Image(ImTextureRef(si.tex), size);
+				// GetTexRef: ImTextureRef(si.tex) takes the pointer as a backend
+				// texture id (its legacy void* constructor), and D3D11 crashed
+				// binding the ImTextureData as a shader resource view (crash4).
+				if (si.tex && si.w > 0) ImGui::Image(si.tex->GetTexRef(), size);
 				else ImGui::TextDisabled("(picture %s)", si.path.c_str());
 				x += ImGui::GetItemRectSize().x + style.ItemSpacing.x;
 			}

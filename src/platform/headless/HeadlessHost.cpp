@@ -4,6 +4,10 @@
 #include "imgui_impl_null.h"
 #include "imgui_internal.h"
 
+#include <algorithm>
+#include <filesystem>
+#include <unordered_set>
+
 namespace platform
 {
 
@@ -16,6 +20,16 @@ namespace platform
 			return out;
 		}
 	} // namespace
+
+	bool HeadlessHost::decodeImage(const std::string& path, int& width, int& height, std::vector<unsigned char>& rgba)
+	{
+		std::error_code ec;
+		if (!decodeImages || !std::filesystem::is_regular_file(std::filesystem::path(std::u8string(path.begin(), path.end())), ec)) return false;
+		width = 8;
+		height = 4;
+		rgba.assign(size_t(width) * size_t(height) * 4, 0x80);
+		return true;
+	}
 
 	std::optional<std::string> HeadlessHost::openFileDialog(const std::string&, const std::vector<app::FileFilter>&)
 	{
@@ -43,6 +57,15 @@ namespace platform
 
 	HeadlessImGui::~HeadlessImGui()
 	{
+		// As the D3D11 backend's shutdown: textures only this context holds go.
+		for (ImTextureData* tex : ImGui::GetPlatformIO().Textures)
+			if (tex->RefCount == 1 && tex->BackendUserData)
+			{
+				tex->SetTexID(ImTextureID_Invalid);
+				tex->BackendUserData = nullptr;
+				tex->SetStatus(ImTextureStatus_Destroyed);
+			}
+		views_.clear();
 		ImGui_ImplNullRender_Shutdown();
 		ImGui_ImplNullPlatform_Shutdown();
 		ImGui::DestroyContext();
@@ -94,13 +117,69 @@ namespace platform
 		{
 			if (beforeFrame) beforeFrame();
 			ImGui_ImplNullPlatform_NewFrame();
+			if (nextDeltaTime > 0)
+			{
+				ImGui::GetIO().DeltaTime = nextDeltaTime;
+				nextDeltaTime = 0;
+			}
 			ImGui_ImplNullRender_NewFrame();
 			ImGui::NewFrame();
 			app.frame();
 			ImGui::Render();
-			ImGui_ImplNullRender_RenderDrawData(ImGui::GetDrawData());
+			render();
 			if (afterFrame) afterFrame();
 		}
+	}
+
+	// ImGui_ImplDX11_RenderDrawData's handling of textures, with a heap int
+	// standing for each shader resource view.
+	void HeadlessImGui::render()
+	{
+		ImDrawData* draw_data = ImGui::GetDrawData();
+		if (!draw_data || !draw_data->Textures) return;
+		for (ImTextureData* tex : *draw_data->Textures)
+		{
+			if (tex->Status == ImTextureStatus_WantCreate)
+			{
+				views_.push_back(std::make_unique<int>(int(views_.size())));
+				tex->SetTexID(ImTextureID(intptr_t(views_.back().get())));
+				tex->SetStatus(ImTextureStatus_OK);
+				tex->BackendUserData = views_.back().get();
+			}
+			else if (tex->Status == ImTextureStatus_WantUpdates)
+			{
+				tex->SetStatus(ImTextureStatus_OK);
+			}
+			if (tex->Status == ImTextureStatus_WantDestroy && tex->UnusedFrames > 0)
+			{
+				const int* view = static_cast<const int*>(tex->BackendUserData);
+				views_.erase(std::remove_if(views_.begin(), views_.end(), [&](const std::unique_ptr<int>& v) { return v.get() == view; }), views_.end());
+				tex->SetTexID(ImTextureID_Invalid);
+				tex->BackendUserData = nullptr;
+				tex->SetStatus(ImTextureStatus_Destroyed);
+				++texturesFreed;
+			}
+		}
+		std::unordered_set<const ImTextureData*> listed(draw_data->Textures->begin(), draw_data->Textures->end());
+		std::unordered_set<intptr_t> views;
+		for (const std::unique_ptr<int>& v : views_) views.insert(intptr_t(v.get()));
+		const int frame = ImGui::GetFrameCount();
+		for (const ImDrawList* list : draw_data->CmdLists)
+			for (const ImDrawCmd& cmd : list->CmdBuffer)
+			{
+				if (cmd.UserCallback || cmd.ElemCount == 0) continue;
+				const char* owner = list->_OwnerName ? list->_OwnerName : "?";
+				if (cmd.TexRef._TexData && !listed.count(cmd.TexRef._TexData))
+				{
+					textureProblems.push_back("frame " + std::to_string(frame) + ": " + owner + " draws with a texture no longer listed (freed)");
+					continue;
+				}
+				const ImTextureID id = cmd.TexRef._TexData ? cmd.TexRef._TexData->TexID : cmd.TexRef._TexID;
+				if (id != ImTextureID_Invalid && !views.count(intptr_t(id)))
+					textureProblems.push_back("frame " + std::to_string(frame) + ": " + owner + " draws with a freed texture view");
+				else if (id == ImTextureID_Invalid)
+					textureProblems.push_back("frame " + std::to_string(frame) + ": " + owner + " draws with a destroyed texture (no view)");
+			}
 	}
 
 } // namespace platform

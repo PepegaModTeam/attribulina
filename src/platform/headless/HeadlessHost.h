@@ -47,6 +47,10 @@ namespace platform
 		{
 			return true;
 		}
+		// Pictures (nfsms setups): with this on, any file that is there decodes
+		// as a small grey picture; off, none does, as with no decoder.
+		bool decodeImages = false;
+		bool decodeImage(const std::string& path, int& width, int& height, std::vector<unsigned char>& rgba) override;
 	};
 
 	// Owns an ImGui context with the null platform and renderer.
@@ -75,6 +79,23 @@ namespace platform
 		// Called before NewFrame and after Render of every frame.
 		void (*beforeFrame)() = nullptr;
 		void (*afterFrame)() = nullptr;
+
+		// The time the next frame takes, once (a frame that ran a long script);
+		// 0: a sixtieth of a second, as every other frame.
+		float nextDeltaTime = 0.0f;
+
+		// The renderer creates and frees textures as the D3D11 backend does: a
+		// texture is freed at the first render after a frame passed with it set
+		// to be destroyed (UnusedFrames > 0). Each draw command's texture is then
+		// looked up as PSSetShaderResources would. A command whose ImTextureData
+		// isn't in the frame's list (freed) or whose view was freed crashes on
+		// Windows (crashdumps/crash4); each is noted here.
+		std::vector<std::string> textureProblems;
+		size_t texturesFreed = 0;
+
+	private:
+		void render();
+		std::vector<std::unique_ptr<int>> views_; // one per created texture
 	};
 
 } // namespace platform

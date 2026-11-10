@@ -278,6 +278,89 @@ TEST("ui: the Explorer's tree scrolls sideways when a row is wider than it") {
     CHECK(probe.conflicts.empty());
 }
 
+TEST("ui: the user's files go to the host's user folder, and File > Load Key Names adds new names to user_keys.txt") {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() / "attribulina_userdir_test";
+    fs::remove_all(dir);
+    const fs::path exe = dir / "program", user = dir / "user";
+    fs::create_directories(exe / "data");
+    fs::create_directories(user);
+    // The program's own list, and a user_keys.txt edited by hand (no last newline).
+    std::ofstream(exe / "data" / "attrib_keys.txt", std::ios::binary) << "attribulina_program_name\n";
+    std::ofstream(user / "user_keys.txt", std::ios::binary) << "attribulina_typed_before";
+    const fs::path more = dir / "more_keys.txt";
+    std::ofstream(more, std::ios::binary) << "attribulina_program_name\nattribulina_typed_before\nattribulina_new_a\r\n\nattribulina_new_b";
+    auto read = [](const fs::path& p) {
+        const Bytes b = ReadFile(p.string());
+        return std::string(b.begin(), b.end());
+    };
+    {
+        platform::HeadlessImGui imgui;
+        platform::HeadlessHost host;
+        host.exeDir = exe.string();
+        host.userDir = user.string();
+        app::App a(host);
+        a.setup(1.0f, "");
+        CHECK(fs::path(a.userKeysPath()) == user / "user_keys.txt");
+        CHECK(fs::path(a.userLuaPath(Game::ProStreet)).parent_path() == user);
+        CHECK(a.open(ProStreetDir() + "/ATTRIBUTES.BIN"));
+        CHECK(a.loadKeyNames(more.string()));
+        for (const char* n : {"attribulina_new_a", "attribulina_new_b", "attribulina_program_name"}) {
+            const std::string* found = a.database()->names().find(StringHash32(n));
+            CHECK(found && *found == n);
+        }
+        // Only the names neither list had, after the line that lacked its newline.
+        CHECK_EQ(read(user / "user_keys.txt"), std::string("attribulina_typed_before\nattribulina_new_a\nattribulina_new_b\n"));
+        a.rememberName("attribulina_typed_now");
+        CHECK(!fs::exists(exe / "user_keys.txt"));
+    }
+    CHECK_EQ(read(user / "user_keys.txt"),
+             std::string("attribulina_typed_before\nattribulina_new_a\nattribulina_new_b\nattribulina_typed_now\n"));
+    {
+        // The next session knows them, and still reads the program's list.
+        platform::HeadlessImGui imgui;
+        platform::HeadlessHost host;
+        host.exeDir = exe.string();
+        host.userDir = user.string();
+        app::App a(host);
+        a.setup(1.0f, "");
+        CHECK(a.open(ProStreetDir() + "/ATTRIBUTES.BIN"));
+        for (const char* n : {"attribulina_new_b", "attribulina_typed_before", "attribulina_program_name"})
+            CHECK(a.database()->names().find(StringHash32(n)) != nullptr);
+    }
+    fs::remove_all(dir);
+}
+
+TEST("ui: the key names file an older version's settings name moves into user_keys.txt") {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() / "attribulina_oldkeys_test";
+    fs::remove_all(dir);
+    fs::create_directories(dir / "data");
+    std::ofstream(dir / "data" / "attrib_keys.txt", std::ios::binary) << "attribulina_program_name\n";
+    const fs::path old = dir / "my_keys.txt";
+    std::ofstream(old, std::ios::binary) << "attribulina_program_name\nattribulina_old_name\n";
+    const fs::path ini = dir / "attribulina.ini";
+    std::ofstream(ini, std::ios::binary) << "[Attribulina][Settings]\nKeysFile=" << old.string() << "\nLightTheme=0\n";
+    auto read = [](const fs::path& p) {
+        const Bytes b = ReadFile(p.string());
+        return std::string(b.begin(), b.end());
+    };
+    {
+        platform::HeadlessImGui imgui;
+        platform::HeadlessHost host;
+        host.exeDir = dir.string();
+        app::App a(host);
+        a.setup(1.0f, ini.string());
+        CHECK_EQ(read(dir / "user_keys.txt"), std::string("attribulina_old_name\n"));
+        CHECK(a.open(ProStreetDir() + "/ATTRIBUTES.BIN"));
+        for (const char* n : {"attribulina_old_name", "attribulina_program_name"})
+            CHECK(a.database()->names().find(StringHash32(n)) != nullptr);
+    }
+    // The setting is gone, so it moves once.
+    CHECK(read(ini).find("KeysFile=") == std::string::npos);
+    fs::remove_all(dir);
+}
+
 TEST("ui: names the user types are kept in user_keys.txt") {
     namespace fs = std::filesystem;
     const fs::path dir = fs::temp_directory_path() / "attribulina_keys_test";
@@ -1061,6 +1144,206 @@ TEST("ui: current-gen Undercover's paints get a colour picker while car_paint_sw
     CHECK(app::FormatValue(*a.database(), paints->data, 0, TypeOfAttribute(*paints, "Paints"), Endian::Big).find("swatch 46") ==
           std::string::npos);
     CHECK_EQ(Errors(a), size_t(0));
+    CHECK(probe.conflicts.empty());
+}
+
+namespace {
+// The screen point of (x, y) on a curve graph whose curve and points lie in
+// 0..1: the view is 0..1 padded 4% across and 6% up and down, 6 pixels in.
+ImVec2 CurveScreen(const ImRect& r, float x, float y) {
+    return ImVec2(r.Min.x + 6 + (x + 0.04f) / 1.08f * (r.GetWidth() - 12), r.Max.y - 6 - (y + 0.06f) / 1.12f * (r.GetHeight() - 12));
+}
+void DragMouse(platform::HeadlessImGui& imgui, app::App& a, ImVec2 from, ImVec2 to) {
+    imgui.mouseMove(from.x, from.y);
+    imgui.run(a, 1);
+    imgui.mouseButton(0, true);
+    imgui.run(a, 1);
+    imgui.mouseMove(to.x, to.y);
+    imgui.run(a, 1);
+    imgui.mouseButton(0, false);
+    imgui.run(a, 2);
+}
+// Shows one field of a collection in the inspector (rows below the fold aren't drawn).
+Attribute* ShowField(platform::HeadlessImGui& imgui, app::App& a, const char* cls, const char* name, const char* field) {
+    test::UiProbe& probe = test::UiProbe::get();
+    Collection* c = a.database()->findCollection(StringHash32(cls), StringHash32(name));
+    CHECK(c);
+    if (!c) return nullptr;
+    a.select(c, true);
+    imgui.run(a, 2);
+    ClickItem(imgui, a, probe.find("##fieldfilter", "Collection"));
+    imgui.key(a, ImGuiKey_A | ImGuiMod_Ctrl);
+    imgui.type(a, field);
+    imgui.run(a, 2);
+    return c->find(StringHash32(field));
+}
+} // namespace
+
+TEST("ui: a field the schema gives an enum picks a name, or takes any number typed in its raw box") {
+    platform::HeadlessImGui imgui;
+    imgui.beforeFrame = ProbeBefore;
+    imgui.afterFrame = ProbeAfter;
+    test::UiProbe& probe = test::UiProbe::get();
+    probe.conflicts.clear();
+    platform::HeadlessHost host;
+    app::App a(host);
+    a.setup(1.0f, "");
+    a.setUserKeysPath("");
+    CHECK(a.open(test::DataPath("attrib/databases/pc/mw-vanilla")));
+    if (!a.database()) return;
+    a.viewOptions() = app::ViewOptions{true, true, true};
+    Attribute* t = ShowField(imgui, a, "light_flares_cg", "headlight_outer", "flare_texture");
+    CHECK(t);
+    if (!t) return;
+    CHECK_EQ(load32(t->data.bytes.data(), Endian::Little), 1u);
+    // A combo reports no label to the test engine: it is the item left of the raw box.
+    const test::ProbeItem* raw = probe.find("##raw", "Collection");
+    CHECK(raw);
+    if (!raw) return;
+    const ImVec2 combo(raw->rect.Min.x - 20, (raw->rect.Min.y + raw->rect.Max.y) * 0.5f);
+    // Past Most Wanted's three textures (for a game whose code was changed to
+    // have more): the raw box takes it.
+    ClickItem(imgui, a, probe.find("##raw", "Collection"));
+    imgui.key(a, ImGuiKey_A | ImGuiMod_Ctrl);
+    imgui.type(a, "7");
+    imgui.key(a, ImGuiKey_Enter);
+    imgui.run(a, 2);
+    CHECK_EQ(load32(t->data.bytes.data(), Endian::Little), 7u);
+    // And the list sets a name's value.
+    ClickItem(imgui, a, test::ProbeItem{0, ImRect(combo, combo), "", ""});
+    imgui.run(a, 1);
+    ClickItem(imgui, a, probe.find("ESLF_TEX_HEADLIGHT_GLOW  (2)"));
+    imgui.run(a, 1);
+    CHECK_EQ(load32(t->data.bytes.data(), Endian::Little), 2u);
+    for (const auto& c : probe.conflicts) std::printf("        ID conflict: %s\n", c.c_str());
+    CHECK(probe.conflicts.empty());
+}
+
+TEST("ui: a Matrix curve the game reads by its Y column shows as a graph whose points drag up and down") {
+    platform::HeadlessImGui imgui;
+    imgui.beforeFrame = ProbeBefore;
+    imgui.afterFrame = ProbeAfter;
+    test::UiProbe& probe = test::UiProbe::get();
+    probe.conflicts.clear();
+    platform::HeadlessHost host;
+    app::App a(host);
+    a.setup(1.0f, "");
+    a.setUserKeysPath("");
+    CHECK(a.open(test::DataPath("attrib/databases/pc/mw-vanilla")));
+    if (!a.database()) return;
+    a.viewOptions() = app::ViewOptions{true, true, true};
+    // Most Wanted's visuallookeffect graph: the game reads only the Y column,
+    // at evenly spaced t, so the points sit at t = 0, 1/3, 2/3, 1 and drag up
+    // and down, the stored X staying.
+    Attribute* g = ShowField(imgui, a, "visuallookeffect", "default", "graph");
+    CHECK(g);
+    if (!g) return;
+    auto row = [&](int i, int k) { return loadf32(g->data.bytes.data() + i * 16 + k * 4, Endian::Little); };
+    CHECK(row(0, 0) == 0.0f && row(0, 1) == 1.0f && row(3, 0) == 1.0f && row(3, 1) == 0.0f);
+    const test::ProbeItem* curve = probe.find("##curve", "Collection");
+    CHECK(curve);
+    if (!curve) return;
+    const ImRect r = curve->rect;
+    // A click on a point leaves it as stored.
+    const float x1 = row(1, 0), y1 = row(1, 1);
+    const ImVec2 p1 = CurveScreen(r, 1.0f / 3.0f, y1);
+    ClickItem(imgui, a, test::ProbeItem{curve->id, ImRect(p1, p1), "", ""});
+    CHECK(row(1, 0) == x1 && row(1, 1) == y1);
+    CHECK(!a.hasUnsavedChanges());
+    const ImVec2 p0 = CurveScreen(r, 0.0f, 1.0f);
+    DragMouse(imgui, a, p0, ImVec2(p0.x + 30, CurveScreen(r, 0.0f, 0.5f).y));
+    CHECK(std::abs(row(0, 1) - 0.5f) < 0.02f);
+    CHECK(row(0, 0) == 0.0f); // the stored X stays
+    CHECK(row(0, 2) == 0.0f && row(0, 3) == 0.0f);
+    CHECK(a.hasUnsavedChanges());
+    // Its menu shows the rows only, and back. It opens on any part of the
+    // value: the graph, or any row's components below it.
+    auto component = [&](size_t n) {
+        const test::ProbeItem* found = nullptr;
+        for (const test::ProbeItem& it : probe.items)
+            if (it.label == "##c" && it.window.find("Collection") != std::string::npos && !n--) {
+                found = &it;
+                break;
+            }
+        return found;
+    };
+    Rightclick(imgui, a, probe.find("##curve", "Collection"));
+    CHECK(probe.find("Show as Rows"));
+    imgui.key(a, ImGuiKey_Escape);
+    imgui.run(a, 1);
+    Rightclick(imgui, a, component(5)); // the second row's Y
+    ClickItem(imgui, a, probe.find("Show as Rows"));
+    imgui.run(a, 1);
+    CHECK(!probe.find("##curve", "Collection"));
+    CHECK(a.displayPrefs().graph.count("graph") && !a.displayPrefs().graph.at("graph"));
+    Rightclick(imgui, a, component(0)); // the first row's X, not only the last row's W
+    ClickItem(imgui, a, probe.find("Show as Graph"));
+    imgui.run(a, 1);
+    CHECK(probe.find("##curve", "Collection"));
+    for (const auto& c : probe.conflicts) std::printf("        ID conflict: %s\n", c.c_str());
+    CHECK(probe.conflicts.empty());
+}
+
+TEST("ui: a Matrix curve the game reads as a Bezier drags its points both ways") {
+    platform::HeadlessImGui imgui;
+    imgui.beforeFrame = ProbeBefore;
+    imgui.afterFrame = ProbeAfter;
+    test::UiProbe& probe = test::UiProbe::get();
+    probe.conflicts.clear();
+    platform::HeadlessHost host;
+    app::App a(host);
+    a.setup(1.0f, "");
+    a.setUserKeysPath("");
+    CHECK(a.open(test::DataPath("attrib/databases/pc/carbon-vanilla")));
+    if (!a.database()) return;
+    a.viewOptions() = app::ViewOptions{true, true, true};
+    // Carbon's colour curves (SplineMap): X and Y both follow the Bezier.
+    // RGBCurve[0] is the straight line from (0, 0) to (1, 1).
+    Attribute* rgb = ShowField(imgui, a, "visuallook", "colorcurves", "RGBCurve");
+    CHECK(rgb && rgb->elemSize == 64);
+    if (!rgb) return;
+    auto row = [&](int i, int k) { return loadf32(rgb->data.bytes.data() + i * 16 + k * 4, Endian::Little); };
+    CHECK(row(3, 0) == 1.0f && row(3, 1) == 1.0f);
+    const test::ProbeItem* curve = probe.find("##curve", "Collection");
+    CHECK(curve);
+    if (!curve) return;
+    const ImRect r = curve->rect;
+    DragMouse(imgui, a, CurveScreen(r, 1.0f, 1.0f), CurveScreen(r, 0.8f, 0.9f));
+    CHECK(std::abs(row(3, 0) - 0.8f) < 0.02f);
+    CHECK(std::abs(row(3, 1) - 0.9f) < 0.02f);
+    for (const auto& c : probe.conflicts) std::printf("        ID conflict: %s\n", c.c_str());
+    CHECK(probe.conflicts.empty());
+}
+
+TEST("ui: an inherited Matrix curve is drawn disabled, and its menu still switches graph and rows") {
+    platform::HeadlessImGui imgui;
+    imgui.beforeFrame = ProbeBefore;
+    imgui.afterFrame = ProbeAfter;
+    test::UiProbe& probe = test::UiProbe::get();
+    probe.conflicts.clear();
+    platform::HeadlessHost host;
+    app::App a(host);
+    a.setup(1.0f, "");
+    a.setUserKeysPath("");
+    CHECK(a.open(test::DataPath("attrib/databases/pc/carbon-vanilla")));
+    if (!a.database()) return;
+    a.viewOptions() = app::ViewOptions{true, true, true};
+    // shiftpattern/tuner_1 takes its Up_Engage_Curve from tuner.
+    CHECK(!ShowField(imgui, a, "shiftpattern", "tuner_1", "Up_Engage_Curve"));
+    const test::ProbeItem* curve = probe.find("##curve", "Collection");
+    CHECK(curve);
+    if (!curve) return;
+    // A drag changes nothing there.
+    const ImRect r = curve->rect;
+    DragMouse(imgui, a, CurveScreen(r, 1.0f, 1.0f), CurveScreen(r, 0.5f, 0.5f));
+    CHECK(!a.hasUnsavedChanges());
+    Rightclick(imgui, a, curve);
+    ClickItem(imgui, a, probe.find("Show as Rows"));
+    imgui.run(a, 1);
+    CHECK(!probe.find("##curve", "Collection"));
+    CHECK(a.displayPrefs().graph.count("Up_Engage_Curve") && !a.displayPrefs().graph.at("Up_Engage_Curve"));
+    CHECK(!a.hasUnsavedChanges());
+    for (const auto& c : probe.conflicts) std::printf("        ID conflict: %s\n", c.c_str());
     CHECK(probe.conflicts.empty());
 }
 
@@ -2010,6 +2293,46 @@ TEST("ui: Go keys: Alt+Left/Right walk the history, Ctrl+T/PgDn/W manage tabs, C
     imgui.key(a, ImGuiMod_Ctrl | ImGuiKey_F);
     imgui.run(a, 1);
     CHECK(ImGui::GetIO().WantTextInput);
+    CHECK_EQ(Errors(a), size_t(0));
+}
+
+TEST("ui: Back and Forward bring the Explorer's tree for the collection to the front, Classes or Gameplay") {
+    platform::HeadlessImGui imgui;
+    imgui.beforeFrame = ProbeBefore;
+    imgui.afterFrame = ProbeAfter;
+    test::UiProbe& probe = test::UiProbe::get();
+    platform::HeadlessHost host;
+    app::App a(host);
+    a.setup(1.0f, "");
+    a.setUserKeysPath("");
+    CHECK(a.open(ProStreetDir()));
+    Database* db = a.database();
+    if (!db) return;
+    CHECK(a.viewOptions().gameplayView);
+    const ClassDef* vehicles = db->findClass(StringHash32("pvehicle"));
+    const ClassDef* gameplay = db->findClass(StringHash32("gameplay"));
+    CHECK(vehicles && gameplay && !vehicles->collections.empty() && !gameplay->collections.empty());
+    if (!vehicles || !gameplay || vehicles->collections.empty() || gameplay->collections.empty()) return;
+    // Only the front tab draws its tree.
+    auto drawn = [&](const char* tree) {
+        for (const test::ProbeItem& it : probe.items)
+            if (it.window.find(tree) != std::string::npos) return true;
+        return false;
+    };
+    a.select(vehicles->collections.front(), true);
+    imgui.run(a, 3);
+    CHECK(drawn("##classes") && !drawn("##gameplay"));
+    a.select(gameplay->collections.front(), true);
+    imgui.run(a, 3);
+    CHECK(drawn("##gameplay") && !drawn("##classes"));
+    imgui.key(a, ImGuiMod_Alt | ImGuiKey_LeftArrow);
+    imgui.run(a, 3);
+    CHECK(a.selection() == vehicles->collections.front());
+    CHECK(drawn("##classes") && !drawn("##gameplay"));
+    imgui.key(a, ImGuiMod_Alt | ImGuiKey_RightArrow);
+    imgui.run(a, 3);
+    CHECK(a.selection() == gameplay->collections.front());
+    CHECK(drawn("##gameplay") && !drawn("##classes"));
     CHECK_EQ(Errors(a), size_t(0));
 }
 
@@ -4299,6 +4622,84 @@ TEST("ui: nfsms: the setup prompt shows each text above the controls after it") 
     CHECK(a.scriptText().find("if $dif == \"Hard\"") != std::string::npos);
     for (const auto& c : probe.conflicts) std::printf("        ID conflict: %s\n", c.c_str());
     CHECK(probe.conflicts.empty());
+}
+
+TEST("ui: nfsms: a setup's picture is freed only once no frame draws it") {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() / "attribulina_nfsms_picture";
+    fs::remove_all(dir);
+    fs::create_directories(dir / "Images");
+    { std::ofstream(dir / "Images" / "preview.png") << "a picture"; }
+    platform::HeadlessImGui imgui;
+    imgui.beforeFrame = ProbeBefore;
+    imgui.afterFrame = ProbeAfter;
+    test::UiProbe& probe = test::UiProbe::get();
+    platform::HeadlessHost host;
+    host.decodeImages = true;
+    app::App a(host);
+    a.setup(1.0f, "");
+    a.setUserKeysPath("");
+    CHECK(a.open(ProStreetDir() + "/ATTRIBUTES.BIN"));
+    a.setNfsmsText("ui_image Images\\preview.png\n"
+                   "ui_control checkbox loud true \"Longer cut\"\n"
+                   "ui_option loud\n"
+                   "update_field audio_revlimiter default total_frames_short 31\n"
+                   "ui_option loud\n",
+                   (dir / "Setup.nfsms").string());
+    imgui.run(a, 2);
+    for (int round = 0; round < 2; ++round) {
+        const size_t freed = imgui.texturesFreed;
+        ClickItem(imgui, a, probe.find("Run All", "Script (nfsms)"));
+        imgui.run(a, 2);
+        CHECK(probe.find("Longer cut", "nfsms Setup"));
+        ClickItem(imgui, a, probe.find(round == 0 ? "Run" : "Cancel", "nfsms Setup"));
+        imgui.run(a, 4);
+        CHECK(imgui.texturesFreed > freed);
+    }
+    for (const std::string& p : imgui.textureProblems) std::printf("        %s\n", p.c_str());
+    CHECK(imgui.textureProblems.empty());
+    fs::remove_all(dir);
+}
+
+// crashdumps/crash4: NFS Undercover Reformed's installer (nfsms/Part 2 (Vault),
+// the user's) run on Undercover's PC folder crashed in PSSetShaderResources,
+// binding a texture view already released.
+TEST("ui: nfsms: Undercover Reformed's installer runs on Undercover's PC folder and every frame after draws with live textures") {
+    namespace fs = std::filesystem;
+    const fs::path mod = test::DataPath("nfsms/Part 2 (Vault)");
+    const fs::path from = test::DataPath("attrib/databases/pc/undercover-vanilla");
+    if (!fs::exists(mod / "Installer.nfsms") || !fs::exists(from)) return;
+    // Its file_copy lines write into the game's folder.
+    const fs::path tmp = fs::temp_directory_path() / "attribulina_ui_reformed" / "GLOBAL";
+    fs::remove_all(tmp.parent_path());
+    fs::create_directories(tmp);
+    fs::copy(from, tmp, fs::copy_options::recursive);
+    platform::HeadlessImGui imgui;
+    imgui.beforeFrame = ProbeBefore;
+    imgui.afterFrame = ProbeAfter;
+    test::UiProbe& probe = test::UiProbe::get();
+    platform::HeadlessHost host;
+    host.decodeImages = true;
+    app::App a(host);
+    a.setup(1.0f, "");
+    a.setUserKeysPath("");
+    CHECK(a.open(tmp.string()));
+    std::ifstream in(mod / "Installer.nfsms", std::ios::binary);
+    a.setNfsmsText(std::string(std::istreambuf_iterator<char>(in), {}), (mod / "Installer.nfsms").string());
+    imgui.run(a, 2);
+    ClickItem(imgui, a, probe.find("Run All", "Script (nfsms)"));
+    imgui.run(a, 6); // the prompt settles its size
+    CHECK(probe.find("Install main Vault files of Reformed 8.0.", "nfsms Setup"));
+    // Its setup is long: the prompt stays on the screen as it grows.
+    const test::ProbeItem* run = probe.find("Run", "nfsms Setup");
+    CHECK(run && run->rect.Max.y <= ImGui::GetIO().DisplaySize.y);
+    ClickItem(imgui, a, run);
+    imgui.nextDeltaTime = 90.0f; // the run took a minute and a half
+    imgui.run(a, 6);
+    CHECK(!a.log().empty() && a.log().back().text.find("Installer.nfsms: Ran the script") == 0);
+    for (const std::string& p : imgui.textureProblems) std::printf("        %s\n", p.c_str());
+    CHECK(imgui.textureProblems.empty());
+    fs::remove_all(tmp.parent_path());
 }
 
 TEST("ui: nfsms: an included script's failing line opens it in a tab; runs read the tab's text") {
