@@ -81,6 +81,31 @@ namespace attrib::nfsms
 			const std::u8string u = p.u8string();
 			return std::string(u.begin(), u.end());
 		}
+		// A file or folder a script names under `folder`. Scripts are written on
+		// Windows, where names match in any case (Install.nfsms names
+		// rfr_Challenge.nfsms for rfr_challenge.nfsms), so a part that isn't there
+		// as written is the entry whose name differs only in case, when there is one.
+		fs::path InFolder(const fs::path& folder, const std::string& written)
+		{
+			fs::path at = folder;
+			std::error_code ec;
+			for (const fs::path& part : Written(written))
+			{
+				fs::path next = at / part;
+				if (part != "." && part != ".." && !fs::exists(next, ec) && fs::is_directory(at, ec))
+				{
+					const std::string want = Lower(ToUtf8(part));
+					for (const fs::directory_entry& e : fs::directory_iterator(at, ec))
+						if (Lower(ToUtf8(e.path().filename())) == want)
+						{
+							next = e.path();
+							break;
+						}
+				}
+				at = std::move(next);
+			}
+			return at;
+		}
 
 		// A path inside the target folder: relative, without "..".
 		bool SafeRelative(const std::string& p)
@@ -113,6 +138,22 @@ namespace attrib::nfsms
 			if (f == "u64" || f == "i64" || f == "f64") return 8;
 			return 0;
 		}
+		// Whether NFS-VltEd's word reads the bytes of our value of kind `ours` and
+		// `size` otherwise: another width, or a number where we have a float (or
+		// the other way round; PresetRidePaint's 6 is a u32 over our mSaturation).
+		bool VltReadsOtherwise(const std::string& t, TypeKind ours, uint32_t size)
+		{
+			const uint32_t n = VltSize(t);
+			if (!n) return false;
+			if (n != size) return true;
+			const std::string f = t.substr(0, t.find_first_of("/>"));
+			const bool vltFloat = f == "f32" || f == "f64";
+			const bool ourFloat = ours == TypeKind::Float || ours == TypeKind::Double;
+			const bool ourNumber = ours == TypeKind::Bool || ours == TypeKind::Int8 || ours == TypeKind::UInt8 || ours == TypeKind::Int16 ||
+								   ours == TypeKind::UInt16 || ours == TypeKind::Int32 || ours == TypeKind::UInt32 || ours == TypeKind::Int64 ||
+								   ours == TypeKind::UInt64 || ours == TypeKind::Enum || ours == TypeKind::Key || ours == TypeKind::BinKey;
+			return vltFloat ? !ourFloat && ourNumber : ourFloat;
+		}
 
 	} // namespace
 
@@ -140,7 +181,7 @@ namespace attrib::nfsms
 
 	std::string ScriptFile(const std::string& folder, const std::string& written)
 	{
-		return ToUtf8(FromUtf8(folder) / Written(written));
+		return ToUtf8(InFolder(FromUtf8(folder), written));
 	}
 
 	bool Script::hasDescription() const
@@ -510,6 +551,33 @@ namespace attrib::nfsms
 
 	namespace
 	{
+
+		// The scalar members of a struct, through nested structs and inline arrays
+		// (VinylLayer's transform and colors[4]), at their offsets in it.
+		struct Leaf
+		{
+			std::vector<sc::FieldPath::Step> steps;
+			const MemberDef* m = nullptr;
+			uint32_t offset = 0;
+		};
+		void Leaves(const StructDef& st, uint32_t base, std::vector<sc::FieldPath::Step>& steps, std::vector<Leaf>& out)
+		{
+			for (const MemberDef& m : st.members)
+			{
+				if (m.prim == MemberPrim::Ptr || m.isBitfield()) continue;
+				const bool inner = m.st && TypeOfMember(m).kind == TypeKind::Struct;
+				if (!inner && (!m.elemSize || m.elemSize > 8)) continue;
+				for (uint32_t i = 0; i < std::max<uint32_t>(m.count, 1); ++i)
+				{
+					steps.push_back({ m.name, -1 });
+					if (m.count > 1) steps.push_back({ std::string(), int64_t(i) });
+					const uint32_t at = base + m.offset + i * m.elemSize;
+					if (inner) Leaves(*m.st, at, steps, out);
+					else out.push_back({ steps, &m, at });
+					steps.resize(steps.size() - (m.count > 1 ? 2 : 1));
+				}
+			}
+		}
 
 		class Runner
 		{
@@ -891,7 +959,7 @@ namespace attrib::nfsms
 				{
 					need(c, 1, 1);
 					emitComment("from " + c.args[0]);
-					const fs::path p = FromUtf8(s.folder) / Written(c.args[0]);
+					const fs::path p = InFolder(FromUtf8(s.folder), c.args[0]);
 					std::string text;
 					if (st_.readFile)
 					{
@@ -923,7 +991,7 @@ namespace attrib::nfsms
 					if (st_.doFiles && !st_.targetFolder.empty())
 					{
 						std::error_code ec;
-						fs::create_directories(FromUtf8(st_.targetFolder) / Written(c.args[0]), ec);
+						fs::create_directories(InFolder(FromUtf8(st_.targetFolder), c.args[0]), ec);
 						if (ec) fail("can't make " + c.args[0] + ": " + ec.message());
 						note("made the folder " + c.args[0]);
 					}
@@ -1035,7 +1103,7 @@ namespace attrib::nfsms
 					RefPart part = RefPart::Whole;
 					for (size_t i = 3; i + 1 < c.args.size(); ++i) property(x, p, c.args[i], part);
 					// NFS-VltEd resizes a curve's list without the point count the file keeps.
-					if (st_.vltEd && f && curvePoint(x, *f, p, nullptr, std::strtoll(c.args.back().c_str(), nullptr, 10))) return;
+					if (st_.vltEd && f && curvePoint(x, p, nullptr, std::strtoll(c.args.back().c_str(), nullptr, 10))) return;
 					sc::Statement r;
 					r.kind = K::Resize;
 					r.path = p;
@@ -1409,12 +1477,12 @@ namespace attrib::nfsms
 
 			void fileCopy(const Command& c, const Script& s)
 			{
-				const fs::path from = FromUtf8(s.folder) / Written(c.args[0]);
+				const fs::path from = InFolder(FromUtf8(s.folder), c.args[0]);
 				std::error_code ec;
 				if (!fs::exists(from, ec)) fail("file does not exist: " + c.args[0]);
 				if (!SafeRelative(c.args[1])) fail("file_copy needs a destination inside the game's folder: " + c.args[1]);
 				if (!st_.doFiles || st_.targetFolder.empty()) return;
-				const fs::path to = FromUtf8(st_.targetFolder) / Written(c.args[1]);
+				const fs::path to = InFolder(FromUtf8(st_.targetFolder), c.args[1]);
 				fs::create_directories(to.parent_path(), ec);
 				fs::copy_file(from, to, fs::copy_options::overwrite_existing, ec);
 				if (ec) fail("can't copy " + c.args[0] + " to " + c.args[1] + ": " + ec.message());
@@ -1471,7 +1539,7 @@ namespace attrib::nfsms
 						if (off == 0) part = RefPart::Class;
 						else if (off == 4) part = RefPart::Collection;
 						else if (off == 8 && st_.vltEd) part = RefPart::Pointer;
-						else fail(word + " is a reference's pointer, which the game sets");
+						else fail(word + " is a reference's pointer, which the game sets" + (off == 8 ? " (NFS-VltEd compatible runs set it)" : ""));
 						return;
 					case TypeKind::ClassRefSpec:
 						// NFS-VltEd's Class is the collection key at 0, its Collection the pointer.
@@ -1586,7 +1654,8 @@ namespace attrib::nfsms
 					case TypeKind::RefSpec:
 						if (l == "mclasskey") part = RefPart::Class;
 						else if (l == "mcollectionkey") part = RefPart::Collection;
-						else fail(word + " is a reference's pointer, which the game sets");
+						else if (st_.vltEd) part = RefPart::Pointer; // NFS-VltEd writes the pointer word too
+						else fail(word + " is a reference's pointer, which the game sets (NFS-VltEd compatible runs set it)");
 						return;
 					case TypeKind::StringKey:
 						if (st_.vltEd)
@@ -1807,10 +1876,11 @@ namespace attrib::nfsms
 				}
 				if (vt.kind == TypeKind::RefSpec && part == RefPart::Pointer)
 				{
-					// NFS-VltEd writes the u32 after the keys as given (a decimal number).
+					// NFS-VltEd writes the word after the keys as given: a u32, or an i32
+					// in some types (FETuningSlider's 3).
 					char* end = nullptr;
-					const unsigned long long n = std::strtoull(t.c_str(), &end, 10);
-					if (t.empty() || !end || *end || n > 0xFFFFFFFFull || t[0] == '-') fail("Value cannot be parsed: " + t + " isn't a u32");
+					const long long n = IsHex(t) ? (long long)std::strtoull(t.c_str() + 2, &end, 16) : std::strtoll(t.c_str(), &end, 10);
+					if (t.empty() || !end || *end || n > 0xFFFFFFFFll || n < INT32_MIN) fail("Value cannot be parsed: " + t + " isn't a 32-bit number");
 					if (vt.size != 12 || cur.size() < 12) fail("this reference has no 32-bit pointer word after its keys");
 					Bytes b = cur;
 					store32(b.data() + 8, uint32_t(n), e);
@@ -1914,7 +1984,7 @@ namespace attrib::nfsms
 				single(x, p, part);
 				if (st_.vltEd)
 				{
-					if (curvePoint(x, *f, p, &text)) return;
+					if (curvePoint(x, p, &text)) return;
 					if (part == RefPart::Hash || part == RefPart::Text)
 					{
 						stringKeyPart(x, *f, p, part, text);
@@ -2047,19 +2117,31 @@ namespace attrib::nfsms
 				curve.steps.resize(n - 1);
 				return sc::TypeAt(db_, x, curve).kind == TypeKind::Curve;
 			}
+			// The curve at `curve` as the collection holds it now: a curve field, an
+			// element of one, or a member of a struct (AI::GlueCurve's Easy).
+			CurveValue curveAt(Collection& x, const sc::FieldPath& curve)
+			{
+				const ValueType vt = sc::TypeAt(db_, x, curve);
+				uint32_t off = 0;
+				const DataBlock* b = sc::BlockAt(db_, x, curve, &off);
+				if (!b || uint64_t(off) + vt.size > b->bytes.size()) return CurveValue{};
+				return ReadCurve(*b, off, x.vault ? x.vault->raw.endian : Endian::Little, vt.size);
+			}
 			// The curve as NFS-VltEd holds it, read the first time a line touches it.
-			CurveShadow& shadowOf(Collection& x, const FieldDef& f, const sc::FieldPath& curve)
+			CurveShadow& shadowOf(Collection& x, const sc::FieldPath& curve)
 			{
 				auto [it, made] = curves_.try_emplace({ &x, curve.text() });
 				if (!made) return it->second;
-				const Attribute* a = x.resolve(f.key);
-				const Endian e = x.vault ? x.vault->raw.endian : Endian::Little;
-				if (!a || curve.steps.size() > 1 || (curve.steps.size() == 1 && !curve.steps[0].member.empty()))
+				CurveValue c;
+				try
+				{
+					c = curveAt(x, curve);
+				}
+				catch (...)
 				{
 					curves_.erase(it);
-					fail("NFS-VltEd compatible runs edit a curve field or a curve in an array, not one inside a struct (" + curve.text() + ")");
+					throw;
 				}
-				const CurveValue c = ReadCurve(*a, curve.steps.empty() ? 0 : uint32_t(curve.steps[0].index), e);
 				it->second.lists[0] = c.x;
 				it->second.lists[1] = c.y;
 				it->second.lists[2] = c.y2;
@@ -2070,13 +2152,13 @@ namespace attrib::nfsms
 			// changes its list alone, never works out Y2, and saves each list's count as
 			// read, so the game reads the first count values from where each list starts
 			// in the lists it wrote one after another.
-			bool curvePoint(Collection& x, const FieldDef& f, const sc::FieldPath& p, const std::string* text, int64_t size = -1)
+			bool curvePoint(Collection& x, const sc::FieldPath& p, const std::string* text, int64_t size = -1)
 			{
 				sc::FieldPath curve;
 				int list = 0;
 				int64_t index = -1;
 				if (!curveList(x, p, curve, list, index)) return false;
-				CurveShadow& sh = shadowOf(x, f, curve);
+				CurveShadow& sh = shadowOf(x, curve);
 				std::vector<float>& l = sh.lists[list];
 				if (text)
 				{
@@ -2097,9 +2179,7 @@ namespace attrib::nfsms
 				// What the game reads from what NFS-VltEd writes.
 				std::vector<float> block;
 				for (const auto& part : sh.lists) block.insert(block.end(), part.begin(), part.end());
-				const Endian e = x.vault ? x.vault->raw.endian : Endian::Little;
-				const Attribute* a = x.resolve(f.key);
-				const CurveValue now = ReadCurve(*a, curve.steps.empty() ? 0 : uint32_t(curve.steps[0].index), e);
+				const CurveValue now = curveAt(x, curve);
 				const std::vector<float>* nowLists[3] = { &now.x, &now.y, &now.y2 };
 				std::vector<sc::Statement> sets;
 				size_t start = 0;
@@ -2250,14 +2330,21 @@ namespace attrib::nfsms
 			// A word NFS-VltEd writes with another width than our member there has
 			// (FEPartData's 4 is an int32 over tier, drift, drag and grip): its bytes
 			// over our members by offset, each set to what its bytes then say.
+			// A word NFS-VltEd writes with another width than our member there has
+			// (FEPartData's 4 is an int32 over tier, drift, drag and grip): its bytes
+			// over our members by offset, each set to what its bytes then say.
 			bool wideWrite(Collection& x, const std::string& text)
 			{
 				const PropertyNames::Property& pr = *lastProp_;
 				const uint32_t size = VltSize(pr.vltType);
 				const StructDef* st = lastBaseType_.st;
 				if (!size || pr.list || !st) return false;
-				for (const MemberDef& m : st->members)
-					if (m.offset == pr.offset && m.count <= 1 && m.elemSize == size) return false; // our member is the word
+				std::vector<Leaf> leaves;
+				std::vector<sc::FieldPath::Step> steps;
+				Leaves(*st, 0, steps, leaves);
+				for (const Leaf& l : leaves)
+					if (l.offset == pr.offset && !VltReadsOtherwise(pr.vltType, TypeOfMember(*l.m).kind, l.m->elemSize))
+						return false; // our member is the word
 				Bytes cur;
 				sc::TypeAt(db_, x, lastBase_, &cur);
 				if (cur.size() < pr.offset + size) return false;
@@ -2267,19 +2354,19 @@ namespace attrib::nfsms
 					warn(pr.word + " is NFS-VltEd's " + pr.vltType + " at byte " + std::to_string(pr.offset) +
 						 " of the PC's layout, set here over the members at those bytes on " + db_.target().name());
 				std::vector<sc::Statement> sets;
-				for (const MemberDef& m : st->members)
+				for (const Leaf& l : leaves)
 				{
+					const MemberDef& m = *l.m;
 					const uint32_t ms = m.elemSize;
-					if (m.count > 1 || !ms || ms > 8 || m.prim == MemberPrim::Ptr || m.isBitfield()) continue;
-					const uint32_t b0 = std::max(m.offset, pr.offset), b1 = std::min(m.offset + ms, pr.offset + size);
+					const uint32_t b0 = std::max(l.offset, pr.offset), b1 = std::min(l.offset + ms, pr.offset + size);
 					if (b0 >= b1) continue;
 					// The member as the PC holds it, the word's bytes over it.
 					uint64_t v = 0;
 					for (uint32_t i = 0; i < ms; ++i)
-						v |= uint64_t(cur[m.offset + (e == Endian::Big ? ms - 1 - i : i)]) << (8 * i);
+						v |= uint64_t(cur[l.offset + (e == Endian::Big ? ms - 1 - i : i)]) << (8 * i);
 					for (uint32_t bpos = b0; bpos < b1; ++bpos)
 					{
-						const uint32_t sh = 8 * (bpos - m.offset);
+						const uint32_t sh = 8 * (bpos - l.offset);
 						v = (v & ~(uint64_t(0xFF) << sh)) | (uint64_t(now[bpos - pr.offset]) << sh);
 					}
 					const ValueType mt = TypeOfMember(m);
@@ -2321,7 +2408,7 @@ namespace attrib::nfsms
 					sc::Statement s;
 					s.kind = K::Set;
 					s.path = lastBase_;
-					s.path.steps.push_back({ m.name, -1 });
+					s.path.steps.insert(s.path.steps.end(), l.steps.begin(), l.steps.end());
 					s.value = val;
 					sets.push_back(std::move(s));
 				}
@@ -2973,10 +3060,19 @@ namespace attrib::nfsms
 						else if (vt.st && vt.st->members.size() == 1 && vt.st->members[0].offset == 0) inner = vt.st->members[0].name;
 						if (const PropertyNames::Property* q = inner.empty() ? nullptr : t->atPath(path + "." + inner); q && !q->list) pr = q;
 					}
+					// NFS-VltEd has no word of its own for this member (VinylLayer's
+					// transform, a padding byte): the word over its bytes, written whole.
+					if (!pr && vltEd_)
+						for (const PropertyNames::Property& q : t->properties)
+							if (!q.list && VltSize(q.vltType) && off >= q.offset && off < q.offset + VltSize(q.vltType))
+							{
+								pr = &q;
+								break;
+							}
 					if (pr) ps = { pr->word };
 					// NFS-VltEd writes this word wider than our member (FEPartData's 4 over
 					// tier, drift, drag and grip): the whole word, as the value has it now.
-					if (pr && vltEd_ && !pr->list && VltSize(pr->vltType) && VltSize(pr->vltType) != vt.size)
+					if (pr && vltEd_ && !pr->list && VltReadsOtherwise(pr->vltType, vt.kind, vt.size))
 						wideValue_ = wordNow(*pr, top, topBytes, x->vault ? x->vault->raw.endian : Endian::Little);
 				}
 				catch (const std::exception&)
@@ -2996,14 +3092,16 @@ namespace attrib::nfsms
 				{
 					// Each member's bytes the PC's way round.
 					if (!top.st) return std::nullopt;
-					for (const MemberDef& m : top.st->members)
+					std::vector<Leaf> leaves;
+					std::vector<sc::FieldPath::Step> steps;
+					Leaves(*top.st, 0, steps, leaves);
+					for (const Leaf& l : leaves)
 					{
-						const uint32_t ms = m.elemSize;
-						if (m.count > 1 || !ms || ms > 8) continue;
+						const uint32_t ms = l.m->elemSize;
 						for (uint32_t i = 0; i < ms; ++i)
 						{
-							const uint32_t at = m.offset + i;
-							if (at >= pr.offset && at < pr.offset + size) le[at - pr.offset] = b[m.offset + ms - 1 - i];
+							const uint32_t at = l.offset + i;
+							if (at >= pr.offset && at < pr.offset + size && l.offset + ms - 1 - i < b.size()) le[at - pr.offset] = b[l.offset + ms - 1 - i];
 						}
 					}
 				}
@@ -3040,14 +3138,25 @@ namespace attrib::nfsms
 			sc::ValuePtr curveNow(const sc::Target& t, const sc::FieldPath& path) const
 			{
 				const ClassDef* k = db_.findClass(KeyOf(nameOf(t.cls)));
-				const FieldDef* f = k ? k->field(KeyOf(nameOf(path.field))) : nullptr;
-				const Collection* x = k ? db_.findCollection(k->key, KeyOf(nameOf(t.name))) : nullptr;
-				const Attribute* a = x && f ? x->resolve(f->key) : nullptr;
-				if (!a || TypeOfAttribute(*a, nameOf(path.field)).kind != TypeKind::Curve) return nullptr;
-				if (path.steps.size() > 1 || (path.steps.size() == 1 && !path.steps[0].member.empty())) return nullptr;
-				const uint32_t index = path.steps.empty() ? 0 : uint32_t(path.steps[0].index);
-				if (index >= std::max<uint32_t>(a->count, 1)) return nullptr;
-				const CurveValue c = ReadCurve(*a, index, x->vault ? x->vault->raw.endian : Endian::Little);
+				Collection* x = k ? const_cast<Database&>(db_).findCollection(k->key, KeyOf(nameOf(t.name))) : nullptr;
+				if (!x) return nullptr;
+				sc::FieldPath p = path;
+				p.field = nameOf(path.field);
+				CurveValue c;
+				try
+				{
+					// A curve field, an element of one, or a struct's member (AI::GlueCurve's Easy).
+					Database& db = const_cast<Database&>(db_);
+					const ValueType vt = sc::TypeAt(db, *x, p);
+					uint32_t off = 0;
+					const DataBlock* b = vt.kind == TypeKind::Curve ? sc::BlockAt(db, *x, p, &off) : nullptr;
+					if (!b || uint64_t(off) + vt.size > b->bytes.size()) return nullptr;
+					c = ReadCurve(*b, off, x->vault ? x->vault->raw.endian : Endian::Little, vt.size);
+				}
+				catch (const std::exception&)
+				{
+					return nullptr;
+				}
 				auto list = [](const std::vector<float>& v)
 				{
 					std::vector<sc::ValuePtr> items;

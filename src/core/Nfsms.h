@@ -104,7 +104,8 @@ namespace attrib::nfsms
 	// spaces), or 0.
 	size_t CommandAt(std::string_view line);
 	// A file a script names (`script`, `ui_image`, `file_copy`) under `folder`.
-	// Scripts are written on Windows, so a \ separates folders.
+	// Scripts are written on Windows, so a \ separates folders, and a name that
+	// isn't there as written finds the one that differs only in case.
 	std::string ScriptFile(const std::string& folder, const std::string& written);
 
 	// NFS-VltEd's own names for the parts of a game's values, the words after the

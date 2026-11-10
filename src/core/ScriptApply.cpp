@@ -2313,6 +2313,20 @@ namespace attrib::script
 				vt.size = 0;
 				return vt;
 			}
+			// BlockAt(): the block and offset of the value at `path` (own or
+			// inherited), or null when the collection has no value there.
+			const DataBlock* blockAt(Collection& c, const FieldPath& path, uint32_t& off)
+			{
+				pos_ = path.pos;
+				endian_ = c.vault ? c.vault->raw.endian : Endian::Little;
+				const FieldDef& f = fieldOf(c, path);
+				Attribute* a = const_cast<Attribute*>(c.resolve(f.key));
+				if (!a) return nullptr;
+				const Place pl = locate(*a, path, names().format(f.key), false, path.steps.size());
+				if (pl.kind != Place::Kind::Value || !pl.block) return nullptr;
+				off = pl.off;
+				return pl.block;
+			}
 
 		private:
 			Database& db_;
@@ -2528,6 +2542,17 @@ namespace attrib::script
 		static const ApplySettings defaults;
 		Applier a(db, none, defaults);
 		return a.typeAt(c, path, current);
+	}
+
+	const DataBlock* BlockAt(Database& db, Collection& c, const FieldPath& path, uint32_t* offset)
+	{
+		static const Script none;
+		static const ApplySettings defaults;
+		Applier a(db, none, defaults);
+		uint32_t off = 0;
+		const DataBlock* b = a.blockAt(c, path, off);
+		if (offset) *offset = off;
+		return b;
 	}
 
 	ApplyReport Apply(Database& db, const Script& script, const ApplySettings& settings)

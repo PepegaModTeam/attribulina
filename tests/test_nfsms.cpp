@@ -1127,6 +1127,131 @@ TEST("nfsms: the Shifted mod (nfsms/Shifted, when present) runs NFS-VltEd compat
     CHECK(ns::Run(*other, s, ext).errors() > 400);
 }
 
+TEST("nfsms: NFS-VltEd compatible runs set Undercover's curves in structs, vinyl layers' words, a u32 over a float and a reference's pointer word") {
+    const std::string dir = test::DataPath("attrib/databases/pc/undercover-vanilla");
+    if (!std::filesystem::exists(std::filesystem::path(dir))) return;
+    auto base = LoadFolder(dir);
+    ns::RunSettings vlt;
+    vlt.names = ns::PropertyNames::Load(test::DataPath("data/nfsms/undercover_pc.txt"));
+    vlt.vltEd = true;
+    auto db = sc::CloneDatabase(*base);
+    Database& d = *db;
+    const sc::ApplyReport r = Run(d,
+                                  // AI::GlueCurve holds two curves, Easy and Hard.
+                                  "update_field glue default SpreadOverRace Easy_MinX 51500\n"
+                                  "update_collection glue default SpreadOverRace Easy_Y2Values 1 Value 1.5\n"
+                                  "update_collection glue default SpreadOverRace Hard_YValues 2 Value 0.25\n"
+                                  // VinylLayer's 2 to 7 are u32s over its transform and colors[4].
+                                  "update_field presetride nfsdotcom VinylLayers[0] 2 0x00ba0001\n"
+                                  "update_field presetride nfsdotcom VinylLayers[0] 3 0x51c2ffde\n"
+                                  "update_field presetride nfsdotcom VinylLayers[0] 4 0x00000030\n"
+                                  "update_field presetride nfsdotcom VinylLayers[0] 5 0xff000008\n"
+                                  "update_field presetride nfsdotcom VinylLayers[0] 6 0x00ff0000\n"
+                                  "update_field presetride nfsdotcom VinylLayers[0] 7 0x0000ff00\n"
+                                  // PresetRidePaint's 6 is a u32 over our float mSaturation, its 4 the group's pointer word.
+                                  "update_field car por_911_tur_06 stockPaint[0] 6 0x3f800000\n"
+                                  "update_field car por_911_tur_06 stockPaint[0] 4 5\n"
+                                  "update_field physics_tuning_slider tires tunings[1] 3 7\n",
+                                  vlt);
+    CHECK_RUN(r);
+    CHECK_EQ(r.errors(), size_t(0));
+
+    Collection& glue = Col(d, "glue", "default");
+    auto curve = [&](Collection& c, const char* member) {
+        sc::FieldPath p;
+        p.field = "SpreadOverRace";
+        p.steps.push_back({member, -1});
+        uint32_t off = 0;
+        const DataBlock* b = sc::BlockAt(d, c, p, &off);
+        CHECK(b != nullptr);
+        return b ? ReadCurve(*b, off, Endian::Little, 48) : CurveValue{};
+    };
+    const CurveValue easyBefore = curve(Col(*base, "glue", "default"), "Easy");
+    const CurveValue easy = curve(glue, "Easy"), hard = curve(glue, "Hard");
+    CHECK(easy.xMin == 51500.0f);
+    CHECK(easy.y2[1] == 1.5f);
+    CHECK(easy.y2[2] == easyBefore.y2[2]); // as given: NFS-VltEd never works Y2 out
+    CHECK(hard.y[2] == 0.25f);
+
+    const Attribute& vinyl = Own(Col(d, "presetride", "nfsdotcom"), "VinylLayers");
+    const uint32_t words[] = {0x00ba0001, 0x51c2ffde, 0x00000030, 0xff000008, 0x00ff0000, 0x0000ff00};
+    for (int i = 0; i < 6; ++i) CHECK_EQ(U32(vinyl, 0, 4 + 4 * i), words[i]);
+
+    const Attribute& paint = Own(Col(d, "car", "por_911_tur_06"), "stockPaint");
+    CHECK(F32(paint, 0, 20) == 1.0f);
+    CHECK_EQ(U32(paint, 0, 12), 5u);
+    CHECK_EQ(U32(Own(Col(d, "physics_tuning_slider", "tires"), "tunings"), 1, 8), 7u);
+
+    // The editor writes them back in those words, and they read back the same
+    // (a reference's two keys: the pointer word, which the game fills in, back to 0).
+    CHECK_RUN(Run(d, "update_field car por_911_tur_06 stockPaint[0] 4 0\n", vlt));
+    std::vector<sc::Statement> values;
+    values.push_back(sc::ExportValue(d, glue, StringHash32("SpreadOverRace")));
+    values.push_back(sc::ExportValue(d, Col(d, "presetride", "nfsdotcom"), StringHash32("VinylLayers")));
+    values.push_back(sc::ExportValue(d, Col(d, "car", "por_911_tur_06"), StringHash32("stockPaint")));
+    std::string text;
+    for (const std::string& l : ns::FromStatements(d, values, vlt.names.get(), true)) text += l + "\n";
+    for (const char* want : {"update_collection glue default SpreadOverRace Easy_Y2Values 1 Value 1.5\n",
+                             "update_field presetride nfsdotcom VinylLayers[0] 3 0x51C2FFDE\n",
+                             "update_field car por_911_tur_06 stockPaint[0] 6 0x3F800000\n"}) {
+        if (text.find(want) == std::string::npos) std::fprintf(stderr, "no %s in\n%s", want, text.c_str());
+        CHECK(text.find(want) != std::string::npos);
+    }
+    auto again = sc::CloneDatabase(*base);
+    const sc::ApplyReport back = Run(*again, text, vlt);
+    if (back.errors()) std::fprintf(stderr, "%s", Messages(back).c_str());
+    CHECK_EQ(back.errors(), size_t(0));
+    sc::DiffSettings only;
+    only.classes = {StringHash32("glue"), StringHash32("presetride"), StringHash32("car")};
+    const sc::Script left = sc::Diff(*again, d, only);
+    if (Changes(left)) std::fprintf(stderr, "%s", sc::Print(left).c_str());
+    CHECK_EQ(Changes(left), size_t(0));
+}
+
+TEST("nfsms: a script or file named in another case is found, as on Windows") {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() / "attribulina_nfsms_case";
+    fs::remove_all(dir);
+    fs::create_directories(dir / "Sub");
+    std::ofstream(dir / "Sub" / "inc.nfsms") << "update_field audio_revlimiter default total_frames_long 47\n";
+    CHECK_EQ(ns::ScriptFile(dir.string(), "sub\\INC.nfsms"), (dir / "Sub" / "inc.nfsms").string());
+    auto db = Load();
+    const ns::Script s = ns::Parse("version 4.6\nscript\"SUB\\Inc.nfsms\"\n", "main.nfsms", dir.string());
+    const sc::ApplyReport r = ns::Run(*db, s, {});
+    CHECK_RUN(r);
+    CHECK_EQ(U32(Own(Col(*db, "audio_revlimiter", "default"), "total_frames_long")), 47u);
+    fs::remove_all(dir);
+}
+
+TEST("nfsms: NFS Undercover Reformed's vault installer (nfsms/Part 2 (Vault), when present) runs NFS-VltEd compatible with no failed line") {
+    namespace fs = std::filesystem;
+    const std::string mod = test::DataPath("nfsms/Part 2 (Vault)/Installer.nfsms");
+    const std::string dir = test::DataPath("attrib/databases/pc/undercover-vanilla");
+    if (!fs::exists(fs::path(mod)) || !fs::exists(fs::path(dir))) {
+        std::printf("        (skipped: no %s)\n", mod.c_str());
+        return;
+    }
+    auto base = LoadFolder(dir);
+    std::ifstream in(fs::path(mod), std::ios::binary);
+    std::ostringstream ss;
+    ss << in.rdbuf();
+    const ns::Script s = ns::Parse(ss.str(), "Installer.nfsms", fs::path(mod).parent_path().string());
+    ns::RunSettings st;
+    st.names = ns::PropertyNames::Load(test::DataPath("data/nfsms/undercover_pc.txt"));
+    st.vltEd = true;
+    st.choices = ns::DefaultChoices(s);
+    auto db = sc::CloneDatabase(*base);
+    const sc::ApplyReport r = ns::Run(*db, s, st);
+    if (r.errors()) std::fprintf(stderr, "%s", Messages(r).substr(0, 2000).c_str());
+    CHECK_EQ(r.errors(), size_t(0));
+    CHECK(r.valuesSet > 70000);
+    // Read with Attribulina's own words, its curves' Y2 lines, vinyl layers and
+    // the slots past an array's count fail.
+    ns::RunSettings ext = st;
+    ext.vltEd = false;
+    CHECK(ns::Run(*sc::CloneDatabase(*base), s, ext).errors() > 1000);
+}
+
 TEST("nfsms: World's scripts edit its packs and event vaults, and record back as nfsms") {
     auto base = LoadFolder(test::DataPath("attrib/databases/pc/world-final"));
     CHECK_EQ(ns::GameCode(*base), std::string("W"));

@@ -355,6 +355,10 @@ namespace attrib::script
 	// `current`, also its bytes. Throws ScriptError when the path doesn't lead to
 	// a value; an array gives kind Unknown and size 0.
 	ValueType TypeAt(Database& db, Collection& c, const FieldPath& path, Bytes* current = nullptr);
+	// Where that value is: the block holding it (the own value's or the
+	// inherited one's) and its offset there, or null when `c` has none. Throws
+	// as TypeAt does.
+	const DataBlock* BlockAt(Database& db, Collection& c, const FieldPath& path, uint32_t* offset);
 
 	// A copy of the database (packs written out and read back), for trying a
 	// script before applying it for real.
