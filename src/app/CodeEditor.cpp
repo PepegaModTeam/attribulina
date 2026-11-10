@@ -900,6 +900,11 @@ namespace app
 			lastEdit_ = -1e9;
 			edited = true;
 		};
+		if (!goToLabel_.empty())
+		{
+			if (ImGui::MenuItem(goToLabel_.c_str(), "F12")) goToRequest_ = true;
+			ImGui::Separator();
+		}
 		if (ImGui::MenuItem("Undo", "Ctrl+Z", false, !readOnly && canUndo())) edited |= undo(text);
 		if (ImGui::MenuItem("Redo", "Ctrl+Y", false, !readOnly && canRedo())) edited |= redo(text);
 		ImGui::Separator();
@@ -1189,6 +1194,7 @@ namespace app
 			pendingSet_.reset();
 			edited = true;
 		}
+		if (active_ && !goToLabel_.empty() && ImGui::IsKeyChordPressed(ImGuiKey_F12, 0, ImGuiKeyOwner_Any)) goToRequest_ = true;
 		if (active_ && !readOnly)
 		{
 			using namespace ImGui;

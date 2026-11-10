@@ -245,6 +245,7 @@ namespace app
 						{
 							// Bring the field into view, unfiltered.
 							highlightField_ = h.field;
+							revealSteps_.clear();
 							highlightUntil_ = ImGui::GetTime() + 2.0;
 							scrollToField_ = true;
 							if (!fieldFilter_.empty() && ToLower(names.format(h.field)).find(ToLower(fieldFilter_)) == std::string::npos)

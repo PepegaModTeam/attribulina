@@ -326,24 +326,74 @@ namespace app
 		return failed == 0;
 	}
 
-	// The line under the caret opens its collection, with the field it sets.
+	// The line under the caret opens its collection, with the value it sets.
 	void App::followNfsmsLine()
 	{
 		CodeEditor& ed = nfsmsEditorOf(nfsmsActive_);
 		if (!nfsmsFollow_ || !db_ || !ed.cursorLineChanged()) return;
-		const ns::Command c = ns::ParseLine(ed.currentLineText(nfsmsTextOf(nfsmsActive_)));
-		if (c.name.empty()) return;
-		uint32_t field = 0;
-		Collection* x = ns::CollectionOfLine(*db_, c, &field);
-		if (!x) return;
-		if (x != selected_) select(x, true);
-		if (field)
+		goToNfsmsCaret(true);
+	}
+
+	void App::goToNfsmsCaret(bool follow)
+	{
+		auto status = [&](const std::string& text, bool error)
 		{
-			highlightField_ = field;
-			highlightUntil_ = ImGui::GetTime() + 2.0;
-			scrollToField_ = true;
-			if (!fieldFilter_.empty()) fieldFilter_.clear();
+			if (follow) return;
+			nfsmsStatus_ = text;
+			nfsmsStatusError_ = error;
+		};
+		if (!db_)
+		{
+			status("Open a database first.", true);
+			return;
 		}
+		const std::string file = nfsmsActive_;
+		CodeEditor& ed = nfsmsEditorOf(file);
+		const std::string& text = nfsmsTextOf(file);
+		const size_t at = std::min(ed.cursorOffset(), text.size());
+		const size_t nl = at == 0 ? std::string::npos : text.rfind('\n', at - 1);
+		const size_t begin = nl == std::string::npos ? 0 : nl + 1;
+		size_t end = text.find('\n', at);
+		if (end == std::string::npos) end = text.size();
+		const ns::Command c = ns::ParseLine(std::string_view(text).substr(begin, end - begin), ed.cursorLine());
+		if (c.name.empty())
+		{
+			status("This line has no command.", true);
+			return;
+		}
+		// The setup's controls only when they're asked for: Follow line runs at each caret move.
+		const bool option = !follow && c.name == "ui_option";
+		const ns::Script s = option ? ns::Parse(text, "script", nfsmsFolderOf(file)) : [&]
+		{
+			ns::Script folderOnly;
+			folderOnly.folder = nfsmsFolderOf(file);
+			return folderOnly;
+		}();
+		ns::RunSettings st;
+		st.vltEd = nfsmsVltEd_;
+		st.names = ns::NamesFor(*db_, nfsmsNames_);
+		const ns::LineTarget t = ns::TargetOfLine(*db_, s, c, follow ? 0 : at - begin, st);
+		if (!t.file.empty())
+		{
+			if (follow) return;
+			if (openNfsmsIncluded(t.file, 1, true)) status("Opened " + t.file, false);
+			else status("Can't read " + t.file, true);
+			return;
+		}
+		if (t.controlLine)
+		{
+			if (follow) return;
+			ed.gotoLine(t.controlLine);
+			status("Its ui_control is on line " + std::to_string(t.controlLine), false);
+			return;
+		}
+		if (!t.collection)
+		{
+			status(t.why.empty() ? "Nothing on this line names a collection." : t.why, true);
+			return;
+		}
+		const std::string shown = showValue(t.collection, t.hasPath ? &t.path : nullptr);
+		status("Went to " + shown, false);
 	}
 
 	bool App::convertNfsms()
@@ -516,9 +566,11 @@ namespace app
 	{
 		if (codeFont_) ImGui::PushFont(codeFont_, 0.0f);
 		CodeEditor& ed = nfsmsEditorOf(file);
+		ed.setGoTo("Go to Definition");
 		if (ed.draw(file.empty() ? "##nfsms" : "##included", nfsmsTextOf(file), ImVec2(-FLT_MIN, -FLT_MIN), ImGuiInputTextFlags_AllowTabInput))
 			ed.clearMarks();
 		if (codeFont_) ImGui::PopFont();
+		if (ed.goToRequested()) goToNfsmsCaret();
 	}
 
 	void App::drawNfsmsPanel()

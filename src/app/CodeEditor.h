@@ -121,6 +121,24 @@ namespace app
 		{
 			return cursorLine_;
 		}
+		// The caret, as an offset into the text.
+		size_t cursorOffset() const
+		{
+			return cursor_;
+		}
+		// F12 while the editor has the keyboard, and a `label` item at the top
+		// of its right-click menu, ask to show what the caret is on: true once
+		// after either. No label: neither is there.
+		void setGoTo(std::string label)
+		{
+			goToLabel_ = std::move(label);
+		}
+		bool goToRequested()
+		{
+			const bool r = goToRequest_;
+			goToRequest_ = false;
+			return r;
+		}
 		// The lines (1-based) the selection covers, or the caret's line twice.
 		void selectedLines(int& first, int& last) const;
 		// True once each time the caret moved to another line.
@@ -200,6 +218,8 @@ namespace app
 		void drawSelection(ImDrawList* dl, const std::string& text, ImVec2 origin, int first, int last, ImFont* font, float size) const;
 
 		CodeLanguage lang_;
+		std::string goToLabel_;
+		bool goToRequest_ = false;
 		std::unordered_map<std::string, KnownName> known_;
 		const KnownName* knownAt(const char* lineBegin, const char* b, const char* e) const;
 		std::map<int, std::string> errors_, warnings_;

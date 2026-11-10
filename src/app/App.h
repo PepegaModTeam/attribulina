@@ -402,6 +402,16 @@ namespace app
 		}
 		// Puts `text` in the Script panel, as saved to `path` (none: not saved yet).
 		void setScriptText(std::string text, std::string path = {});
+		// The line under the Script panel's buttons (and the nfsms window's):
+		// what the last check, apply, run or F12 said.
+		const std::string& scriptStatus() const
+		{
+			return scriptStatus_;
+		}
+		const std::string& nfsmsStatus() const
+		{
+			return nfsmsStatus_;
+		}
 		// Adds statements to the Script panel's script; edits of a collection it
 		// edits already are merged into that block. False when its text doesn't read.
 		bool addToScript(const std::vector<attrib::script::Statement>& statements, bool show = true);
@@ -752,6 +762,8 @@ namespace app
 		int consoleHistoryStep(ImGuiInputTextCallbackData* data);
 	private:
 		bool saveScript(bool as);
+		// F12 in the Script panel: the collection or value under the caret.
+		void goToScriptCaret();
 		bool loadScriptFile(const std::string& path, std::string& text);
 		std::string scriptName() const;
 		std::string scriptFolder() const; // where the panel script's includes start ("" before it's saved)
@@ -762,6 +774,10 @@ namespace app
 		bool runNfsmsScript(const attrib::nfsms::Script& s, int firstLine, int lastLine);
 		void appendNfsms(const std::vector<std::string>& lines);
 		void followNfsmsLine();
+		// F12 in the nfsms window: the collection or value the caret's word leads
+		// to, the included script, or the ui_control. `follow`: the line's own
+		// (Follow line), from where the caret moved, without a status line.
+		void goToNfsmsCaret(bool follow = false);
 		// update_field lines that set a field (or one element of it) to its value
 		// here, in NFS-VltEd's words (the field menu's nfsms items).
 		std::vector<std::string> nfsmsLinesFor(attrib::Collection& c, uint32_t field, int element = -1);
@@ -869,6 +885,24 @@ namespace app
 		double highlightUntil_ = 0;
 		bool scrollToField_ = false;
 		bool highlightRow_ = false;
+		// A value inside it (F12 in the scripts): the steps from the field's row
+		// (members by name, elements by index), the rows on the way opened once
+		// (revealOpen_). revealDepth_: how many steps the row being drawn is in,
+		// -1 off the way.
+		std::vector<attrib::script::FieldPath::Step> revealSteps_;
+		int revealDepth_ = -1;
+		bool revealOpen_ = false, revealHit_ = false;
+		// Decides whether the row about to be drawn is on the way: the value
+		// (highlighted), a row to open, or neither. Call before its tree node;
+		// `leaf` when it doesn't open into the next step.
+		void revealRow(bool leaf);
+		// The depth for a child row `member` (or element `index` of `count`) of
+		// the row being drawn at `parent`; -1 when it is off the way.
+		int revealChild(int parent, const std::string& member, int64_t index, uint32_t count) const;
+		// Selects `c` and shows its value at `path` (the field alone without
+		// one): rows on the way open, and its row is highlighted and scrolled to.
+		// Returns what was shown, or why it can't be.
+		std::string showValue(attrib::Collection* c, const attrib::script::FieldPath* path);
 
 		// Script panel.
 		bool showScript_ = false, bringScript_ = false;

@@ -2797,6 +2797,69 @@ namespace app
 		ImGui::EndPopup();
 	}
 
+	void App::revealRow(bool leaf)
+	{
+		if (revealDepth_ < 0) return;
+		if (size_t(revealDepth_) >= revealSteps_.size() || leaf)
+		{
+			// The value, or as far as the rows go (a vector's component).
+			highlightRow_ = true;
+			revealHit_ = true;
+			revealDepth_ = -1;
+		}
+		else if (revealOpen_)
+		{
+			ImGui::SetNextItemOpen(true);
+		}
+	}
+
+	int App::revealChild(int parent, const std::string& member, int64_t index, uint32_t count) const
+	{
+		if (parent < 0 || size_t(parent) >= revealSteps_.size()) return -1;
+		const script::FieldPath::Step& s = revealSteps_[size_t(parent)];
+		if (!member.empty()) return !s.member.empty() && ToLower(s.member) == ToLower(member) ? parent + 1 : -1;
+		if (!s.member.empty()) return -1;
+		const int64_t want = s.index < 0 ? int64_t(count) + s.index : s.index;
+		return want == index ? parent + 1 : -1;
+	}
+
+	std::string App::showValue(Collection* c, const script::FieldPath* path)
+	{
+		if (!db_ || !c) return "nothing to show";
+		if (c != selected_) select(c, true);
+		const KeyNames& names = db_->names();
+		std::string what = names.format(c->classKey) + "/" + names.format(c->key);
+		highlightField_ = 0;
+		revealSteps_.clear();
+		if (!path || path->field.empty()) return what;
+		const uint32_t key = script::NameKey(path->field);
+		const FieldDef* f = c->cls ? c->cls->field(key) : nullptr;
+		if (!f) return what + " (its class has no field " + path->field + ")";
+		highlightField_ = key;
+		highlightUntil_ = ImGui::GetTime() + 2.5;
+		scrollToField_ = true;
+		revealSteps_ = path->steps;
+		revealOpen_ = true;
+		revealHit_ = false;
+		if (!fieldFilter_.empty() && ToLower(names.format(key)).find(ToLower(fieldFilter_)) == std::string::npos) fieldFilter_.clear();
+		script::FieldPath shown = *path;
+		shown.field = names.format(key);
+		what += " " + shown.text();
+		const Collection* owner = nullptr;
+		const Attribute* a = c->resolve(key, &owner);
+		if (a && owner != c)
+		{
+			what += ", inherited from " + names.format(owner->key);
+			if (!view_.showInherited) what += " (View > Show Inherited Values shows it)";
+		}
+		else if (!a)
+		{
+			what += ", not set";
+			if (!view_.showUnset) what += " (View > Show Unset Fields shows it)";
+		}
+		return what;
+	}
+
 	void App::markHighlightedRow(bool expands)
 	{
 		if (!highlightRow_) return;
@@ -2818,6 +2881,7 @@ namespace app
 		ImGui::TableSetColumnIndex(0);
 		ImGui::AlignTextToFramePadding();
 		const bool expands = ExpandsIntoMembers(vt);
+		revealRow(!expands);
 		markHighlightedRow(expands);
 		ImGuiTreeNodeFlags fl = ImGuiTreeNodeFlags_SpanAvailWidth;
 		if (!expands) fl |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
@@ -2860,8 +2924,10 @@ namespace app
 	bool App::drawMemberRows(EditEnv& env, const StructDef& st, DataBlock& b, uint32_t off, bool editable)
 	{
 		bool changed = false;
+		const int depth = revealDepth_;
 		for (const MemberDef& m : st.members)
 		{
+			revealDepth_ = revealChild(depth, m.name, -1, 0);
 			// A count that sizes a pointer array is edited on the array's row.
 			bool isCount = false;
 			for (const MemberDef& o : st.members)
@@ -2889,6 +2955,9 @@ namespace app
 				ImGui::TableNextRow();
 				ImGui::TableSetColumnIndex(0);
 				ImGui::AlignTextToFramePadding();
+				revealRow(false);
+				markHighlightedRow(true);
+				const int inner = revealDepth_;
 				const ImGuiTreeNodeFlags fl = ImGuiTreeNodeFlags_SpanAvailWidth | (view_.expandArrays ? ImGuiTreeNodeFlags_DefaultOpen : 0);
 				if (!editable) ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
 				const bool open = ImGui::TreeNodeEx(m.name.c_str(), fl);
@@ -2903,6 +2972,7 @@ namespace app
 					for (uint32_t i = 0; i < m.count; ++i)
 					{
 						ImGui::PushID(int(i));
+						revealDepth_ = revealChild(inner, {}, i, m.count);
 						changed |= drawValueRows(env, "[" + std::to_string(i) + "]", b, off + m.offset + i * m.elemSize, mt, editable);
 						ImGui::PopID();
 					}
@@ -2915,6 +2985,7 @@ namespace app
 			}
 			ImGui::PopID();
 		}
+		revealDepth_ = depth;
 		return changed;
 	}
 
@@ -2988,6 +3059,9 @@ namespace app
 		uint32_t count = cm ? uint32_t(ReadInteger(b, structOff + cm->offset, ct, env.endian)) : (slot && slot->data ? 1u : 0u);
 		if (slot && slot->data && et.size) count = std::min<uint32_t>(count, uint32_t(slot->data->bytes.size() / et.size));
 
+		revealRow(false);
+		markHighlightedRow(true);
+		const int depth = revealDepth_;
 		const ImGuiTreeNodeFlags fl = ImGuiTreeNodeFlags_SpanAvailWidth | (view_.expandArrays ? ImGuiTreeNodeFlags_DefaultOpen : 0);
 		if (!editable) ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
 		const bool open = ImGui::TreeNodeEx(m.name.c_str(), fl);
@@ -3069,6 +3143,9 @@ namespace app
 				for (uint32_t i = 0; i < count && (i + 1) * et.size <= nb.bytes.size(); ++i)
 				{
 					ImGui::PushID(int(i));
+					// A pointer to one value: a path names its members straight away.
+					const bool one = !cm && depth >= 0 && size_t(depth) < revealSteps_.size() && !revealSteps_[size_t(depth)].member.empty();
+					revealDepth_ = one ? depth : revealChild(depth, {}, i, count);
 					changed |= drawValueRows(env, "[" + std::to_string(i) + "]", nb, i * et.size, et, editable);
 					ImGui::PopID();
 				}
@@ -3084,7 +3161,9 @@ namespace app
 		ImGui::TableNextRow();
 		ImGui::TableSetColumnIndex(0);
 		ImGui::AlignTextToFramePadding();
+		revealRow(false);
 		markHighlightedRow(true);
+		const int depth = revealDepth_;
 		const ImGuiTreeNodeFlags fl = ImGuiTreeNodeFlags_SpanAvailWidth | (view_.expandArrays ? ImGuiTreeNodeFlags_DefaultOpen : 0);
 		if (!editable) ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
 		const bool open = ImGui::TreeNodeEx("##arr", fl, "%s", label.c_str());
@@ -3183,6 +3262,7 @@ namespace app
 					ex.array = &a;
 					ex.element = i;
 				}
+				revealDepth_ = revealChild(depth, {}, i, a.count);
 				changed |= drawValueRows(env, "[" + std::to_string(i) + "]", a.data, i * a.elemSize, vt, editable, editable ? &ex : nullptr);
 				ImGui::PopID();
 			}
@@ -3202,7 +3282,9 @@ namespace app
 		if (!found && !view_.showUnset) return;
 
 		const std::string name = names.format(f.key);
-		highlightRow_ = f.key == highlightField_ && ImGui::GetTime() < highlightUntil_;
+		const bool hit = f.key == highlightField_ && ImGui::GetTime() < highlightUntil_;
+		highlightRow_ = hit && (revealSteps_.empty() || !found);
+		revealDepth_ = hit && found && !revealSteps_.empty() ? 0 : -1;
 		ImGui::PushID(int(f.key)); // by key: an undo makes new FieldDefs
 		RowExtras extras;
 		extras.def = &f;
@@ -3241,6 +3323,14 @@ namespace app
 			markDirty(c);
 		}
 		highlightRow_ = false;
+		revealDepth_ = -1;
+		if (hit && revealOpen_)
+		{
+			// Opened once; a way no row follows (a count drawn on its array's row)
+			// shows the field's row instead.
+			revealOpen_ = false;
+			if (!revealHit_) revealSteps_.clear();
+		}
 		ImGui::PopID();
 	}
 

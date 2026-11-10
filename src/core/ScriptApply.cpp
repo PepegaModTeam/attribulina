@@ -86,11 +86,20 @@ namespace attrib::script
 			}
 		};
 
+		// 0x and up to 16 hex digits: a number (a name as a key holds at most 8, IsHex).
+		bool IsHexNumber(std::string_view s)
+		{
+			if (s.size() < 3 || s.size() > 18 || s[0] != '0' || (s[1] != 'x' && s[1] != 'X')) return false;
+			for (size_t i = 2; i < s.size(); ++i)
+				if (!std::isxdigit(static_cast<unsigned char>(s[i]))) return false;
+			return true;
+		}
+
 		bool ParseNum(const std::string& text, Num& out)
 		{
 			out = Num{};
 			out.literal = text;
-			if (IsHex(text))
+			if (IsHexNumber(text))
 			{
 				out.bits = std::strtoull(text.c_str() + 2, nullptr, 16);
 				out.isInt = true;
@@ -2553,6 +2562,29 @@ namespace attrib::script
 		const DataBlock* b = a.blockAt(c, path, off);
 		if (offset) *offset = off;
 		return b;
+	}
+
+	uint32_t NameKey(const std::string& written)
+	{
+		if (written.size() >= 2 && written.front() == '"' && written.back() == '"') return StringHash32(written.substr(1, written.size() - 2));
+		if (IsHex(written)) return uint32_t(std::strtoul(written.c_str() + 2, nullptr, 16));
+		return StringHash32(written);
+	}
+
+	std::vector<Collection*> TargetCollections(const Database& db, const Target& t)
+	{
+		std::vector<Collection*> out;
+		const ClassDef* cls = db.findClass(NameKey(t.cls));
+		if (!cls || t.root) return out;
+		if (t.name.find_first_of("*?") == std::string::npos)
+		{
+			if (Collection* c = db.findCollection(cls->key, NameKey(t.name))) out.push_back(c);
+			return out;
+		}
+		const std::string pat = Lower(t.name);
+		for (Collection* c : cls->collections)
+			if (Glob(pat, Lower(db.names().format(c->key)))) out.push_back(c);
+		return out;
 	}
 
 	ApplyReport Apply(Database& db, const Script& script, const ApplySettings& settings)

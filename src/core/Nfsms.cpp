@@ -11,6 +11,9 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cerrno>
+#include <cfloat>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -52,6 +55,12 @@ namespace attrib::nfsms
 			char* end = nullptr;
 			std::strtod(s.c_str(), &end);
 			return end && !*end;
+		}
+
+		// What NFS-VltEd's char.IsWhiteSpace finds in a name (the ASCII ones).
+		bool HasWhiteSpace(const std::string& t)
+		{
+			return t.find_first_of(" \t\r\n\v\f") != std::string::npos;
 		}
 
 		uint32_t KeyOf(const std::string& t)
@@ -123,8 +132,9 @@ namespace attrib::nfsms
 		{
 			Whole, Class, Collection, Data,
 			// NFS-VltEd compatible: a StringKey's hash or text alone (MODEL's Collision
-			// and Visual), and a RefSpec's pointer word (a list element's Value).
-			Hash, Text, Pointer
+			// and Visual, Most Wanted's Collision64), and a RefSpec's pointer word (a
+			// list element's Value).
+			Hash, Text, Pointer, Hash64
 		};
 
 		// NFS-VltEd's own type of a word (PropertyNames::Property::vltType): its size
@@ -137,6 +147,63 @@ namespace attrib::nfsms
 			if (f == "u32" || f == "i32" || f == "f32" || f == "bool32") return 4;
 			if (f == "u64" || f == "i64" || f == "f64") return 8;
 			return 0;
+		}
+		// NFS-VltEd's `version` line (A/ _0001.cs): .NET's Version.TryParse (two to
+		// four whole numbers), refused when newer than its own 4.6.0.0. "" when it
+		// reads, else why not.
+		std::string VersionProblem(const std::string& v)
+		{
+			std::vector<long long> parts;
+			size_t b = 0;
+			for (;;)
+			{
+				const size_t e = v.find('.', b);
+				const std::string part = v.substr(b, e == std::string::npos ? std::string::npos : e - b);
+				if (part.empty() || part.size() > 9 || !std::all_of(part.begin(), part.end(), [](char ch)
+				{
+					return std::isdigit(static_cast<unsigned char>(ch));
+				}))
+					return "Unable to parse version: " + v;
+				parts.push_back(std::atoll(part.c_str()));
+				if (e == std::string::npos) break;
+				b = e + 1;
+			}
+			if (parts.size() < 2 || parts.size() > 4) return "Unable to parse version: " + v;
+			// A part left out is -1 to .NET, below any number.
+			const long long mine[4] = { 4, 6, 0, 0 };
+			for (size_t i = 0; i < 4; ++i)
+			{
+				const long long theirs = i < parts.size() ? parts[i] : -1;
+				if (theirs != mine[i])
+				{
+					if (theirs > mine[i]) return "NFS-VltEd v" + std::to_string(parts[0]) + "." + std::to_string(parts[1]) + " or higher is required";
+					break;
+				}
+			}
+			return {};
+		}
+		// NFS-VltEd's `game` line (A/_001A_0007.cs): its codes as written, one of
+		// them this database's game.
+		std::string GameProblem(const std::vector<std::string>& codes, const std::string& mine)
+		{
+			static const char* const known[] = { "MW", "C", "PS", "UC", "W", "WB" };
+			for (const std::string& g : codes)
+				if (std::find(std::begin(known), std::end(known), g) == std::end(known)) return "The parameter is not valid: " + g;
+			if (std::find(codes.begin(), codes.end(), mine) == codes.end())
+			{
+				std::string list;
+				for (const std::string& g : codes) list += (list.empty() ? "" : ", ") + g;
+				return "This mod supports for the following game(s): " + (list.empty() ? std::string("(none)") : list);
+			}
+			return {};
+		}
+
+		// Words NFS-VltEd reads as keys or bin keys: names, which scripts keep.
+		bool IsKeyWord(const std::string& vltType)
+		{
+			const size_t slash = vltType.find('/');
+			const std::string how = slash == std::string::npos ? std::string() : vltType.substr(slash + 1);
+			return how == "key" || how == "binkey" || how == "key64";
 		}
 		// Whether NFS-VltEd's word reads the bytes of our value of kind `ours` and
 		// `size` otherwise: another width, or a number where we have a float (or
@@ -206,6 +273,8 @@ namespace attrib::nfsms
 			while (!t.empty() && space(t.back())) t.pop_back();
 			return t;
 		};
+		// A file saved with a byte order mark: .NET's readers drop it.
+		if (line.substr(0, 3) == "\xEF\xBB\xBF") i = 3;
 		while (i < line.size() && space(line[i])) ++i;
 		if (i >= line.size()) return c;
 		if (line[i] == '#' || line.substr(i, 2) == "//")
@@ -232,6 +301,7 @@ namespace attrib::nfsms
 			std::string t(line.substr(i, hash == std::string_view::npos ? std::string_view::npos : hash - i));
 			while (!t.empty() && space(t.back())) t.pop_back();
 			c.args.push_back(t);
+			c.at.push_back(uint32_t(i));
 			if (hash != std::string_view::npos) c.comment = rest(hash + 1);
 			return c;
 		}
@@ -244,6 +314,7 @@ namespace attrib::nfsms
 				c.comment = rest(i + 1);
 				break;
 			}
+			c.at.push_back(uint32_t(i));
 			if (line[i] == '"')
 			{
 				const size_t e = line.find('"', i + 1);
@@ -337,10 +408,11 @@ namespace attrib::nfsms
 
 	// ------------------------------------------------------------ names ---
 
-	const PropertyNames::Property* PropertyNames::Type::find(std::string_view word) const
+	const PropertyNames::Property* PropertyNames::Type::find(std::string_view word, bool anyCase) const
 	{
 		for (const Property& p : properties)
 			if (p.word == word) return &p;
+		if (!anyCase) return nullptr;
 		const std::string l = Lower(std::string(word));
 		for (const Property& p : properties)
 			if (Lower(p.word) == l) return &p;
@@ -603,6 +675,16 @@ namespace attrib::nfsms
 
 			sc::ApplyReport run(const Script& s)
 			{
+				// NFS-VltEd's installer reads the whole script first and runs none of it
+				// when one of these is wrong.
+				if (st_.vltEd && !st_.firstLine)
+					if (std::optional<sc::Message> why = refusal(s))
+					{
+						rep_.messages.push_back(*why);
+						rep_.messages.push_back(sc::Message(sc::Message::Level::Info, why->pos,
+							"NFS-VltEd's installer runs none of a script with this mistake, so nothing ran"));
+						return rep_;
+					}
 				try
 				{
 					runScript(s, 0);
@@ -617,6 +699,92 @@ namespace attrib::nfsms
 			}
 
 		private:
+			// What makes NFS-VltEd's installer refuse a script (A/_0003.cs, then
+			// A/_0012_0007.cs), the first one: a version or game line it can't take,
+			// then in the script as its included scripts make it, a ui_control that
+			// doesn't read or repeats a name, a ui_option naming no control above it,
+			// or one closing a block another opened.
+			std::optional<sc::Message> refusal(const Script& top)
+			{
+				struct Line
+				{
+					const Command* c;
+					int topLine;
+					std::string file;
+				};
+				std::vector<Line> lines;
+				std::vector<std::unique_ptr<Script>> held; // the included scripts read
+				std::function<void(const Script&, int, int)> walk = [&](const Script& sc, int depth, int topLine)
+				{
+					for (const Command& c : sc.commands)
+					{
+						const int at = depth ? topLine : c.line;
+						if (c.name == "script" && c.args.size() == 1 && depth < 16)
+						{
+							const fs::path p = InFolder(FromUtf8(sc.folder), c.args[0]);
+							std::string text;
+							try
+							{
+								if (st_.readFile) text = st_.readFile(ToUtf8(p));
+								else
+								{
+									std::ifstream in(p, std::ios::binary);
+									if (!in) continue; // the line fails when it runs
+									std::ostringstream ss;
+									ss << in.rdbuf();
+									text = ss.str();
+								}
+							}
+							catch (const std::exception&)
+							{
+								continue;
+							}
+							auto sub = std::make_unique<Script>(Parse(text, c.args[0], ToUtf8(p.parent_path())));
+							sub->path = ToUtf8(p);
+							held.push_back(std::move(sub));
+							walk(*held.back(), depth + 1, at);
+							continue;
+						}
+						lines.push_back({ &c, at, depth ? sc.path : std::string() });
+					}
+				};
+				walk(top, 0, 0);
+				auto refuse = [&](const Line& l, const std::string& why)
+				{
+					return sc::Message(sc::Message::Level::Error, sc::Pos{ l.topLine, 1 }, why, l.file, l.file.empty() ? 0 : l.c->line);
+				};
+				const std::string mine = GameCode(db_);
+				for (const Line& l : lines)
+				{
+					const Command& c = *l.c;
+					if (c.name == "version" && c.args.size() == 1)
+						if (const std::string why = VersionProblem(c.args[0]); !why.empty()) return refuse(l, why);
+					if (c.name == "game" && !mine.empty())
+						if (const std::string why = GameProblem(c.args, mine); !why.empty()) return refuse(l, why);
+				}
+				std::set<std::string> controls;
+				std::optional<std::string> open;
+				for (const Line& l : lines)
+				{
+					const Command& c = *l.c;
+					if (c.name == "ui_control" && c.args.size() == 4)
+					{
+						if (!c.error.empty()) return refuse(l, c.error);
+						const std::string key = Lower(c.args[0]) == "checkbox" ? c.args[1] : c.args[1] + c.args[2];
+						if (!controls.insert(key).second) return refuse(l, "Duplicate control name has been found: " + key);
+					}
+					else if (c.name == "ui_option" && (c.args.size() == 1 || c.args.size() == 2))
+					{
+						const std::string key = c.args.size() == 2 ? c.args[0] + c.args[1] : c.args[0];
+						if (!controls.count(key)) return refuse(l, "The control with the specified name wasn't found: " + key);
+						if (!open) open = key;
+						else if (*open != key) return refuse(l, "Missing closing ui_option: " + key);
+						else open.reset();
+					}
+				}
+				return std::nullopt;
+			}
+
 			struct SpareWrite
 			{
 				std::string field;              // the field token, field[i]
@@ -933,14 +1101,32 @@ namespace attrib::nfsms
 			void exec(const Command& c, const Script& s, int depth)
 			{
 				const std::string& n = c.name;
+				if (st_.vltEd && (n == "append_array" || n == "add_overwrite" || n == "copy_overwrite"))
+				{
+					// Attribulator's commands: NFS-VltEd's pattern doesn't know them, so the
+					// line is a comment there.
+					note(n + " is Attribulator's: NFS-VltEd reads the line as a comment, so it does nothing");
+					emitComment(n + ": skipped, as NFS-VltEd skips it");
+					return;
+				}
 				if (n == "version")
 				{
 					need(c, 1, 1);
-					if (c.args[0] != "4.6") warn("written for NFS-VltEd " + c.args[0] + "; read as 4.6");
+					// NFS-VltEd runs scripts for 4.6 and older, and refuses newer ones.
+					if (const std::string why = VersionProblem(c.args[0]); !why.empty())
+					{
+						if (st_.vltEd) fail(why);
+						warn(why + "; read as 4.6");
+					}
 				}
 				else if (n == "game")
 				{
 					const std::string mine = GameCode(db_);
+					if (st_.vltEd && !mine.empty())
+					{
+						if (const std::string why = GameProblem(c.args, mine); !why.empty()) fail(why);
+						return;
+					}
 					bool ok = mine.empty() || c.args.empty();
 					for (const std::string& g : c.args) ok |= Lower(g) == Lower(mine);
 					if (!ok)
@@ -1028,6 +1214,7 @@ namespace attrib::nfsms
 					need(c, 3, 3);
 					ClassDef& k = cls(c.args[0]);
 					Collection& x = node(k, c.args[1]);
+					if (c.args[2].empty() || HasWhiteSpace(c.args[2])) fail("a node name can't be empty or hold white space");
 					if (find(k, c.args[2])) fail("there is already a node called '" + c.args[2] + "'");
 					// A hash is a key, as NFS-VltEd reads it (0x and up to 8 hex digits).
 					const bool hash = IsHex(c.args[2]);
@@ -1047,7 +1234,7 @@ namespace attrib::nfsms
 				}
 				else if (n == "move_node")
 				{
-					need(c, 2, 3);
+					need(c, st_.vltEd ? 3 : 2, 3); // NFS-VltEd always names the parent
 					ClassDef& k = cls(c.args[0]);
 					Collection& x = node(k, c.args[1]);
 					Collection* parent = c.args.size() == 3 ? &node(k, c.args[2]) : nullptr;
@@ -1094,13 +1281,14 @@ namespace attrib::nfsms
 				}
 				else if (n == "resize_collection")
 				{
-					need(c, 4, 64);
+					need(c, 4, st_.vltEd ? 5 : 64); // NFS-VltEd: one word at most
 					ClassDef& k = cls(c.args[0]);
 					Collection& x = node(k, c.args[1]);
 					sc::FieldPath p = fieldPath(x, c.args[2]);
 					const FieldDef* f = k.field(KeyOf(p.field));
 					if (f) requireOwn(x, *f, p.field);
 					RefPart part = RefPart::Whole;
+					elementWords_ = inElement_ = nullptr;
 					for (size_t i = 3; i + 1 < c.args.size(); ++i) property(x, p, c.args[i], part);
 					// NFS-VltEd resizes a curve's list without the point count the file keeps.
 					if (st_.vltEd && f && curvePoint(x, p, nullptr, std::strtoll(c.args.back().c_str(), nullptr, 10))) return;
@@ -1123,6 +1311,7 @@ namespace attrib::nfsms
 					const FieldDef* f = k.field(KeyOf(c.args[2]));
 					if (!f) fail("the class '" + c.args[0] + "' does not contain '" + c.args[2] + "'");
 					if (f->inLayout()) fail("'" + c.args[2] + "' cannot be removed: only optional fields can be removed");
+					if (st_.vltEd && !x.find(f->key)) fail("The node '" + c.args[1] + "' does not contain '" + c.args[2] + "' field.");
 					if (RevertAttribute(x, f->key))
 					{
 						++rep_.reverted;
@@ -1146,6 +1335,7 @@ namespace attrib::nfsms
 				else if (n == "convert_field")
 				{
 					emitComment("convert_field: not run (NFS-VltEd doesn't run it either)");
+					if (st_.vltEd) fail("The command is not supported (NFS-VltEd's message; it doesn't run convert_field)");
 					warn("convert_field isn't supported (NFS-VltEd doesn't run it either); skipped");
 				}
 			}
@@ -1178,11 +1368,26 @@ namespace attrib::nfsms
 			// A class with a CollectionName field keeps the name there too (Attribulator does this).
 			void setCollectionName(Collection& c, const std::string& n)
 			{
-				if (!c.cls || !c.cls->field(StringHash32("CollectionName"))) return;
+				const FieldDef* f = c.cls ? c.cls->field(StringHash32("CollectionName")) : nullptr;
+				if (!f) return;
+				std::string text = n;
+				if (st_.vltEd)
+				{
+					// NFS-VltEd sets it in the layout only, to the node's name as it
+					// shows it: the dictionary's, else the key in lower-case hex.
+					if (!f->inLayout()) return;
+					if (const std::string* known = db_.names().find(c.key)) text = *known;
+					else
+					{
+						char b[16];
+						std::snprintf(b, sizeof(b), "0x%08x", c.key);
+						text = b;
+					}
+				}
 				sc::Statement s;
 				s.kind = K::Set;
 				s.path.field = "CollectionName";
-				s.value = sc::MakeString(n);
+				s.value = sc::MakeString(text);
 				amod(c, { s });
 			}
 
@@ -1202,7 +1407,7 @@ namespace attrib::nfsms
 				ClassDef& k = cls(c.args[0]);
 				Collection* parent = c.args.size() == 3 ? &node(k, c.args[1]) : nullptr;
 				const std::string& n = c.args.back();
-				if (n.empty() || n.find_first_of(" \t") != std::string::npos) fail("a node name can't be empty or hold spaces");
+				if (n.empty() || HasWhiteSpace(n)) fail("a node name can't be empty or hold white space");
 				if (Collection* old = find(k, n))
 				{
 					if (!overwrite) fail("there is already a node called '" + n + "'");
@@ -1278,7 +1483,7 @@ namespace attrib::nfsms
 				Collection& src = node(k, c.args[1]);
 				Collection* parent = c.args.size() == 4 ? &node(k, c.args[2]) : nullptr;
 				const std::string& n = c.args.back();
-				if (n.empty() || n.find_first_of(" \t") != std::string::npos) fail("a node name can't be empty or hold spaces");
+				if (n.empty() || HasWhiteSpace(n)) fail("a node name can't be empty or hold white space");
 				if (Collection* old = find(k, n))
 				{
 					if (!overwrite) fail("there is already a node called '" + n + "'");
@@ -1311,9 +1516,23 @@ namespace attrib::nfsms
 
 			void changeVault(const Command& c)
 			{
-				ClassDef& k = cls(c.args[0]);
-				Collection& x = node(k, c.args[1]);
 				const std::string& vn = c.args[2];
+				if (st_.vltEd)
+				{
+					// NFS-VltEd moves gameplay nodes only, and never into the vaults of
+					// the other files (A/_0013_0007.cs).
+					if (vn.empty()) fail("Name cannot be empty");
+					if (HasWhiteSpace(vn)) fail("Vault name cannot contain white space");
+				}
+				ClassDef& k = cls(c.args[0]);
+				if (st_.vltEd && name(k.key) != "gameplay") fail("Change vault name for node of the class '" + c.args[0] + "' is not supported.");
+				Collection& x = node(k, c.args[1]);
+				if (st_.vltEd)
+				{
+					const std::string l = Lower(vn);
+					if (l == "db" || l == "frontend" || l == "cars" || l == "commerce")
+						fail("The vault name cannot be changed to one of the following: db, frontend, cars, commerce");
+				}
 				Vault* target = nullptr;
 				for (const auto& pk : db_.packs())
 					if (Vault* v = FindVault(*pk, vn)) target = v;
@@ -1363,6 +1582,16 @@ namespace attrib::nfsms
 				{
 					if (st_.vltEd) fail("The node '" + c.args[1] + "' already contains the '" + c.args[2] + "' field.");
 					return; // there already
+				}
+				if (st_.vltEd && c.args.size() == 4)
+				{
+					const std::string& n = c.args[3];
+					const size_t from = !n.empty() && n[0] == '+' ? 1 : 0;
+					if (from >= n.size() || !std::all_of(n.begin() + from, n.end(), [](char ch)
+					{
+						return std::isdigit(static_cast<unsigned char>(ch));
+					}))
+						fail("Value cannot be parsed: " + n + " isn't a count");
 				}
 				const uint32_t count = c.args.size() == 4 ? uint32_t(std::strtoul(c.args[3].c_str(), nullptr, 10)) : 0;
 				if (f->isArray() && count > 0xFFFF) fail("'" + c.args[2] + "' holds at most 65535 elements");
@@ -1503,6 +1732,7 @@ namespace attrib::nfsms
 				int64_t i;
 				if (idx == "^")
 				{
+					if (st_.vltEd) fail("NFS-VltEd can't read [^] (Attribulator's): give the index");
 					const Attribute* a = x.resolve(KeyOf(p.field));
 					if (!a || !a->count) fail(p.field + " has no elements");
 					i = int64_t(a->count) - 1;
@@ -1554,10 +1784,13 @@ namespace attrib::nfsms
 						p.steps.push_back({ std::string(), int64_t(off % 16 / 4) });
 						return;
 					case TypeKind::StringKey:
-						// NFS-VltEd's MODEL words set the hash or the text alone.
-						if (st_.vltEd) part = off == 4 ? RefPart::Text : RefPart::Hash;
-						if (off == 4 || st_.vltEd) return; // its text (the hash follows it)
+					{
+						// NFS-VltEd's MODEL words set a hash or the text alone.
+						const StringKeyLayout kl = StringKeyAt(vt.size);
+						if (st_.vltEd) part = off == kl.text ? RefPart::Text : kl.hash64 && off < kl.hash32 ? RefPart::Hash64 : RefPart::Hash;
+						if (off == kl.text || st_.vltEd) return; // its text (the hash follows it)
 						fail(word + " is a StringKey's hash: set its text");
+					}
 					case TypeKind::Struct:
 					case TypeKind::Curve:
 						if (!vt.st) break;
@@ -1660,7 +1893,7 @@ namespace attrib::nfsms
 					case TypeKind::StringKey:
 						if (st_.vltEd)
 						{
-							part = l == "mstring" ? RefPart::Text : RefPart::Hash;
+							part = l == "mstring" ? RefPart::Text : l == "mhash64" ? RefPart::Hash64 : RefPart::Hash;
 							return;
 						}
 						if (l != "mstring") fail(word + " is a StringKey's hash: set its text");
@@ -1705,15 +1938,21 @@ namespace attrib::nfsms
 					// An index into a list, unless the type names a property so (UpgradeDescription's 4).
 					const ValueType vt = sc::TypeAt(db_, x, p);
 					const PropertyNames::Type* t = vltType(p, vt);
-					const PropertyNames::Property* pr = t && !t->single ? t->find(token) : nullptr;
+					if (st_.vltEd && t && t->single && vt.size) return; // NFS-VltEd ignores the word
+					const PropertyNames::Property* pr = t && !t->single ? t->find(token, !st_.vltEd) : nullptr;
 					if (pr)
 					{
 						noteWord(*pr, p, vt);
 						stepToProperty(x, p, vt, *pr, part, token);
+						elementWords_ = pr->list ? &pr->elements : nullptr;
 					}
 					else
 					{
+						// NFS-VltEd takes a number as an index only after a list's word.
+						if (st_.vltEd && t && vt.size) fail(NotFound(*t, token));
 						p.steps.push_back({ std::string(), std::strtoll(token.c_str(), nullptr, 10) });
+						inElement_ = elementWords_;
+						elementWords_ = nullptr;
 					}
 					return;
 				}
@@ -1722,24 +1961,42 @@ namespace attrib::nfsms
 				std::string idx = lb == std::string::npos ? std::string() : token.substr(lb + 1, token.find(']', lb) - lb - 1);
 				const std::string l = Lower(prop);
 				const ValueType vt = sc::TypeAt(db_, x, p);
+				// An element of a list: NFS-VltEd matches its word exactly among the
+				// element's words (Value; Group, Name, Value).
+				const std::vector<std::string>* element = inElement_;
+				inElement_ = nullptr;
+				if (st_.vltEd && element && !element->empty() && std::find(element->begin(), element->end(), token) == element->end())
+				{
+					std::string words;
+					for (const std::string& w : *element) words += (words.empty() ? "" : ", ") + w;
+					fail("Value '" + token + "' cannot be found (the element's words: " + words + ")");
+				}
 				if (const PropertyNames::Type* t = vltType(p, vt))
 				{
 					if (t->single) return; // NFS-VltEd ignores the word; update() steps to its one property
-					const PropertyNames::Property* pr = t->find(token);
-					if (!pr && !idx.empty()) pr = t->find(prop);
+					const PropertyNames::Property* pr = t->find(token, !st_.vltEd);
+					if (!pr && !idx.empty() && !st_.vltEd) pr = t->find(prop);
 					else if (pr) idx.clear(); // M[1,1]: the index is part of the word
 					if (pr)
 					{
 						noteWord(*pr, p, vt);
 						stepToProperty(x, p, vt, *pr, part, token);
+						elementWords_ = pr->list ? &pr->elements : nullptr;
 						if (!idx.empty()) p.steps.push_back({ std::string(), std::strtoll(idx.c_str(), nullptr, 10) });
 						return;
 					}
+					// NFS-VltEd knows only its own words, as written.
+					if (st_.vltEd && !element) fail(NotFound(*t, token));
 				}
-				else if (st_.names && l == "data" && idx.empty())
+				else if (st_.names && (st_.vltEd ? prop == "Data" : l == "data") && idx.empty())
 				{
 					part = RefPart::Data; // NFS-VltEd's raw class: the value's bytes
 					return;
+				}
+				else if (st_.vltEd && st_.names && !element)
+				{
+					// A type NFS-VltEd has no class for: its raw class has Data alone.
+					fail("Value '" + token + "' cannot be found: NFS-VltEd has no words for " + vt.typeName + " but Data, its bytes in hex");
 				}
 				switch (vt.kind)
 				{
@@ -1833,6 +2090,13 @@ namespace attrib::nfsms
 					stepToProperty(x, p, vt, t->properties[0], part, t->properties[0].word);
 				}
 			}
+			// NFS-VltEd's message for a word its class doesn't have, with the words it has.
+			static std::string NotFound(const PropertyNames::Type& t, const std::string& token)
+			{
+				std::string words;
+				for (const auto& w : t.properties) words += (words.empty() ? "" : ", ") + w.word;
+				return "Value '" + token + "' cannot be found (NFS-VltEd's words: " + words + ")";
+			}
 			void noteWord(const PropertyNames::Property& pr, const sc::FieldPath& p, const ValueType& vt)
 			{
 				lastProp_ = &pr;
@@ -1860,8 +2124,28 @@ namespace attrib::nfsms
 				{
 					// Hex bytes, "00 00 80 3F", as many as the value has.
 					std::string hex;
-					for (char ch : t)
-						if (!std::isspace(static_cast<unsigned char>(ch))) hex += ch;
+					if (st_.vltEd)
+					{
+						// NFS-VltEd's raw class: tokens split on spaces, each one or two
+						// hex digits in any case, exactly as many as the value's bytes.
+						std::istringstream in(t);
+						std::string tok;
+						size_t n = 0;
+						while (in >> tok)
+						{
+							if (tok.size() > 2 || !std::all_of(tok.begin(), tok.end(), [](char ch)
+							{
+								return std::isxdigit(static_cast<unsigned char>(ch));
+							}))
+								fail("Value cannot be parsed: " + tok + " isn't a byte in hex");
+							hex += tok.size() == 1 ? "0" + tok : tok;
+							++n;
+						}
+						if (n != vt.size) fail("Length does not match: Data needs " + std::to_string(vt.size) + " bytes, not " + std::to_string(n));
+					}
+					else
+						for (char ch : t)
+							if (!std::isspace(static_cast<unsigned char>(ch))) hex += ch;
 					if (hex.size() % 2 || !std::all_of(hex.begin(), hex.end(), [](char ch)
 					{
 						return std::isxdigit(static_cast<unsigned char>(ch));
@@ -1872,6 +2156,11 @@ namespace attrib::nfsms
 					auto v = std::make_shared<sc::Value>();
 					v->kind = sc::Value::Kind::Bytes;
 					v->text = t;
+					if (st_.vltEd)
+					{
+						v->text.clear();
+						for (size_t i = 0; i + 1 < hex.size(); i += 2) v->text += hex.substr(i, 2) + " ";
+					}
 					return v;
 				}
 				if (vt.kind == TypeKind::RefSpec && part == RefPart::Pointer)
@@ -1942,7 +2231,8 @@ namespace attrib::nfsms
 					case TypeKind::Text:
 					case TypeKind::StringKey: return sc::MakeString(t);
 					case TypeKind::BinKey:
-						// NFS-VltEd reads a decimal number in a bin key as the key itself.
+						// NFS-VltEd reads "" as 0xFFFFFFFF and a decimal number in a bin key as the key itself.
+						if (st_.vltEd && t.empty()) return sc::MakeNumber("0xFFFFFFFF");
 						if (st_.vltEd && !t.empty() && std::all_of(t.begin(), t.end(), [](char ch)
 						{
 							return std::isdigit(static_cast<unsigned char>(ch));
@@ -1958,24 +2248,55 @@ namespace attrib::nfsms
 
 			void update(const Command& c)
 			{
-				need(c, 4, 64);
+				// NFS-VltEd: update_field has one word at most, update_collection a list's
+				// word (or none), an index and the element's word.
+				if (st_.vltEd) need(c, c.name == "update_collection" ? 6 : 4, c.name == "update_collection" ? 7 : 5);
+				else need(c, 4, 64);
 				ClassDef& k = cls(c.args[0]);
 				Collection& x = node(k, c.args[1]);
-				updateIn(k, x, c.args[2], std::vector<std::string>(c.args.begin() + 3, c.args.end()));
+				updateIn(k, x, c.args[2], std::vector<std::string>(c.args.begin() + 3, c.args.end()), c.name == "update_collection");
 			}
 
 			// update_field in a node: the field token, then the words after it with the value last.
-			void updateIn(ClassDef& k, Collection& x, const std::string& fieldToken, const std::vector<std::string>& rest)
+			void updateIn(ClassDef& k, Collection& x, const std::string& fieldToken, const std::vector<std::string>& rest, bool collection = false)
 			{
 				const std::string fieldName = fieldToken.substr(0, fieldToken.find('['));
 				const FieldDef* f = k.field(KeyOf(fieldName));
 				if (!f) fail("the class '" + db_.names().format(k.key) + "' does not contain '" + fieldName + "'");
 				requireOwn(x, *f, fieldName);
 				sc::FieldPath p = fieldPath(x, fieldToken);
+				if (st_.vltEd)
+				{
+					// NFS-VltEd sets element 0 of an array given no index, and ignores an
+					// index on a field that isn't an array.
+					if (f->isArray() && p.steps.empty()) p.steps.push_back({ std::string(), 0 });
+					else if (!f->isArray()) p.steps.clear();
+				}
 				const std::string& text = rest.back();
 				if (st_.vltEd && spareWrite(x, *f, p, fieldToken, rest)) return;
 				RefPart part = RefPart::Whole;
-				for (size_t i = 0; i + 1 < rest.size(); ++i)
+				elementWords_ = inElement_ = nullptr;
+				size_t first = 0;
+				if (st_.vltEd && collection)
+				{
+					// NFS-VltEd's update_collection: a list's word, the index and the
+					// element's word. Without the list's word, the element's class must
+					// have one property, and it a list.
+					const ValueType vt0 = sc::TypeAt(db_, x, p);
+					const PropertyNames::Type* t0 = vltType(p, vt0);
+					const std::string w = rest.size() == 4 ? rest[0] : std::string();
+					const PropertyNames::Property* list = !t0 ? nullptr
+						: rest.size() == 4 ? t0->find(w, false)
+						: t0->single && !t0->properties.empty() ? &t0->properties[0] : nullptr;
+					if (!list) fail(t0 && !w.empty() ? NotFound(*t0, w) : "Value '" + w + "' is not a collection.");
+					if (!list->list) fail("Value '" + w + "' is not a collection.");
+					lastProp_ = nullptr;
+					noteWord(*list, p, vt0);
+					stepToProperty(x, p, vt0, *list, part, list->word);
+					elementWords_ = &list->elements;
+					first = rest.size() == 4 ? 1 : 0;
+				}
+				for (size_t i = first; i + 1 < rest.size(); ++i)
 				{
 					lastProp_ = nullptr;
 					property(x, p, rest[i], part);
@@ -1984,13 +2305,17 @@ namespace attrib::nfsms
 				single(x, p, part);
 				if (st_.vltEd)
 				{
+					// Its class for a reference has two properties: no word finds neither.
+					if (rest.size() == 1 && part == RefPart::Whole && sc::TypeAt(db_, x, p).kind == TypeKind::RefSpec)
+						fail("Value '' cannot be found: a reference takes Class or Collection");
 					if (curvePoint(x, p, &text)) return;
-					if (part == RefPart::Hash || part == RefPart::Text)
+					if (part == RefPart::Hash || part == RefPart::Hash64 || part == RefPart::Text)
 					{
 						stringKeyPart(x, *f, p, part, text);
 						return;
 					}
 					if (part == RefPart::Whole && lastProp_ && wideWrite(x, text)) return;
+					if (part == RefPart::Whole && !lastProp_ && oneValue(x, p, text)) return;
 				}
 				Bytes cur;
 				const ValueType vt = sc::TypeAt(db_, x, p, &cur);
@@ -2222,22 +2547,37 @@ namespace attrib::nfsms
 			void stringKeyPart(Collection& x, const FieldDef& f, const sc::FieldPath& p, RefPart part, const std::string& text)
 			{
 				const Attribute* a = x.resolve(f.key);
-				if (!a || !p.steps.empty() || a->elemSize != 8) fail("NFS-VltEd compatible runs set a StringKey field's hash or text alone");
+				if (!a || !p.steps.empty() || (a->elemSize != 8 && a->elemSize != 16))
+					fail("NFS-VltEd compatible runs set a StringKey field's hash or text alone");
 				const Endian e = x.vault ? x.vault->raw.endian : Endian::Little;
 				const StringKeyLayout kl = StringKeyAt(a->elemSize);
-				const uint32_t hash = load32(a->data.bytes.data() + kl.hash32, e);
+				uint32_t hash = load32(a->data.bytes.data() + kl.hash32, e);
+				uint64_t hash64 = kl.hash64 ? load64(a->data.bytes.data(), e) : 0;
 				const PtrSlot* ts = a->data.ptrAt(kl.text);
-				const std::string oldText = ts && ts->isString ? ts->text : std::string();
-				auto v = std::make_shared<sc::Value>();
-				v->kind = sc::Value::Kind::Tuple;
+				std::string t = ts && ts->isString ? ts->text : std::string();
 				if (part == RefPart::Hash)
 				{
 					// A key: a name hashed, 0x and up to 8 hex digits as the number.
-					v->items = { sc::MakeString(oldText), sc::MakeNumber(Hex32(KeyOf(text))) };
+					hash = KeyOf(text);
+				}
+				else if (part == RefPart::Hash64)
+				{
+					// Most Wanted's 64-bit hash: a name hashed with StringHash64, 0x hex the number.
+					const Bytes b = vltBytes("u64/key64", text);
+					hash64 = load64(b.data(), Endian::Little);
 				}
 				else
 				{
-					v->items = { sc::MakeString(text), sc::MakeNumber(Hex32(hash)) };
+					t = text;
+				}
+				auto v = std::make_shared<sc::Value>();
+				v->kind = sc::Value::Kind::Tuple;
+				v->items = { sc::MakeString(t), sc::MakeNumber(Hex32(hash)) };
+				if (kl.hash64)
+				{
+					char b[24];
+					std::snprintf(b, sizeof(b), "0x%016llX", static_cast<unsigned long long>(hash64));
+					v->items.push_back(sc::MakeNumber(b));
 				}
 				sc::Statement s;
 				s.kind = K::Set;
@@ -2247,7 +2587,15 @@ namespace attrib::nfsms
 			}
 
 			// NFS-VltEd's word as a number of its own type, its bytes as the PC files
-			// hold them (little-endian).
+			// hold them (little-endian), the text read as NFS-VltEd reads it: a plain
+			// word through .NET's parsing under en-US (Int32.Parse and the like:
+			// decimal digits and a sign, nothing else; Single.Parse: digits, commas
+			// grouping thousands, an exponent, Infinity and NaN, no hex;
+			// Boolean.Parse: true or false), the others through its converters
+			// (A/_000C_0014.cs maps them): /hex (A/_0016_0001.cs) 0x and hex digits
+			// or a decimal number; /hexdigits (A/_001F_0001.cs) hex digits, 0x or
+			// not; /key a name hashed (0x hex the number, "" 0); /binkey a decimal
+			// number, else "" 0xFFFFFFFF, 0x hex or bStringHash; /key64 StringHash64.
 			Bytes vltBytes(const std::string& type, const std::string& text)
 			{
 				const uint32_t size = VltSize(type);
@@ -2258,13 +2606,122 @@ namespace attrib::nfsms
 				{
 					for (uint32_t i = 0; i < size; ++i) b[i] = uint8_t(u >> (8 * i));
 				};
+				auto bad = [&](const std::string& why) -> void
+				{
+					fail("Value cannot be parsed: " + text + why);
+				};
+				std::string t = text;
+				const auto ws = [](char ch)
+				{
+					return ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n';
+				};
+				while (!t.empty() && ws(t.front())) t.erase(t.begin());
+				while (!t.empty() && ws(t.back())) t.pop_back();
+				const auto digitsFrom = [](const std::string& u, size_t from)
+				{
+					return from < u.size() && std::all_of(u.begin() + from, u.end(), [](char ch)
+					{
+						return std::isdigit(static_cast<unsigned char>(ch));
+					});
+				};
+				const auto hexFrom = [](const std::string& u, size_t from)
+				{
+					return from < u.size() && std::all_of(u.begin() + from, u.end(), [](char ch)
+					{
+						return std::isxdigit(static_cast<unsigned char>(ch));
+					});
+				};
+				const auto hexPrefix = [](const std::string& u)
+				{
+					return u.size() >= 2 && u[0] == '0' && (u[1] == 'x' || u[1] == 'X');
+				};
+				// Hex digits as a number of at most `bits` (leading zeros are fine).
+				const auto hexValue = [&](const std::string& u, size_t from, uint32_t bits, uint64_t& out)
+				{
+					if (!hexFrom(u, from)) return false;
+					size_t i = from;
+					while (i + 1 < u.size() && u[i] == '0') ++i;
+					if ((u.size() - i) * 4 > bits) return false;
+					out = std::strtoull(u.c_str() + i, nullptr, 16);
+					return true;
+				};
+				// UInt32.TryParse: digits with a sign; -0 is 0.
+				const auto unsignedValue = [&](const std::string& u, uint64_t limit, uint64_t& out)
+				{
+					const size_t from = !u.empty() && (u[0] == '+' || u[0] == '-') ? 1 : 0;
+					if (!digitsFrom(u, from)) return false;
+					errno = 0;
+					const unsigned long long n = std::strtoull(u.c_str() + from, nullptr, 10);
+					if (errno == ERANGE || n > limit || (u[0] == '-' && n != 0)) return false;
+					out = n;
+					return true;
+				};
+
+				if (how == "key")
+				{
+					put(t.empty() ? 0 : KeyOf(t));
+					return b;
+				}
+				if (how == "key64")
+				{
+					uint64_t v = 0;
+					if (hexPrefix(t) && hexValue(t, 2, 64, v)) put(v);
+					else put(t.empty() ? 0 : StringHash64(t));
+					return b;
+				}
+				if (how == "binkey")
+				{
+					uint64_t v = 0;
+					if (unsignedValue(t, 0xFFFFFFFFull, v)) put(v);
+					else if (t.empty()) put(0xFFFFFFFFull);
+					else if (hexPrefix(t) && hexValue(t, 2, 32, v)) put(v);
+					else put(BinHash(t));
+					return b;
+				}
+				if (how == "hex")
+				{
+					uint64_t v = 0;
+					if (hexPrefix(t) ? !hexValue(t, 2, 32, v) : !unsignedValue(t, 0xFFFFFFFFull, v)) bad(" isn't a number (0x and hex digits, or decimal)");
+					put(v);
+					return b;
+				}
+				if (how == "hexdigits")
+				{
+					uint64_t v = 0;
+					const std::string digits = hexPrefix(t) ? t.substr(2) : t;
+					if (!hexValue(digits, 0, 32, v)) bad(" isn't hex digits");
+					put(v);
+					return b;
+				}
 				if (base == "f32" || base == "f64" || type.find('>') != std::string::npos)
 				{
-					std::string t = text;
-					t.erase(std::remove(t.begin(), t.end(), ','), t.end());
-					char* end = nullptr;
-					const double d = std::strtod(t.c_str(), &end);
-					if (t.empty() || !end || *end) fail("Value cannot be parsed: " + text + " isn't a number");
+					double d = 0;
+					if (t == "Infinity") d = HUGE_VAL;
+					else if (t == "-Infinity") d = -HUGE_VAL;
+					else if (t == "NaN") d = std::nan("");
+					else
+					{
+						// [sign] digits (commas among them) [. digits] [e [sign] digits]
+						size_t i = t.empty() || (t[0] != '+' && t[0] != '-') ? 0 : 1;
+						bool any = false;
+						while (i < t.size() && (std::isdigit(static_cast<unsigned char>(t[i])) || t[i] == ',')) any |= t[i++] != ',';
+						if (i < t.size() && t[i] == '.')
+							for (++i; i < t.size() && std::isdigit(static_cast<unsigned char>(t[i])); ++i) any = true;
+						if (any && i < t.size() && (t[i] == 'e' || t[i] == 'E'))
+						{
+							++i;
+							if (i < t.size() && (t[i] == '+' || t[i] == '-')) ++i;
+							const size_t e0 = i;
+							while (i < t.size() && std::isdigit(static_cast<unsigned char>(t[i]))) ++i;
+							if (i == e0) any = false;
+						}
+						if (!any || i != t.size()) bad(" isn't a number");
+						std::string n = t;
+						n.erase(std::remove(n.begin(), n.end(), ','), n.end());
+						d = std::strtod(n.c_str(), nullptr);
+						// .NET Framework's Single.Parse and Double.Parse refuse what doesn't fit.
+						if (std::isinf(d) || (base == "f32" && std::fabs(d) > double(FLT_MAX))) bad(" is too large");
+					}
 					if (base == "f32")
 					{
 						const float f = float(d);
@@ -2286,47 +2743,140 @@ namespace attrib::nfsms
 				}
 				if (base == "bool8" || base == "bool32")
 				{
-					const std::string l = Lower(text);
-					if (l != "true" && l != "false") fail("Value cannot be parsed: a bool is true or false, not " + text);
+					const std::string l = Lower(t);
+					if (l != "true" && l != "false") bad(": a bool is true or false");
 					put(l == "true");
 					return b;
 				}
-				if (how == "key")
-				{
-					put(KeyOf(text));
-					return b;
-				}
-				const bool digits = !text.empty() && std::all_of(text.begin() + (text[0] == '-'), text.end(), [](char ch)
-				{
-					return std::isdigit(static_cast<unsigned char>(ch));
-				}) && text != "-";
-				if (how == "binkey" && !digits)
-				{
-					put(IsHex(text) ? KeyOf(text) : BinHash(text));
-					return b;
-				}
-				int64_t v = 0;
-				if (digits)
-				{
-					v = std::strtoll(text.c_str(), nullptr, 10);
-				}
-				else if (IsHex(text))
-				{
-					v = int64_t(std::strtoull(text.c_str() + 2, nullptr, 16));
-				}
-				else
-				{
-					fail("Value cannot be parsed: " + text + " isn't a number");
-				}
+				// Int32.Parse and the like: [sign] digits, in range.
 				const bool sign = base[0] == 'i';
 				const uint32_t bits = size * 8;
-				const int64_t lo = sign ? -(int64_t(1) << (bits - 1)) : 0;
-				const int64_t hi = bits >= 64 ? INT64_MAX : sign ? (int64_t(1) << (bits - 1)) - 1 : int64_t((uint64_t(1) << bits) - 1);
-				if (bits < 64 && (v < lo || v > hi)) fail("Value cannot be parsed: " + text + " doesn't fit NFS-VltEd's " + base);
-				put(uint64_t(v));
+				const size_t from = !t.empty() && (t[0] == '+' || t[0] == '-') ? 1 : 0;
+				if (!digitsFrom(t, from)) bad(" isn't a whole number");
+				errno = 0;
+				const unsigned long long mag = std::strtoull(t.c_str() + from, nullptr, 10);
+				const bool negative = t[0] == '-';
+				const unsigned long long hi = sign ? (1ull << (bits - 1)) - (negative ? 0 : 1) : bits >= 64 ? ~0ull : (1ull << bits) - 1;
+				if (errno == ERANGE || mag > hi || (!sign && negative && mag != 0)) bad(" doesn't fit NFS-VltEd's " + base);
+				put(negative ? uint64_t(0) - uint64_t(mag) : uint64_t(mag));
 				return b;
 			}
 
+			// Our value of kind `mt` holding the bits `v` (its `ms` bytes as a
+			// little-endian number), as a script value; null for a kind that isn't a
+			// number.
+			static sc::ValuePtr BitsValue(const ValueType& mt, uint32_t ms, uint64_t v, Endian e)
+			{
+				if (mt.kind == TypeKind::Bool && v <= 1) return sc::MakeWord(v ? "true" : "false");
+				if (mt.kind == TypeKind::Float && ms == 4)
+				{
+					const uint32_t u = uint32_t(v);
+					float fl;
+					std::memcpy(&fl, &u, 4);
+					return sc::MakeNumber(sc::NumberText(fl, true));
+				}
+				if (mt.kind == TypeKind::Double && ms == 8)
+				{
+					double d;
+					std::memcpy(&d, &v, 8);
+					return sc::MakeNumber(sc::NumberText(d));
+				}
+				// Enums are read as signed numbers of their size.
+				if (mt.kind == TypeKind::Int8 || mt.kind == TypeKind::Int16 || mt.kind == TypeKind::Int32 || mt.kind == TypeKind::Int64 ||
+					mt.kind == TypeKind::Enum)
+				{
+					const int64_t sv = ms == 8 ? int64_t(v) : int64_t(v << (64 - 8 * ms)) >> (64 - 8 * ms);
+					return sc::MakeNumber(std::to_string(sv));
+				}
+				if (mt.kind == TypeKind::Bool)
+				{
+					// A bool holding 2 is a byte all the same: as NFS-VltEd writes it.
+					auto bytes = std::make_shared<sc::Value>();
+					bytes->kind = sc::Value::Kind::Bytes;
+					for (uint32_t i = 0; i < ms; ++i)
+					{
+						char buf[4];
+						std::snprintf(buf, sizeof(buf), "%02X ", unsigned((v >> (8 * (e == Endian::Big ? ms - 1 - i : i))) & 0xFF));
+						bytes->text += buf;
+					}
+					return bytes;
+				}
+				// A key's number in hex (a bare decimal would be a name to hash).
+				if (mt.kind == TypeKind::Key || mt.kind == TypeKind::BinKey)
+				{
+					if (ms != 8) return sc::MakeNumber(Hex32(uint32_t(v)));
+					char b[24];
+					std::snprintf(b, sizeof(b), "0x%016llX", static_cast<unsigned long long>(v));
+					return sc::MakeNumber(b);
+				}
+				if (IsIntegerKind(mt.kind) || mt.kind == TypeKind::Unknown) return sc::MakeNumber(std::to_string(v));
+				return nullptr;
+			}
+
+			// A one-value type (an enum, a float, a GCollectionKey: NFS-VltEd's class
+			// for it has one property): the text read as NFS-VltEd reads that
+			// property, then set in our value.
+			bool oneValue(Collection& x, const sc::FieldPath& p, const std::string& text)
+			{
+				Bytes cur;
+				const ValueType vt = sc::TypeAt(db_, x, p, &cur);
+				const PropertyNames::Type* t = vltType(p, vt);
+				if (!t || !t->single || t->properties.empty()) return false;
+				const PropertyNames::Property& pr = t->properties[0];
+				const uint32_t size = VltSize(pr.vltType);
+				// Keys go the usual way, which keeps their names; strings and lists too.
+				if (!size || pr.list || pr.offset || IsKeyWord(pr.vltType)) return false;
+				const Bytes now = vltBytes(pr.vltType, text);
+				uint64_t v = 0;
+				for (uint32_t i = 0; i < size; ++i) v |= uint64_t(now[i]) << (8 * i);
+				const Endian e = x.vault ? x.vault->raw.endian : Endian::Little;
+				sc::ValuePtr val;
+				if (vt.size == size)
+				{
+					val = BitsValue(vt, size, v, e);
+				}
+				else
+				{
+					// Another width: the number NFS-VltEd read, which our value must hold.
+					const std::string base = pr.vltType.substr(0, pr.vltType.find_first_of("/>"));
+					if (base == "f32" || base == "f64")
+					{
+						double d;
+						if (base == "f32")
+						{
+							const uint32_t u = uint32_t(v);
+							float f;
+							std::memcpy(&f, &u, 4);
+							d = f;
+						}
+						else
+						{
+							std::memcpy(&d, &v, 8);
+						}
+						val = sc::MakeNumber(sc::NumberText(d));
+					}
+					else if (base[0] == 'i')
+					{
+						const int64_t sv = size == 8 ? int64_t(v) : int64_t(v << (64 - 8 * size)) >> (64 - 8 * size);
+						val = sc::MakeNumber(std::to_string(sv));
+					}
+					else if (base == "bool8" || base == "bool32")
+					{
+						val = sc::MakeWord(v ? "true" : "false");
+					}
+					else
+					{
+						val = sc::MakeNumber(std::to_string(v));
+					}
+				}
+				if (!val) return false;
+				sc::Statement s;
+				s.kind = K::Set;
+				s.path = p;
+				s.value = val;
+				amod(x, { s });
+				return true;
+			}
 			// A word NFS-VltEd writes with another width than our member there has
 			// (FEPartData's 4 is an int32 over tier, drift, drag and grip): its bytes
 			// over our members by offset, each set to what its bytes then say.
@@ -2343,8 +2893,9 @@ namespace attrib::nfsms
 				std::vector<sc::FieldPath::Step> steps;
 				Leaves(*st, 0, steps, leaves);
 				for (const Leaf& l : leaves)
-					if (l.offset == pr.offset && !VltReadsOtherwise(pr.vltType, TypeOfMember(*l.m).kind, l.m->elemSize))
-						return false; // our member is the word
+					if (l.offset == pr.offset && !VltReadsOtherwise(pr.vltType, TypeOfMember(*l.m).kind, l.m->elemSize) &&
+						IsKeyWord(pr.vltType))
+						return false; // our member is the key: the usual way keeps its name
 				Bytes cur;
 				sc::TypeAt(db_, x, lastBase_, &cur);
 				if (cur.size() < pr.offset + size) return false;
@@ -2369,42 +2920,8 @@ namespace attrib::nfsms
 						const uint32_t sh = 8 * (bpos - l.offset);
 						v = (v & ~(uint64_t(0xFF) << sh)) | (uint64_t(now[bpos - pr.offset]) << sh);
 					}
-					const ValueType mt = TypeOfMember(m);
-					sc::ValuePtr val;
-					if (mt.kind == TypeKind::Bool && v <= 1) val = sc::MakeWord(v ? "true" : "false");
-					else if (mt.kind == TypeKind::Float && ms == 4)
-					{
-						const uint32_t u = uint32_t(v);
-						float fl;
-						std::memcpy(&fl, &u, 4);
-						val = sc::MakeNumber(sc::NumberText(fl, true));
-					}
-					else if (mt.kind == TypeKind::Int8 || mt.kind == TypeKind::Int16 || mt.kind == TypeKind::Int32 || mt.kind == TypeKind::Int64)
-					{
-						const int64_t sv = ms == 8 ? int64_t(v) : int64_t(v << (64 - 8 * ms)) >> (64 - 8 * ms);
-						val = sc::MakeNumber(std::to_string(sv));
-					}
-					else if (mt.kind == TypeKind::Bool || IsIntegerKind(mt.kind) || mt.kind == TypeKind::Enum || mt.kind == TypeKind::Key ||
-							 mt.kind == TypeKind::BinKey || mt.kind == TypeKind::Unknown)
-					{
-						// A bool holding 2 is a byte all the same: as NFS-VltEd writes it.
-						auto bytes = std::make_shared<sc::Value>();
-						bytes->kind = sc::Value::Kind::Bytes;
-						for (uint32_t i = 0; i < ms; ++i)
-						{
-							char buf[4];
-							std::snprintf(buf, sizeof(buf), "%02X ", unsigned((v >> (8 * (e == Endian::Big ? ms - 1 - i : i))) & 0xFF));
-							bytes->text += buf;
-						}
-						// A key's number in hex (a bare decimal would be a name to hash).
-						val = mt.kind == TypeKind::Bool ? bytes
-							: mt.kind == TypeKind::Key || mt.kind == TypeKind::BinKey ? sc::MakeNumber(Hex32(uint32_t(v)))
-							: sc::MakeNumber(std::to_string(v));
-					}
-					else
-					{
-						continue;
-					}
+					const sc::ValuePtr val = BitsValue(TypeOfMember(m), ms, v, e);
+					if (!val) continue;
 					sc::Statement s;
 					s.kind = K::Set;
 					s.path = lastBase_;
@@ -2479,6 +2996,9 @@ namespace attrib::nfsms
 			std::map<std::pair<const Collection*, std::string>, CurveShadow> curves_;
 			// The last NFS-VltEd word update() stepped through: the value it is in, and the word.
 			const PropertyNames::Property* lastProp_ = nullptr;
+			// A list's element words after its word (elementWords_), then after its index (inElement_).
+			const std::vector<std::string>* elementWords_ = nullptr;
+			const std::vector<std::string>* inElement_ = nullptr;
 			sc::FieldPath lastBase_;
 			ValueType lastBaseType_;
 
@@ -2643,6 +3163,158 @@ namespace attrib::nfsms
 	{
 		Runner r(db, settings);
 		return r.lead(c, field, words, part);
+	}
+
+	LineTarget TargetOfLine(Database& db, const Script& script, const Command& c, size_t column, const RunSettings& settings)
+	{
+		LineTarget t;
+		const std::vector<std::string>& a = c.args;
+		// The parameter under the caret: the last one starting at or before it
+		// (-1: the command itself).
+		int on = -1;
+		for (size_t i = 0; i < a.size() && i < c.at.size(); ++i)
+			if (c.at[i] <= column) on = int(i);
+		const std::string& n = c.name;
+		if (n.empty()) return t;
+		if (n == "script")
+		{
+			if (a.empty()) t.why = "the script line names no file";
+			else t.file = ScriptFile(script.folder, a[0]);
+			return t;
+		}
+		if (n == "ui_option")
+		{
+			if (a.empty()) t.why = "the ui_option line names no control";
+			for (const Control& k : script.controls)
+			{
+				const bool is = a.size() == 2 ? k.kind == Control::Kind::Radio && k.group == a[0] && k.name == a[1]
+					: a.size() == 1 && k.kind == Control::Kind::Checkbox && k.name == a[0];
+				if (is)
+				{
+					t.controlLine = k.line;
+					return t;
+				}
+			}
+			if (!a.empty()) t.why = "no ui_control " + a[0] + (a.size() > 1 ? " " + a[1] : "") + " in this script";
+			return t;
+		}
+
+		// Which parameters name nodes, which one the line changes, and where the
+		// field and its words are.
+		std::vector<int> nodes;
+		int main = -1, fallback = -1, field = -1, wordsEnd = -1; // words: field + 1 .. wordsEnd - 1
+		const int count = int(a.size());
+		if (n == "update_field" || n == "update_collection" || n == "resize_collection")
+		{
+			nodes = { 1 };
+			main = 1;
+			field = 2;
+			wordsEnd = count - 1;
+		}
+		else if (n == "add_field" || n == "delete_field" || n == "resize_field" || n == "append_array")
+		{
+			nodes = { 1 };
+			main = 1;
+			field = 2;
+			wordsEnd = 3;
+		}
+		else if (n == "delete_node" || n == "change_vault")
+		{
+			nodes = { 1 };
+			main = 1;
+		}
+		else if (n == "rename_node")
+		{
+			// The node, or by its new name once the line has run.
+			nodes = { 1, 2 };
+			main = 1;
+			fallback = 2;
+		}
+		else if (n == "move_node")
+		{
+			nodes = { 1, 2 };
+			main = 1;
+		}
+		else if (n == "add_node" || n == "add_overwrite")
+		{
+			// The new node once it exists, else its parent.
+			nodes = count >= 3 ? std::vector<int>{ 1, 2 } : std::vector<int>{ 1 };
+			main = count >= 3 ? 2 : 1;
+			fallback = count >= 3 ? 1 : -1;
+		}
+		else if (n == "copy_node" || n == "copy_overwrite")
+		{
+			nodes = count >= 4 ? std::vector<int>{ 1, 2, 3 } : std::vector<int>{ 1, 2 };
+			main = count >= 4 ? 3 : 2;
+			fallback = 1;
+		}
+		else if (n == "copy_fields")
+		{
+			nodes = { 1, 2 };
+			main = 2;
+		}
+		else
+		{
+			if (n == "delete_nodes") t.why = "delete_nodes names a class, not a node";
+			return t;
+		}
+		if (count < 2)
+		{
+			t.why = n + " needs a class and a node";
+			return t;
+		}
+		const ClassDef* cls = db.findClass(KeyOf(a[0]));
+		if (!cls)
+		{
+			t.why = "no class " + a[0];
+			return t;
+		}
+		auto find = [&](int i) -> Collection*
+		{
+			return i >= 0 && i < count ? db.findCollection(cls->key, KeyOf(a[size_t(i)])) : nullptr;
+		};
+		const bool onNode = std::find(nodes.begin(), nodes.end(), on) != nodes.end();
+		const int which = onNode ? on : main;
+		t.collection = find(which);
+		if (!t.collection && which == main) t.collection = find(fallback);
+		if (!t.collection)
+		{
+			t.why = which < count ? "no collection " + a[0] + "/" + a[size_t(which)] : n + " names no node";
+			return t;
+		}
+		if (onNode || field < 0 || field >= count || t.collection != find(main)) return t;
+
+		// The value: as far as the word under the caret, else every word, else
+		// the field alone.
+		auto words = [&](int end)
+		{
+			std::vector<std::string> w;
+			for (int i = field + 1; i < end && i < count; ++i) w.push_back(a[size_t(i)]);
+			return w;
+		};
+		std::vector<std::vector<std::string>> tries;
+		if (on == field) tries.push_back({});
+		else if (on > field && on < wordsEnd) tries.push_back(words(on + 1));
+		tries.push_back(words(wordsEnd));
+		for (const std::vector<std::string>& w : tries)
+		{
+			try
+			{
+				t.path = WordsLeadTo(db, *t.collection, a[size_t(field)], w, settings);
+				t.hasPath = true;
+				return t;
+			}
+			catch (const std::exception&)
+			{
+			}
+		}
+		const std::string f = a[size_t(field)].substr(0, a[size_t(field)].find('['));
+		if (cls->field(KeyOf(f)))
+		{
+			t.path.field = f;
+			t.hasPath = true;
+		}
+		return t;
 	}
 
 	// ------------------------------------------------------------- recording ---
@@ -2961,6 +3633,21 @@ namespace attrib::nfsms
 					if (t->single)
 					{
 						ps.clear(); // NFS-VltEd takes no word for it
+						// Its one property as NFS-VltEd reads it: an enum as its number.
+						const PropertyNames::Property* pr = t->properties.empty() ? nullptr : &t->properties[0];
+						if (vltEd_ && pr && !pr->list && !pr->offset && VltSize(pr->vltType) && !IsKeyWord(pr->vltType))
+						{
+							const Endian e = x->vault ? x->vault->raw.endian : Endian::Little;
+							if (VltSize(pr->vltType) == top.size) wideValue_ = wordNow(*pr, top, topBytes, e);
+							else if (top.kind == TypeKind::Enum && top.size <= 8 && topBytes.size() >= top.size)
+							{
+								uint64_t u = 0;
+								for (uint32_t i = 0; i < top.size; ++i)
+									u |= uint64_t(topBytes[e == Endian::Big ? top.size - 1 - i : i]) << (8 * i);
+								const int64_t sv = top.size == 8 ? int64_t(u) : int64_t(u << (64 - 8 * top.size)) >> (64 - 8 * top.size);
+								wideValue_ = std::to_string(sv);
+							}
+						}
 						return false;
 					}
 					if (ps.empty())
@@ -3070,9 +3757,10 @@ namespace attrib::nfsms
 								break;
 							}
 					if (pr) ps = { pr->word };
-					// NFS-VltEd writes this word wider than our member (FEPartData's 4 over
-					// tier, drift, drag and grip): the whole word, as the value has it now.
-					if (pr && vltEd_ && !pr->list && VltReadsOtherwise(pr->vltType, vt.kind, vt.size))
+					// The word as NFS-VltEd reads it, from the value's bytes now: wider than
+					// our member (FEPartData's 4 over tier, drift, drag and grip), or a
+					// number where we have a name (an enum member).
+					if (pr && vltEd_ && !pr->list && VltSize(pr->vltType) && (VltReadsOtherwise(pr->vltType, vt.kind, vt.size) || !IsKeyWord(pr->vltType)))
 						wideValue_ = wordNow(*pr, top, topBytes, x->vault ? x->vault->raw.endian : Endian::Little);
 				}
 				catch (const std::exception&)
@@ -3128,7 +3816,7 @@ namespace attrib::nfsms
 					const std::string* n = db_.names().find(uint32_t(u));
 					return n ? *n : Hex32(uint32_t(u));
 				}
-				if (how == "hex" && size == 4) return Hex32(uint32_t(u));
+				if ((how == "hex" || how == "hexdigits") && size == 4) return Hex32(uint32_t(u));
 				if (base[0] == 'i' && size < 8) return std::to_string(int64_t(u << (64 - 8 * size)) >> (64 - 8 * size));
 				return std::to_string(u);
 			}
@@ -3180,7 +3868,12 @@ namespace attrib::nfsms
 					wideValue_.reset();
 					if (vltWords(field, ps)) s = "update_collection" + s.substr(std::strlen("update_field"));
 					for (const std::string& p : ps) s += " " + p;
-					out.push_back(s + " " + Token(wideValue_ ? *wideValue_ : val));
+					const std::string& text = wideValue_ ? *wideValue_ : val;
+					// NFS-VltEd cuts a line at its first # and has no escape for a quote.
+					if (vltEd_ && text.find_first_of("#\"") != std::string::npos)
+						out.push_back("# " + s + ": NFS-VltEd can't read a value holding # or \", " + text);
+					else
+						out.push_back(s + " " + Token(text));
 				};
 				using VK = sc::Value::Kind;
 				switch (v.kind)

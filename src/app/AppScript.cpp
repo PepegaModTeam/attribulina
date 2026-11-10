@@ -441,6 +441,65 @@ namespace app
 			: "Doesn't apply; see below";
 	}
 
+	void App::goToScriptCaret()
+	{
+		auto status = [&](const std::string& text, bool error)
+		{
+			scriptStatus_ = text;
+			scriptStatusError_ = error;
+		};
+		if (!db_)
+		{
+			status("Open a database first.", true);
+			return;
+		}
+		const std::string& text = scriptText_;
+		const size_t at = std::min(scriptEditor_.cursorOffset(), text.size());
+		sc::Pos caret{ 1, 1 };
+		size_t begin = 0;
+		for (size_t i = 0; i < at; ++i)
+			if (text[i] == '\n')
+			{
+				++caret.line;
+				begin = i + 1;
+			}
+		caret.col = int(at - begin) + 1;
+		const sc::ScriptPlace p = sc::PlaceAt(text, caret);
+		if (p.named)
+		{
+			// A reference written as the value: the collection it names, when it's
+			// there (a gameplay path in quotes names a gameplay collection).
+			std::vector<Collection*> to = sc::TargetCollections(*db_, *p.named);
+			if (to.empty())
+			{
+				sc::Target path;
+				path.cls = "gameplay";
+				path.name = p.named->cls + "/" + p.named->name;
+				to = sc::TargetCollections(*db_, path);
+			}
+			if (!to.empty())
+			{
+				status("Went to " + showValue(to[0], nullptr), false);
+				return;
+			}
+		}
+		if (p.target.cls.empty())
+		{
+			status("Nothing on this line names a collection or a value.", true);
+			return;
+		}
+		const std::vector<Collection*> to = sc::TargetCollections(*db_, p.target);
+		if (to.empty())
+		{
+			status(db_->findClass(sc::NameKey(p.target.cls)) ? "No collection " + p.target.text() + " in this database"
+				: "No class " + p.target.cls + " in this database", true);
+			return;
+		}
+		std::string shown = showValue(to[0], p.hasPath ? &p.path : nullptr);
+		if (to.size() > 1) shown += " (the first of the " + std::to_string(to.size()) + " " + p.target.text() + " matches)";
+		status("Went to " + shown, false);
+	}
+
 	void App::drawScriptPanel()
 	{
 		if (!showScript_) return;
@@ -536,9 +595,11 @@ namespace app
 		// The script, then the console line under it.
 		const float consoleH = ImGui::GetFrameHeightWithSpacing() * (consoleStatus_.empty() ? 1.0f : 2.0f);
 		if (codeFont_) ImGui::PushFont(codeFont_, 0.0f);
+		scriptEditor_.setGoTo("Go to Definition");
 		if (scriptEditor_.draw("##script", scriptText_, ImVec2(-FLT_MIN, -consoleH), ImGuiInputTextFlags_AllowTabInput))
 			scriptEditor_.clearMarks();
 		if (codeFont_) ImGui::PopFont();
+		if (scriptEditor_.goToRequested()) goToScriptCaret();
 		drawConsole();
 		ImGui::End();
 	}

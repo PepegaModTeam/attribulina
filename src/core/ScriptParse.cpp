@@ -2120,4 +2120,279 @@ namespace attrib::script
 		return out;
 	}
 
+	// ------------------------------------------------------- what it names ---
+
+	namespace
+	{
+
+		// Everything a line names, at the column it starts.
+		class PlaceFinder
+		{
+		public:
+			explicit PlaceFinder(std::string_view text) : text_(text)
+			{
+			}
+
+			struct Item
+			{
+				Pos pos;
+				ScriptPlace place;
+			};
+			std::vector<Item> items;
+
+			void statements(const std::vector<Statement>& list, const Target* block)
+			{
+				for (const Statement& s : list) statement(s, block);
+			}
+
+		private:
+			using K = Statement::Kind;
+
+			void add(Pos p, ScriptPlace place)
+			{
+				if (p.line > 0) items.push_back({ p, std::move(place) });
+			}
+			void addTarget(const Target& t)
+			{
+				if (t.root || t.cls.empty()) return;
+				ScriptPlace pl;
+				pl.target = t;
+				add(t.pos, std::move(pl));
+			}
+			ScriptPlace valuePlace(const Target& block, const FieldPath& path) const
+			{
+				ScriptPlace pl;
+				pl.target = block;
+				pl.path = path;
+				pl.hasPath = true;
+				return pl;
+			}
+
+			// Where `name = value` starts on the value's line: the name before it.
+			Pos memberPos(const std::string& name, Pos valuePos) const
+			{
+				size_t b = 0;
+				for (int l = 1; l < valuePos.line && b != std::string_view::npos; ++l)
+				{
+					b = text_.find('\n', b);
+					if (b != std::string_view::npos) ++b;
+				}
+				if (b == std::string_view::npos || valuePos.col < 1) return valuePos;
+				const std::string_view before = text_.substr(b, std::min(text_.size() - b, size_t(valuePos.col - 1)));
+				const size_t at = before.rfind(name);
+				return at == std::string_view::npos ? valuePos : Pos{ valuePos.line, int(at) + 1 };
+			}
+
+			// `steps`: the value is the one at `path` (an assignment), so a list's
+			// items are its elements and a struct's members its members.
+			void value(const Value& v, const Target& block, const FieldPath& path, bool steps)
+			{
+				using V = Value::Kind;
+				ScriptPlace pl = valuePlace(block, path);
+				if (v.kind == V::Binary && v.op == '/')
+				{
+					// class/name: a reference, when the first part is a word.
+					std::vector<const Value*> parts;
+					std::function<void(const Value&)> flatten = [&](const Value& x)
+					{
+						if (x.kind == V::Binary && x.op == '/')
+						{
+							flatten(*x.items[0]);
+							flatten(*x.items[1]);
+						}
+						else
+						{
+							parts.push_back(&x);
+						}
+					};
+					flatten(v);
+					bool words = parts.size() >= 2 && parts[0]->kind != V::Number;
+					for (const Value* x : parts) words &= x->kind == V::Word || x->kind == V::String || x->kind == V::Number;
+					if (words)
+					{
+						Target t;
+						t.cls = parts[0]->text;
+						for (size_t i = 1; i < parts.size(); ++i) t.name += (i > 1 ? "/" : "") + parts[i]->text;
+						t.pos = v.pos;
+						pl.named = t;
+					}
+					add(v.pos, std::move(pl));
+					return;
+				}
+				if (v.kind == V::String && v.text.find('/') != std::string::npos)
+				{
+					// "class/name" in quotes: a reference, or a gameplay path.
+					const size_t slash = v.text.find('/');
+					Target t;
+					t.cls = v.text.substr(0, slash);
+					t.name = v.text.substr(slash + 1);
+					t.pos = v.pos;
+					if (!t.cls.empty() && !t.name.empty()) pl.named = t;
+				}
+				add(v.pos, std::move(pl));
+				if (v.kind == V::List)
+				{
+					for (size_t i = 0; i < v.items.size(); ++i)
+					{
+						FieldPath p = path;
+						if (steps) p.steps.push_back({ std::string(), int64_t(i) });
+						value(*v.items[i], block, p, steps);
+					}
+				}
+				else if (v.kind == V::Struct)
+				{
+					for (const auto& [name, mv] : v.members)
+					{
+						if (!mv) continue;
+						FieldPath p = path;
+						if (steps) p.steps.push_back({ name, -1 });
+						add(memberPos(name, mv->pos), valuePlace(block, p));
+						value(*mv, block, p, steps);
+					}
+				}
+			}
+
+			void condition(const Condition& c, const Target* block)
+			{
+				using C = Condition::Kind;
+				if (c.kind == C::ExistsCollection) addTarget(c.target);
+				if (block && c.hasPath && !c.path.field.empty()) add(c.path.pos, valuePlace(*block, c.path));
+				for (const Condition& x : c.items) condition(x, block);
+			}
+
+			void statement(const Statement& s, const Target* block)
+			{
+				switch (s.kind)
+				{
+					case K::Edit: case K::Create: case K::Collection:
+						addTarget(s.target);
+						if (s.hasFrom) addTarget(s.from);
+						if (s.hasUnder) addTarget(s.under);
+						statements(s.body, &s.target);
+						return;
+					case K::Delete: case K::Rename: case K::MoveToVault:
+						addTarget(s.target);
+						return;
+					case K::Move:
+						addTarget(s.target);
+						if (s.hasUnder) addTarget(s.under);
+						return;
+					case K::If:
+						condition(s.cond, block);
+						statements(s.body, block);
+						statements(s.elseBody, block);
+						return;
+					case K::Set: case K::Revert: case K::Resize: case K::Insert: case K::Remove: case K::Append:
+						if (!block || s.path.field.empty()) return;
+						add(s.path.pos, valuePlace(*block, s.path));
+						// What an append, insert or remove gives isn't at the path's
+						// elements: its items stay the array's.
+						if (s.value) value(*s.value, *block, s.path, s.kind == K::Set && s.op == '=');
+						if (s.was) value(*s.was, *block, s.path, s.kind == K::Set);
+						return;
+					default:
+						return;
+				}
+			}
+
+			std::string_view text_;
+		};
+
+		// The text with only the top-level statement around `line` left (the
+		// other lines emptied, so positions hold): brackets of every kind
+		// counted outside strings and comments.
+		std::string StatementAround(std::string_view text, int line)
+		{
+			std::vector<int> depthAt; // at each line's start
+			std::vector<bool> blank;
+			int depth = 0;
+			bool inString = false, lineHasToken = false;
+			depthAt.push_back(0);
+			for (size_t i = 0; i < text.size(); ++i)
+			{
+				const char c = text[i];
+				if (c == '\n')
+				{
+					blank.push_back(!lineHasToken);
+					lineHasToken = false;
+					inString = false;
+					depthAt.push_back(depth);
+					continue;
+				}
+				if (inString)
+				{
+					if (c == '\\') ++i;
+					else if (c == '"') inString = false;
+					continue;
+				}
+				if (c == '#')
+				{
+					while (i + 1 < text.size() && text[i + 1] != '\n') ++i;
+					continue;
+				}
+				if (c != ' ' && c != '\t' && c != '\r') lineHasToken = true;
+				if (c == '"') inString = true;
+				else if (c == '{' || c == '[' || c == '(') ++depth;
+				else if ((c == '}' || c == ']' || c == ')') && depth > 0) --depth;
+			}
+			blank.push_back(!lineHasToken);
+			const int lines = int(depthAt.size());
+			if (line < 1 || line > lines) return {};
+			auto starts = [&](int l)
+			{
+				return depthAt[size_t(l - 1)] == 0 && !blank[size_t(l - 1)];
+			};
+			int first = line;
+			while (first > 1 && !starts(first)) --first;
+			int last = line;
+			while (last < lines && !starts(last + 1)) ++last;
+			std::string out;
+			size_t b = 0;
+			for (int l = 1; l <= lines; ++l)
+			{
+				size_t e = text.find('\n', b);
+				if (e == std::string_view::npos) e = text.size();
+				if (l >= first && l <= last) out.append(text.substr(b, e - b));
+				if (l < lines) out += '\n';
+				b = e + 1;
+			}
+			return out;
+		}
+
+	} // namespace
+
+	ScriptPlace PlaceAt(std::string_view text, Pos caret)
+	{
+		Script s;
+		try
+		{
+			s = Parse(text, "script");
+		}
+		catch (const ScriptError&)
+		{
+			try
+			{
+				s = Parse(StatementAround(text, caret.line), "script");
+			}
+			catch (const ScriptError&)
+			{
+				return {};
+			}
+		}
+		PlaceFinder f(text);
+		f.statements(s.statements, nullptr);
+		// The item that starts last at or before the caret on its line, else the
+		// line's first; a later item at the same place is the deeper one.
+		const PlaceFinder::Item* best = nullptr;
+		const PlaceFinder::Item* first = nullptr;
+		for (const PlaceFinder::Item& it : f.items)
+		{
+			if (it.pos.line != caret.line) continue;
+			if (!first || it.pos.col < first->pos.col) first = &it;
+			if (it.pos.col <= caret.col && (!best || it.pos.col >= best->pos.col)) best = &it;
+		}
+		if (!best) best = first;
+		return best ? best->place : ScriptPlace{};
+	}
+
 } // namespace attrib::script

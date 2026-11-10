@@ -33,6 +33,7 @@ namespace attrib::nfsms
 	{
 		std::string name;              // update_field, add_node, ...
 		std::vector<std::string> args; // after the name; quotes removed
+		std::vector<uint32_t> at;      // where each starts in the line (0-based; a quoted one at its quote)
 		std::string comment;           // after '#'
 		int line = 0;                  // 1-based
 		std::string error;             // why the line can't run (unknown command, bad setup line); reported when run
@@ -141,7 +142,8 @@ namespace attrib::nfsms
 		{
 			bool single = false; // one property: NFS-VltEd ignores the word after the field
 			std::vector<Property> properties;
-			const Property* find(std::string_view word) const; // as written, then without case
+			// As written, then (anyCase) without case.
+			const Property* find(std::string_view word, bool anyCase = true) const;
 			const Property* at(uint32_t offset) const;
 			const Property* atPath(std::string_view path) const; // without case
 			bool hasPaths() const;
@@ -228,6 +230,23 @@ namespace attrib::nfsms
 	// The collection a line names (class and collection) and its field, for
 	// following the cursor; nullptr when it names none.
 	Collection* CollectionOfLine(const Database& db, const Command& c, uint32_t* field = nullptr);
+
+	// Where the word at `column` (0-based, in the line) of `c` leads, for
+	// showing it in the editor (F12): a node's collection, the value the field
+	// and the words after it set (as far as the word under the caret, when that
+	// leads somewhere), the file a `script` line runs, or the ui_control a
+	// ui_option line tests. On the command or the class: the collection and
+	// value the line changes. `script` gives the folder and the controls.
+	struct LineTarget
+	{
+		Collection* collection = nullptr;
+		script::FieldPath path;
+		bool hasPath = false;
+		std::string file;    // a `script` line's script
+		int controlLine = 0; // a ui_option line's ui_control
+		std::string why;     // why it leads nowhere
+	};
+	LineTarget TargetOfLine(Database& db, const Script& script, const Command& c, size_t column, const RunSettings& settings = {});
 
 	// Where update_field's field token (ENGINE[0]) and the words after it lead in
 	// `c`: the path of the value set, and in `part` "class" or "collection" for a

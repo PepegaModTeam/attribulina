@@ -364,6 +364,32 @@ namespace attrib::script
 	// script before applying it for real.
 	std::unique_ptr<Database> CloneDatabase(const Database& db);
 
+	// ------------------------------------------------------- what it names ---
+
+	// What the caret is on in a script, for showing it in the editor (F12): the
+	// collection a statement names (its target, `from`, `under`, `exists C/N`),
+	// or a value of the collection whose block the caret is in (a path, or an
+	// element or member of a list or struct written as the value, with the
+	// steps that lead there). `target.cls` is empty when the caret's line names
+	// nothing. A value written as class/name (a reference) also gives `named`,
+	// the collection it may stand for. The text is read with Parse; when that
+	// fails, the top-level statement around the caret is read alone, so a
+	// mistake elsewhere doesn't get in the way.
+	struct ScriptPlace
+	{
+		Target target;
+		FieldPath path;
+		bool hasPath = false;
+		std::optional<Target> named;
+	};
+	ScriptPlace PlaceAt(std::string_view text, Pos caret);
+	// The collections a target names (every match of a wildcard), none when its
+	// class isn't there.
+	std::vector<Collection*> TargetCollections(const Database& db, const Target& t);
+	// The key a name stands for as scripts write it: 0x... is the key itself,
+	// a quoted "0x..." a name.
+	uint32_t NameKey(const std::string& written);
+
 	// ------------------------------------------------------------- generating ---
 
 	struct DiffSettings

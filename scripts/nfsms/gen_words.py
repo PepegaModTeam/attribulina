@@ -111,8 +111,9 @@ def vlt_type(p, k):
     """NFS-VltEd's own type for a word: what it reads and writes at the offset and
     how it parses the text (the attribute's DataType). u32/key: a name hashed with
     StringHash32 (a number in hex as itself); /binkey: a decimal number as itself,
-    else bStringHash; /key64: StringHash64; /hex: 0x hex or decimal; i32>f32: the
-    file holds an i32 that NFS-VltEd shows as a float."""
+    else bStringHash; /key64: StringHash64; /hex: 0x hex or decimal (DataType 1);
+    /hexdigits: hex digits, with or without 0x (DataType 6, A/_001F_0001.cs);
+    i32>f32: the file holds an i32 that NFS-VltEd shows as a float."""
     dt = p['dt'] if p else 0
     t = k.replace('->', '>')
     if dt == 3:
@@ -121,8 +122,10 @@ def vlt_type(p, k):
         return t + '/binkey'
     if dt == 2:
         return t + '/key64'
-    if dt in (1, 6):
+    if dt == 1:
         return t + '/hex'
+    if dt == 6:
+        return t + '/hexdigits'
     return t
 
 
@@ -374,8 +377,8 @@ end"""
             '<type>: what NFS-VltEd itself reads and writes at the offset, which its NFS-VltEd compatible '
             'reading uses (doc/nfsms.md): u8, i8, u16, i16, u32, i32, u64, i64, f32, f64, bool8 (a byte, 1 '
             'is true), bool32; then /key (a name, hashed with StringHash32; 0x and 8 hex digits is the '
-            'number), /binkey (a decimal number is itself, else bStringHash), /key64 or /hex (0x hex or '
-            'decimal). i32>f32: the file holds an i32 that NFS-VltEd shows as a float. A list word has '
+            'number), /binkey (a decimal number is itself, else bStringHash), /key64, /hex (0x hex or '
+            'decimal) or /hexdigits (hex digits, 0x or not). i32>f32: the file holds an i32 that NFS-VltEd shows as a float. A list word has '
             'the list\'s kind (f32list, keylist, refspeclist, ...), string a char* and blob a size and '
             'pointer.',
             'The comments give where each class was read and how sure the game assignment is: "read" '

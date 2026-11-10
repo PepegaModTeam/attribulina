@@ -32,9 +32,10 @@
 # compatible reading uses (doc/nfsms.md): u8, i8, u16, i16, u32, i32, u64, i64, f32,
 # f64, bool8 (a byte, 1 is true), bool32; then /key (a name, hashed with
 # StringHash32; 0x and 8 hex digits is the number), /binkey (a decimal number is
-# itself, else bStringHash), /key64 or /hex (0x hex or decimal). i32>f32: the file
-# holds an i32 that NFS-VltEd shows as a float. A list word has the list's kind
-# (f32list, keylist, refspeclist, ...), string a char* and blob a size and pointer.
+# itself, else bStringHash), /key64, /hex (0x hex or decimal) or /hexdigits (hex
+# digits, 0x or not). i32>f32: the file holds an i32 that NFS-VltEd shows as a
+# float. A list word has the list's kind (f32list, keylist, refspeclist, ...),
+# string a char* and blob a size and pointer.
 #
 # The comments give where each class was read and how sure the game assignment is:
 # "read" means registered for Carbon or for every game, or in a compiled array whose
