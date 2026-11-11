@@ -10,6 +10,7 @@
 #include <cstring>
 #include <memory>
 #include <string_view>
+#include <type_traits>
 #include <unordered_map>
 #include <vector>
 
@@ -245,6 +246,23 @@ namespace app
 				out_ = nullptr;
 			}
 
+			// One value of any type (a struct's members, what its pointers lead
+			// to), its paths starting at `path`, with the inspector's row labels.
+			template <class Match>
+			void walkValue(const DataBlock& b, uint32_t off, const ValueType& vt, Endian e, const std::string& path, Match& match,
+				std::vector<Pending>& out)
+			{
+				endian_ = e;
+				out_ = &out;
+				prefix_ = &path;
+				indexOne_ = true;
+				field_ = 0;
+				value(b, off, vt, match, 0);
+				out_ = nullptr;
+				prefix_ = nullptr;
+				indexOne_ = false;
+			}
+
 		private:
 			template <class Match>
 			void value(const DataBlock& b, uint32_t off, const ValueType& vt, Match& match, int depth)
@@ -292,9 +310,9 @@ namespace app
 							for (uint32_t i = 0; i < n; ++i)
 							{
 								// A single pointed-to value has no index in its path.
-								if (mp.countMember) steps_.push_back({ nullptr, i });
+								if (mp.countMember || indexOne_) steps_.push_back({ nullptr, i });
 								value(nb, i * mp.type.size, mp.type, match, depth + 1);
-								if (mp.countMember) steps_.pop_back();
+								if (mp.countMember || indexOne_) steps_.pop_back();
 							}
 							break;
 						}
@@ -345,7 +363,7 @@ namespace app
 
 			std::string where() const
 			{
-				std::string s = db_.names().format(field_);
+				std::string s = prefix_ ? *prefix_ : db_.names().format(field_);
 				for (const Step& st : steps_)
 				{
 					if (st.member)
@@ -372,6 +390,8 @@ namespace app
 			std::vector<Pending>* out_ = nullptr;
 			uint32_t field_ = 0;
 			Endian endian_ = Endian::Little;
+			const std::string* prefix_ = nullptr; // walkValue: the path of the value walked
+			bool indexOne_ = false;               // "[0]" for a pointer to one value, as the inspector's row reads
 		};
 
 		// -------------------------------------------------------------- matchers ---
@@ -380,10 +400,13 @@ namespace app
 		class ValueMatch
 		{
 		public:
-			ValueMatch(const Database& db, const std::string& query, bool whole) : db_(db), whole_(whole)
+			ValueMatch(const Database& db, const std::string& query, bool whole, SearchHash hexHash)
+				: db_(db), whole_(whole), hexHash_(hexHash)
 			{
 				lower_ = LowerAscii(query);
 				hasHex_ = ParseHex(query, hex_);
+				// "0xBDFC" is part of a name shown as its hash ("0xBDFC670F").
+				hexText_ = lower_.size() > 2 && lower_[0] == '0' && lower_[1] == 'x';
 				double num = 0;
 				if (ParseNumber(query, num))
 				{
@@ -453,7 +476,7 @@ namespace app
 						const int64_t v = ReadInteger(b, off, vt, e);
 						if (hasInt_ && v == int_) return true;
 						if (vt.en)
-							if (const std::string* n = vt.en->nameOf(v)) return text(*n);
+							if (const std::string* n = vt.en->nameOf(v)) return plain(*n);
 						return false;
 					}
 					case TypeKind::Colour:
@@ -469,17 +492,57 @@ namespace app
 						// Edited as an int32 when it is 4 bytes and not a pointer.
 						if (vt.size != 4 || b.ptrAt(off)) return false;
 						const uint32_t u = load32(p, e);
-						return (hasHex_ && u == hex_) || (hasInt_ && int64_t(int32_t(u)) == int_);
+						if ((hasHex_ && u == hex_) || (hasInt_ && int64_t(int32_t(u)) == int_)) return true;
+						return vt.hint == "hex" && shownHex(u); // shown as 0x...
 					}
 					case TypeKind::Blob: case TypeKind::Curve: case TypeKind::Struct: return false;
 				}
 				return false;
 			}
 
+			// A collection's own name, as a key value is matched.
+			bool ownName(const Collection& c) const
+			{
+				return key(db_.names(), c.key, hash_);
+			}
+
+			// Its parent, when the query names it whole: the name, its hash, or a
+			// 0x... the name hashes to. Every child of a collection whose name
+			// merely contains the text would bury the other hits.
+			bool parentNamed(const Collection& c) const
+			{
+				const uint32_t v = c.parentKey;
+				if (!v) return false;
+				if (v == hash_ || (hasHex_ && v == hex_)) return true;
+				const std::string* n = db_.names().find(v);
+				return n && (EqualsCI(*n, lower_) || named(*n));
+			}
+
 		private:
-			bool text(std::string_view s) const
+			// Text as shown: it contains (or is) the query.
+			bool plain(std::string_view s) const
 			{
 				return whole_ ? EqualsCI(s, lower_) : ContainsCI(s, lower_);
+			}
+
+			// A 0x... query is also the hash of the text it finds.
+			bool named(std::string_view s) const
+			{
+				return hasHex_ && (hexHash_ == SearchHash::BinHash ? BinHash(s) : StringHash32(s)) == hex_;
+			}
+
+			bool text(std::string_view s) const
+			{
+				return plain(s) || named(s);
+			}
+
+			// A hash shown as "0x" and 8 hex digits, matched as text.
+			bool shownHex(uint32_t v) const
+			{
+				if (!hexText_) return false;
+				char b[16];
+				std::snprintf(b, sizeof(b), "0x%08X", v);
+				return plain(b);
 			}
 
 			// "class/collection" as FormatValue writes it, built only when the query
@@ -501,12 +564,13 @@ namespace app
 			}
 
 			// A hashed name: its value, the hash of the text (names the dictionary
-			// lacks), or the dictionary's name for it.
+			// lacks), the dictionary's name for it (or a name a 0x... is the hash
+			// of), or the 0x... it is shown as when no name is known.
 			bool key(const KeyNames& dict, uint32_t v, uint32_t textHash) const
 			{
 				if (v == textHash || (hasHex_ && v == hex_)) return true;
-				const std::string* n = dict.find(v);
-				return n && text(*n);
+				if (const std::string* n = dict.find(v)) return text(*n);
+				return shownHex(v);
 			}
 
 			bool integer(int64_t v, const ValueType& vt) const
@@ -529,8 +593,9 @@ namespace app
 
 			const Database& db_;
 			bool whole_;
+			SearchHash hexHash_;
 			std::string lower_;
-			bool hasHex_ = false, hasNum_ = false, hasInt_ = false, isTrue_ = false, isFalse_ = false, hasSlash_ = false;
+			bool hasHex_ = false, hexText_ = false, hasNum_ = false, hasInt_ = false, isTrue_ = false, isFalse_ = false, hasSlash_ = false;
 			uint32_t hex_ = 0, hash_ = 0, binHash_ = 0;
 			double num_ = 0;
 			int64_t int_ = 0;
@@ -661,6 +726,16 @@ namespace app
 		{
 			const KeyNames& names = db.names();
 			const std::string lower = LowerAscii(text);
+			// 0x...: the field whose key it is, or whose name it is the bStringHash of.
+			uint32_t hex = 0;
+			const bool isHex = ParseHex(text, hex);
+			auto hashed = [&](const FieldDef& f)
+			{
+				if (!isHex) return false;
+				if (f.key == hex) return true;
+				const std::string* n = q.hexHash == SearchHash::BinHash ? names.find(f.key) : nullptr;
+				return n && BinHash(*n) == hex;
+			};
 			Walker types(db);
 			std::vector<Group> groups;
 			bool more = true;
@@ -671,7 +746,7 @@ namespace app
 				for (const FieldDef& f : cls->fields)
 				{
 					std::string n = names.format(f.key);
-					if (q.wholeValue ? EqualsCI(n, lower) : ContainsCI(n, lower)) fields.emplace_back(std::move(n), &f);
+					if ((q.wholeValue ? EqualsCI(n, lower) : ContainsCI(n, lower)) || hashed(f)) fields.emplace_back(std::move(n), &f);
 				}
 				if (fields.empty()) continue;
 				std::stable_sort(fields.begin(), fields.end(), [](const auto& a, const auto& b)
@@ -774,6 +849,24 @@ namespace app
 					++r.collectionsSearched;
 					Group g;
 					walker.walk(*c, match, g.hits);
+					if constexpr (std::is_same_v<std::decay_t<decltype(match)>, ValueMatch>)
+					{
+						// The collection's own name and its parent are values of it too.
+						if (match.ownName(*c))
+						{
+							Pending p;
+							p.where = "(name)";
+							p.value = names.format(c->key);
+							g.hits.push_back(std::move(p));
+						}
+						if (match.parentNamed(*c))
+						{
+							Pending p;
+							p.where = "parent";
+							p.value = names.format(c->parentKey);
+							g.hits.push_back(std::move(p));
+						}
+					}
 					// Text equal to the target's own name inside the target is
 					// its name (gameplay's Name and CollectionName), not a reference.
 					if (target && c == target)
@@ -804,10 +897,23 @@ namespace app
 		}
 		else
 		{
-			ValueMatch match(db, text, q.wholeValue);
+			ValueMatch match(db, text, q.wholeValue, q.hexHash);
 			run(match);
 		}
 		return r;
+	}
+
+	std::vector<ValueLine> ValueLines(const Database& db, const DataBlock& b, uint32_t off, const ValueType& vt, Endian e,
+		const std::string& path)
+	{
+		Walker walker(db);
+		auto every = [](const DataBlock&, uint32_t, const ValueType&, Endian) { return true; };
+		std::vector<Pending> found;
+		walker.walkValue(b, off, vt, e, path, every, found);
+		std::vector<ValueLine> out;
+		out.reserve(found.size());
+		for (Pending& p : found) out.push_back({ std::move(p.where), FormatValueInFull(db, *p.block, p.off, *p.type, e) });
+		return out;
 	}
 
 	bool ParseReferenceTarget(const Database& db, const std::string& text, uint32_t& cls, uint32_t& key)

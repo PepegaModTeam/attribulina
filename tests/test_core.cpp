@@ -9,10 +9,14 @@
 #include "core/Hash.h"
 #include "core/Paint.h"
 #include "core/Schema.h"
+#include "core/UserFolder.h"
 #include "core/Values.h"
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
 
 using namespace attrib;
 
@@ -60,18 +64,40 @@ TEST("compression: gameplay.lzc decodes to gameplay.bin") {
     CHECK(Decompress(lzc) == bin);
 }
 
-TEST("compression: JDLZ/HUFF/RAWW round trip") {
+TEST("compression: JDLZ/HUFF/RAWW/RFPK round trip") {
     const Bytes bin = ReadFile(PS("gameplay.bin"));
     const Bytes sample(bin.begin(), bin.begin() + 200000);
-    for (LzKind k : {LzKind::Jdlz, LzKind::Huff, LzKind::Raww}) {
+    for (LzKind k : {LzKind::Jdlz, LzKind::Huff, LzKind::Raww, LzKind::Rfpk}) {
         const Bytes packed = Compress(k, sample);
         auto h = ParseLzHeader(packed);
         CHECK(h && h->kind == k);
-        // HUFF counts its stream only, like the game's own blocks.
-        CHECK_EQ(h->compressedSize, uint32_t(packed.size()) - (k == LzKind::Huff ? 16u : 0u));
+        CHECK(ParseLzKind(LzKindName(k)) == k);
+        // HUFF and RFPK count their stream only, like the game's own blocks.
+        CHECK_EQ(h->compressedSize, uint32_t(packed.size()) - (k == LzKind::Huff || k == LzKind::Rfpk ? 16u : 0u));
         CHECK_EQ(h->uncompressedSize, uint32_t(sample.size()));
         CHECK(Decompress(packed) == sample);
     }
+    // A RefPack stream whose own size isn't the header's is refused before it is decoded.
+    Bytes bad = Compress(LzKind::Rfpk, sample);
+    bad[0x10 + 4] ^= 1;
+    bool threw = false;
+    try {
+        Decompress(bad);
+    } catch (const FormatError&) {
+        threw = true;
+    }
+    CHECK(threw);
+}
+
+TEST("compression: Undercover's 360 alpha's gameplay.lzc is RFPK: it decodes to gameplay.bin, and the game's encoder writes it again") {
+    const std::string dir = test::DataPath("attrib/databases/360/undercover-alpha161");
+    if (!std::filesystem::exists(dir)) return;
+    const Bytes lzc = ReadFile(dir + "/GAMEPLAY.LZC");
+    auto h = ParseLzHeader(lzc);
+    CHECK(h && h->kind == LzKind::Rfpk && h->version == 1 && h->flags == 0);
+    const Bytes bin = Decompress(lzc);
+    CHECK(bin == ReadFile(dir + "/GAMEPLAY.BIN"));
+    CHECK(Compress(LzKind::Rfpk, bin) == lzc);
 }
 
 TEST("load: ATTRIBUTES.BIN schema") {
@@ -190,6 +216,53 @@ TEST("curve: regenerated Y2 matches the retail curves") {
     // One retail curve (class 0xE3C144F9, collection "close") had its X/Y
     // edited without regenerating Y2; every other one reproduces.
     CHECK_EQ(stale, size_t(1));
+}
+
+TEST("curve: a matrix's curve evaluates as the games read it") {
+    auto near = [](float a, float b) { return std::abs(a - b) < 1e-5f; };
+    // GetValueFromSpline (Most Wanted PC 0x73DAB0, GameCube 0x802E6548): the
+    // y column's Bernstein polynomial; x plays no part.
+    CurvePoints c;
+    const float xs[4] = {0.3f, 0.9f, 0.1f, 0.5f}, ys[4] = {0.0f, 1.0f, 0.0f, 1.0f};
+    for (int i = 0; i < 4; ++i) {
+        c.x[i] = xs[i];
+        c.y[i] = ys[i];
+    }
+    CHECK(near(CurveYAt(c, 0.0f), 0.0f) && near(CurveYAt(c, 1.0f), 1.0f));
+    CHECK(near(CurveYAt(c, 0.5f), 0.5f)); // 3 * 0.5 * 0.25 + 0.125
+    CHECK(near(CurveYAt(c, 0.25f), 3 * 0.25f * 0.75f * 0.75f + 0.25f * 0.25f * 0.25f));
+    CHECK(near(MatrixCurveValue(c, MatrixCurveRead::YOverT, 0.25f), CurveYAt(c, 0.25f)));
+    CHECK(near(MatrixCurveValue(c, MatrixCurveRead::YOverT, 2.0f), 1.0f)); // t is held to 0..1
+    // The Bezier: points along y = x with uneven handles stay on y = x, so
+    // SplineMap's lookup by x gives x back; before the first point and past
+    // the last it holds the ends.
+    CurvePoints line;
+    const float ls[4] = {0.0f, 0.1f, 0.7f, 1.0f};
+    for (int i = 0; i < 4; ++i) line.x[i] = line.y[i] = ls[i];
+    for (float x = 0.05f; x < 1.0f; x += 0.1f) CHECK(near(SplineMapValue(line, x), x));
+    CHECK(near(SplineMapValue(line, -1.0f), 0.0f) && near(SplineMapValue(line, 2.0f), 1.0f));
+    float px, py;
+    CurvePointAt(line, 0.5f, px, py);
+    CHECK(near(px, py) && near(px, 0.125f * 0 + 0.375f * 0.1f + 0.375f * 0.7f + 0.125f));
+    // Rows are (x, y, z, w); writing a point leaves z and w, in either byte order.
+    for (Endian e : {Endian::Little, Endian::Big}) {
+        uint8_t m[64];
+        for (int k = 0; k < 16; ++k) storef32(m + k * 4, float(k), e);
+        WriteCurvePoint(m, 2, 0.25f, 0.75f, e);
+        const CurvePoints r = ReadCurvePoints(m, e);
+        CHECK(r.x[2] == 0.25f && r.y[2] == 0.75f && r.x[1] == 4.0f && r.y[3] == 13.0f);
+        CHECK(loadf32(m + 40, e) == 10.0f && loadf32(m + 44, e) == 11.0f);
+    }
+    // Which fields read which way.
+    CHECK(MatrixCurveOf("visuallook", "BlackBloomCurve").read == MatrixCurveRead::YOverT);
+    CHECK(MatrixCurveOf("visuallook", "DetailMapCurve").read == MatrixCurveRead::YOverT);
+    CHECK(MatrixCurveOf("visuallookeffect", "graph").read == MatrixCurveRead::YOverT);
+    CHECK(MatrixCurveOf("engineaudio", "PhysicsRPM_Map").read == MatrixCurveRead::YOverT);
+    const MatrixCurveInfo rgb = MatrixCurveOf("visuallook", "RGBCurve");
+    CHECK(rgb.read == MatrixCurveRead::Bezier && rgb.reader);
+    CHECK(MatrixCurveOf("shiftpattern", "Up_Engage_Curve").read == MatrixCurveRead::Bezier);
+    const MatrixCurveInfo unread = MatrixCurveOf("visualrgbtweaker", "red");
+    CHECK(unread.read == MatrixCurveRead::Bezier && !unread.reader);
 }
 
 TEST("edit: array insert/remove keeps pointer slots attached") {
@@ -443,4 +516,29 @@ TEST("paint: current-gen Undercover's vinyl colours take a swatch's hue, with sa
         CHECK_EQ(int(b.bytes[at + 3]), 255);
         CHECK(std::equal(b.bytes.begin() + at + 6, b.bytes.end(), before.begin() + at + 6)); // the rest stays
     }
+}
+
+TEST("user folder: an attribulina.ini beside the program keeps the user's files there, else they go to the per-user folder") {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() / "attribulina_userfolder_test";
+    fs::remove_all(dir);
+    const fs::path exe = dir / "program", per = dir / "roaming" / "Attribulina";
+    fs::create_directories(exe);
+    // No settings file beside the program: the per-user folder, made for it.
+    UserFolder u = ChooseUserFolder(exe.string(), per.string());
+    CHECK(!u.portable && u.path == per.string());
+    CHECK(fs::is_directory(per));
+    // With one there, everything stays beside the program, as it always did.
+    std::ofstream(exe / kSettingsFileName) << "[Attribulina][Settings]\n";
+    u = ChooseUserFolder(exe.string(), per.string());
+    CHECK(u.portable && u.path == exe.string());
+    // A platform without a per-user folder, or one that can't be made, stays portable.
+    const fs::path bare = dir / "bare";
+    fs::create_directories(bare);
+    CHECK(ChooseUserFolder(bare.string(), "").portable);
+    std::ofstream(dir / "a_file") << "x";
+    u = ChooseUserFolder(bare.string(), (dir / "a_file" / "Attribulina").string());
+    CHECK(u.portable && u.path == bare.string());
+    if (std::getenv("HOME")) CHECK(!PerUserFolder().empty());
+    fs::remove_all(dir);
 }

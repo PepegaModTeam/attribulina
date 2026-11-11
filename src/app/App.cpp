@@ -1846,9 +1846,14 @@ namespace app
 						{LzKind::Jdlz, "LZ77, what every retail gameplay.lzc uses."},
 						{LzKind::Huff, "Huffman coding"},
 						{LzKind::Raww, "No compression."},
+						{LzKind::Rfpk, "EA's RefPack, as Undercover's 360 alpha 161 stores gameplay.lzc. Of the games'\n"
+									   "code read so far, only Undercover's reads it."},
 					};
 					for (const auto& k : kKinds)
 					{
+						// RefPack only where a game is known to read it, or where the file has it.
+						if (k.kind == LzKind::Rfpk && db_->target().game != Game::Undercover && inFile != k.kind && *p->compression != k.kind)
+							continue;
 						if (ImGui::MenuItem(LzKindName(k.kind), inFile == k.kind ? "in the file" : nullptr, *p->compression == k.kind))
 							setPackCompression(*p, k.kind);
 						if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", k.tip);
@@ -2735,11 +2740,73 @@ namespace app
 	}
 
 	// Tooltip and context menu on a row's name cell.
-	void App::rowDecorations(const RowExtras* x, const std::string& label)
+	std::string App::rowPath(const std::string& label) const
 	{
-		if (!x) return;
+		std::string s;
+		auto add = [&](const std::string& part)
+		{
+			if (!s.empty() && !part.empty() && part[0] != '[') s += '.';
+			s += part;
+		};
+		for (const std::string& p : rowPath_) add(p);
+		add(label);
+		return s;
+	}
+
+	void App::rowCopyItems(const std::string& path, const RowCopy& copy, bool field)
+	{
+		if (!field)
+		{
+			if (ImGui::MenuItem("Copy Path")) ImGui::SetClipboardText(path.c_str());
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", path.c_str());
+		}
+		const bool has = copy.block && copy.type && copy.count;
+		// Worked out only when an item is chosen: an array of structs can be long.
+		auto lines = [&]()
+		{
+			std::vector<ValueLine> out;
+			for (uint32_t i = 0; i < copy.count; ++i)
+			{
+				const std::string p = copy.indexed ? path + "[" + std::to_string(i) + "]" : path;
+				for (ValueLine& l : ValueLines(*db_, *copy.block, copy.off + i * copy.stride, *copy.type, copy.endian, p)) out.push_back(std::move(l));
+			}
+			return out;
+		};
+		const char* none = copy.block ? "It holds no values." : "It isn't set.";
+		if (ImGui::MenuItem("Copy Value", nullptr, false, has))
+		{
+			const std::vector<ValueLine> ls = lines();
+			std::string text;
+			const TypeKind k = copy.type->kind;
+			if (ls.size() == 1 && !copy.indexed && (k == TypeKind::Text || k == TypeKind::StringKey))
+			{
+				// A text as it reads, without the quotes it is shown in.
+				const std::string& v = ls[0].value;
+				text = v.size() >= 2 && v.front() == '"' && v.back() == '"' ? v.substr(1, v.size() - 2) : std::string();
+			}
+			else
+			{
+				for (size_t i = 0; i < ls.size(); ++i) text += (i ? "\n" : "") + ls[i].value;
+			}
+			ImGui::SetClipboardText(text.c_str());
+		}
+		if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+			ImGui::SetTooltip("%s", has ? "As shown, one line for each value when it holds more than one" : none);
+		if (ImGui::MenuItem("Copy Name and Value", nullptr, false, has))
+		{
+			std::string text;
+			const std::vector<ValueLine> ls = lines();
+			for (size_t i = 0; i < ls.size(); ++i) text += (i ? "\n" : "") + ls[i].path + " = " + ls[i].value;
+			ImGui::SetClipboardText(text.c_str());
+		}
+		if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+			ImGui::SetTooltip("%s", has ? "\"name = value\", one line for each value in it" : none);
+	}
+
+	void App::rowDecorations(const RowExtras* x, const std::string& label, const RowCopy& copy)
+	{
 		const KeyNames& names = db_->names();
-		if (x->def && ImGui::IsItemHovered())
+		if (x && x->def && ImGui::IsItemHovered())
 		{
 			const FieldDef& f = *x->def;
 			ImGui::BeginTooltip();
@@ -2751,7 +2818,13 @@ namespace app
 		}
 		if (!ImGui::BeginPopupContextItem("##rowctx")) return;
 		Collection* c = selected_;
-		if (x->array)
+		const std::string path = rowPath(label);
+		if (!x)
+		{
+			// A struct member, an element, or what a pointer leads to.
+			rowCopyItems(path, copy, false);
+		}
+		else if (x->array)
 		{
 			if (ImGui::MenuItem("Insert Element Before", nullptr, false, x->array->count < MaxElements(*x->array, arraysPastLimit_)))
 				pendingEdit_ = { PendingEdit::Kind::InsertElement, nullptr, x->array->key, x->element };
@@ -2760,6 +2833,8 @@ namespace app
 			if (ImGui::MenuItem("Add Field to Script")) addToScript({ script::ExportValue(*db_, *c, x->array->key) });
 			ImGui::Separator();
 			nfsmsMenuItems(*c, x->array->key, int(x->element));
+			ImGui::Separator();
+			rowCopyItems(path, copy, false);
 		}
 		else if (x->def)
 		{
@@ -2778,7 +2853,10 @@ namespace app
 			{
 				ImGui::MenuItem("Layout fields are always set", nullptr, false, false);
 			}
+			ImGui::Separator();
 			if (ImGui::MenuItem("Copy Field Name")) ImGui::SetClipboardText(label.c_str());
+			rowCopyItems(path, copy, true);
+			ImGui::Separator();
 			if (ImGui::MenuItem("Add to Script")) addToScript({ script::ExportValue(*db_, *c, x->def->key) });
 			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Adds this value to the script in the Script panel");
 			nfsmsMenuItems(*c, x->def->key, -1);
@@ -2889,7 +2967,12 @@ namespace app
 		if (!editable) ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
 		const bool open = ImGui::TreeNodeEx(label.c_str(), fl);
 		if (!editable) ImGui::PopStyleColor();
-		rowDecorations(extras, label);
+		RowCopy copy;
+		copy.block = &b;
+		copy.off = off;
+		copy.type = &vt;
+		copy.endian = env.endian;
+		rowDecorations(extras, label, copy);
 
 		ImGui::TableSetColumnIndex(1);
 		bool changed = EditValue(env, b, off, vt, editable);
@@ -2915,7 +2998,9 @@ namespace app
 		}
 		if (open && expands)
 		{
+			rowPath_.push_back(label);
 			changed |= drawMemberRows(env, *vt.st, b, off, editable);
+			rowPath_.pop_back();
 			ImGui::TreePop();
 		}
 		return changed;
@@ -2962,6 +3047,15 @@ namespace app
 				if (!editable) ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
 				const bool open = ImGui::TreeNodeEx(m.name.c_str(), fl);
 				if (!editable) ImGui::PopStyleColor();
+				RowCopy copy;
+				copy.block = &b;
+				copy.off = off + m.offset;
+				copy.stride = m.elemSize;
+				copy.count = m.count;
+				copy.type = &mt;
+				copy.endian = env.endian;
+				copy.indexed = true;
+				rowDecorations(nullptr, m.name, copy);
 				ImGui::TableSetColumnIndex(1);
 				ImGui::AlignTextToFramePadding();
 				ImGui::TextDisabled("[%u]", m.count);
@@ -2969,6 +3063,7 @@ namespace app
 				ImGui::TextDisabled("%s[%u]", mt.typeName.c_str(), m.count);
 				if (open)
 				{
+					rowPath_.push_back(m.name);
 					for (uint32_t i = 0; i < m.count; ++i)
 					{
 						ImGui::PushID(int(i));
@@ -2976,6 +3071,7 @@ namespace app
 						changed |= drawValueRows(env, "[" + std::to_string(i) + "]", b, off + m.offset + i * m.elemSize, mt, editable);
 						ImGui::PopID();
 					}
+					rowPath_.pop_back();
 					ImGui::TreePop();
 				}
 			}
@@ -3066,6 +3162,16 @@ namespace app
 		if (!editable) ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
 		const bool open = ImGui::TreeNodeEx(m.name.c_str(), fl);
 		if (!editable) ImGui::PopStyleColor();
+		{
+			RowCopy copy;
+			copy.block = slot && slot->data && et.size ? slot->data.get() : nullptr;
+			copy.stride = et.size;
+			copy.count = count;
+			copy.type = &et;
+			copy.endian = env.endian;
+			copy.indexed = true;
+			rowDecorations(nullptr, m.name, copy);
+		}
 
 		bool changed = false;
 		ImGui::TableSetColumnIndex(1);
@@ -3137,6 +3243,7 @@ namespace app
 
 		if (open)
 		{
+			rowPath_.push_back(m.name);
 			if (slot && slot->data && et.size)
 			{
 				DataBlock& nb = *slot->data;
@@ -3150,6 +3257,7 @@ namespace app
 					ImGui::PopID();
 				}
 			}
+			rowPath_.pop_back();
 			ImGui::TreePop();
 		}
 		return changed;
@@ -3168,7 +3276,16 @@ namespace app
 		if (!editable) ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
 		const bool open = ImGui::TreeNodeEx("##arr", fl, "%s", label.c_str());
 		if (!editable) ImGui::PopStyleColor();
-		rowDecorations(&extras, label);
+		{
+			RowCopy copy;
+			copy.block = &a.data;
+			copy.stride = a.elemSize;
+			copy.count = a.elemSize ? std::min<uint32_t>(a.count, uint32_t(a.data.bytes.size() / a.elemSize)) : 0;
+			copy.type = &vt;
+			copy.endian = env.endian;
+			copy.indexed = true;
+			rowDecorations(&extras, label, copy);
+		}
 
 		bool changed = false;
 		ImGui::TableSetColumnIndex(1);
@@ -3253,6 +3370,7 @@ namespace app
 
 		if (open)
 		{
+			rowPath_.push_back(label);
 			for (uint32_t i = 0; i < a.count; ++i)
 			{
 				ImGui::PushID(int(i));
@@ -3266,6 +3384,7 @@ namespace app
 				changed |= drawValueRows(env, "[" + std::to_string(i) + "]", a.data, i * a.elemSize, vt, editable, editable ? &ex : nullptr);
 				ImGui::PopID();
 			}
+			rowPath_.pop_back();
 			ImGui::TreePop();
 		}
 		return changed;
@@ -3282,6 +3401,7 @@ namespace app
 		if (!found && !view_.showUnset) return;
 
 		const std::string name = names.format(f.key);
+		rowPath_.clear(); // a field's rows start their paths
 		const bool hit = f.key == highlightField_ && ImGui::GetTime() < highlightUntil_;
 		highlightRow_ = hit && (revealSteps_.empty() || !found);
 		revealDepth_ = hit && found && !revealSteps_.empty() ? 0 : -1;
@@ -3297,7 +3417,7 @@ namespace app
 			ImGui::AlignTextToFramePadding();
 			markHighlightedRow(false);
 			ImGui::TextDisabled("%s", name.c_str());
-			rowDecorations(&extras, name);
+			rowDecorations(&extras, name, RowCopy{});
 			ImGui::TableSetColumnIndex(1);
 			ImGui::AlignTextToFramePadding();
 			ImGui::TextDisabled("not set");
@@ -3495,6 +3615,7 @@ namespace app
 			case Pending::RenameVault: id = "Rename Vault"; break;
 			case Pending::DeleteVault: id = "Delete Vault"; break;
 			case Pending::NewEventVault: id = "New Event Vault File"; break;
+			case Pending::UnloadPack: id = "Unload File"; break;
 			case Pending::None: break;
 		}
 		if (id && !ImGui::IsPopupOpen(id)) ImGui::OpenPopup(id);

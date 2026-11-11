@@ -201,24 +201,29 @@ TEST("nfsms: each game's words lead to the same member on every platform of it, 
          {"pc/mw-vanilla", "xbox/mw-vanilla", "gamecube/mw-vanilla", "360/mw-beta", "ps2/mw-beta", "xbox/mw-early-oxm-betademo",
           "ps2/mw-early-opm-betademo"},
          {"ControllerDataRecord Unk", "LeaderSupport PriorityChance", "LeaderSupport PriorityTime", "TrafficPatternRecord 6"}},
-        // carbon_ps2.txt has no layout for the PS2's 20-byte SteeringSensitivityParameter (Data sets it).
+        // The 20-byte SteeringSensitivityParameter of the PS2, the GameCube and the retail 360 has
+        // the PC's members but the two dead zones.
         {"carbon_pc",
-         {"pc/carbon-vanilla", "ps3/carbon-vanilla", "wii/carbon-vanilla", "ps2/carbon-vanilla", "gamecube/carbon-vanilla", "360/carbon-latedemo"},
-         {"SteeringSensitivityParameter CurveMultiplierHighSpeed", "SteeringSensitivityParameter CurveMultiplierLowSpeed",
-          "SteeringSensitivityParameter CurvePower", "SteeringSensitivityParameter CurveStyle", "SteeringSensitivityParameter InnerDeadZone",
-          "SteeringSensitivityParameter NumberOfSteps", "SteeringSensitivityParameter OuterDeadZone"}},
+         {"pc/carbon-vanilla", "ps3/carbon-vanilla", "wii/carbon-vanilla", "ps2/carbon-vanilla", "gamecube/carbon-vanilla", "360/carbon-vanilla",
+          "360/carbon-latedemo"},
+         {"SteeringSensitivityParameter InnerDeadZone", "SteeringSensitivityParameter OuterDeadZone"}},
         // NFS-VltEd's Undercover words are for its PC version; the Wii's types are Carbon's, and four differ.
         // A class reference's Collection is its pointer, and a curve's allocatedMemory the game's (in
         // the 48-byte Curve and what holds one). NFS-VltEd reads Sound::JittererParams as eight u16s
-        // (its words set half of a float) and VinylLayer as seven u32s over several members.
-        {"undercover_pc", {"pc/undercover-vanilla", "360/undercover-vanilla", "wii/undercover-vanilla"},
+        // (its words set half of a float) and VinylLayer as seven u32s over several members. The 360
+        // alpha's HighwayPatternCarData, PresetRidePaint, sampler states and SirenTuning lack retail's
+        // last members.
+        {"undercover_pc", {"pc/undercover-vanilla", "360/undercover-vanilla", "wii/undercover-vanilla", "360/undercover-alpha161"},
          {"Attrib::Gen::ClassRefSpec_presetride Collection", "Curve AllocatedMemory", "AI::GlueCurve Easy_AllocatedMemory",
           "AI::GlueCurve Hard_AllocatedMemory", "AxlePairCurve Front_AllocatedMemory", "AxlePairCurve Rear_AllocatedMemory",
           "CameraCurveReactionRecord 13", "Sound::JittererParams 2", "Sound::JittererParams 4",
           "Sound::JittererParams 6", "Sound::JittererParams 8", "CollisionReactionRecord Elasticity", "EffectLinkageRecord AudioClassKey", "EffectLinkageRecord AudioCollectionKey",
           "EffectLinkageRecord SFXMaxSpeed", "EffectLinkageRecord SFXMinSpeed", "GMapRegionInfo BoundsMaxX", "GMapRegionInfo BoundsMaxY",
           "GMapRegionInfo BoundsMinX", "GMapRegionInfo BoundsMinY", "TireEffectRecord EmitterLowLodClass", "TireEffectRecord EmitterLowLodCollection",
-          "TireEffectRecord TireCondition"},
+          "TireEffectRecord TireCondition", "HighwayPatternCarData Unk", "PresetRidePaint 8", "PresetRideRandomPaint 8",
+          "RenderReflect::cSamplerStateAttribDefinition 13", "RenderReflect::cSamplerStateAttribDefinition 15",
+          "RenderReflect::cSamplerStateAttribDefinition 16", "Sound::SirenTuning 14", "Sound::SirenTuning 15", "Sound::SirenTuning 16",
+          "Sound::SirenTuning 17"},
          {"VinylsAttrib::VinylLayer 3", "VinylsAttrib::VinylLayer 4"}},
         // A curve's allocatedMemory is the game's to set, and a StringKey's hash
         // comes from its text (NFS-VltEd's word 1 of IntegratedKitWheelOffset).

@@ -124,7 +124,7 @@ TEST("gameplay: handlers compile with their game's Lua: 5.1 for current-gen Unde
 }
 
 TEST("gameplay: an activity runs its templates' states too (Carbon's career_game runs career's initial)") {
-    for (const char* folder : {"pc/carbon-vanilla", "wii/undercover-vanilla"}) {
+    for (const char* folder : {"pc/carbon-vanilla", "360/carbon-vanilla", "wii/undercover-vanilla"}) {
         const std::string dir = test::DataPath(std::string("attrib/databases/") + folder);
         if (!std::filesystem::exists(dir)) continue;
         Database db;
@@ -392,8 +392,8 @@ TEST("gameplay: the message lists name every handler's message_id in Most Wanted
     const MessageDef* round = find("MNotifyRoundOver"); // from the Wii's Undercover handler names
     CHECK(round && round->game == Game::Unknown);
 
-    for (const char* folder : {"pc/prostreet-vanilla", "pc/carbon-vanilla", "wii/undercover-vanilla", "pc/undercover-vanilla",
-                               "360/undercover-vanilla", "pc/mw-vanilla", "ps2/mw-beta", "ps2/mw-early-opm-betademo"}) {
+    for (const char* folder : {"pc/prostreet-vanilla", "pc/carbon-vanilla", "360/carbon-vanilla", "wii/undercover-vanilla", "pc/undercover-vanilla",
+                               "360/undercover-vanilla", "360/undercover-alpha161", "pc/mw-vanilla", "ps2/mw-beta", "ps2/mw-early-opm-betademo"}) {
         const std::string dir = test::DataPath(std::string("attrib/databases/") + folder);
         if (!std::filesystem::exists(dir)) continue;
         Database db;

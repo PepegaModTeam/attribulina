@@ -11,8 +11,11 @@
 # move later members). A Carbon type not listed here gets NFS-VltEd's raw class: its
 # one property is Data, the value's bytes in hex ("00 00 80 3F").
 #
-# Carbon's 360 files (a late demo) and its PS2 demo have Most Wanted's 16-byte
-# StringKey, so a StringKey there is laid out otherwise (see the "# on" comments).
+# Carbon's PS2, GameCube and retail 360 files have a 20-byte
+# SteeringSensitivityParameter, which carbon_ps2.txt and carbon_x360.txt lay out as
+# the PC's without InnerDeadZone and OuterDeadZone. Its 360 demo (made after
+# release) and its PS2 demo have Most Wanted's 16-byte StringKey, so a StringKey
+# there is laid out otherwise (see the "# on" comments).
 #
 # game <code>
 # type <AttribSys type name>      Attrib::StringKey(MODEL): a StringKey field named MODEL
@@ -84,7 +87,7 @@ type Attrib::StringKey
   # inferred (game list is a static array (_000D/5); C,PS,UC,W,WB: the complement of the MW-only ControllerDataRecord/JunkmanMod/StringKey classes; fits the SHA-1 order; registry line 87)
   single
   Value 4 :string mString
-  # on x360: 16 bytes there, not 8; every word has a path that resolves
+  # on x360 demo: 16 bytes there, not 8; every word has a path that resolves
   # on ps2 demo: 16 bytes there, not 8; every word has a path that resolves
   # note: the hash at 0 is recomputed from the text when written.
 end
@@ -208,7 +211,7 @@ type ControllerDataRecord
   UpdateType 8 :u32 mUpdateType
   LowerDZ 12 :f32 mLowerDZ
   UpperDZ 16 :f32 mUpperDZ
-  # on x360: 32 bytes there, not 20; every word has a path that resolves
+  # on x360 demo: 32 bytes there, not 20; every word has a path that resolves
   # on ps2 demo: 32 bytes there, not 20; every word has a path that resolves
 end
 
@@ -723,7 +726,7 @@ type GStringHash
   # read (registered for C; registry line 226)
   single
   StringHash 0 :u32/hex hash
-  # not on x360: its files have no GStringHash
+  # not on x360 demo: its files have no GStringHash
   # not on ps2 demo: its files have no GStringHash
 end
 
@@ -879,8 +882,13 @@ type SteeringSensitivityParameter
   InnerDeadZone 16 :f32 InnerDeadZone
   OuterDeadZone 20 :f32 OuterDeadZone
   NumberOfSteps 24 :i32 NumberOfSteps
-  # not on ps2 and gamecube: no struct SteeringSensitivityParameter in carbon_ps2.txt, though its files have the type (20 bytes), so the paths don't resolve there
-  # not on x360: its files have no SteeringSensitivityParameter
+  # not on ps2 and gamecube: word InnerDeadZone (InnerDeadZone): no member InnerDeadZone in SteeringSensitivityParameter
+  # not on ps2 and gamecube: word OuterDeadZone (OuterDeadZone): no member OuterDeadZone in SteeringSensitivityParameter
+  # not on ps2 and gamecube: 20 bytes there, not 28
+  # not on x360: word InnerDeadZone (InnerDeadZone): no member InnerDeadZone in SteeringSensitivityParameter
+  # not on x360: word OuterDeadZone (OuterDeadZone): no member OuterDeadZone in SteeringSensitivityParameter
+  # not on x360: 20 bytes there, not 28
+  # not on x360 demo: its files have no SteeringSensitivityParameter
   # not on ps2 demo: its files have no SteeringSensitivityParameter
 end
 
@@ -955,6 +963,6 @@ type Attrib::StringKey(MODEL)
   # read (A/_0007_0014.cs:1293)
   Collision 0 :u32/key mHash32
   Visual 4 :string mString
-  # on x360: 16 bytes there, not 8; every word has a path that resolves
+  # on x360 demo: 16 bytes there, not 8; every word has a path that resolves
   # on ps2 demo: 16 bytes there, not 8; every word has a path that resolves
 end

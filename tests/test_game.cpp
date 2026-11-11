@@ -45,7 +45,7 @@ TEST("game: target ids name a game and a platform, and read back") {
     CHECK(ReleasedOn(Game::Nitro, Platform::Wii) && !ReleasedOn(Game::Nitro, Platform::PC));
     CHECK(SupportedOn(Game::ProStreet, Platform::PS2));
     CHECK(SupportedOn(Game::Carbon, Platform::GameCube));
-    CHECK(SupportedOn(Game::Carbon, Platform::Xbox360)); // from a late demo
+    CHECK(SupportedOn(Game::Carbon, Platform::Xbox360)); // retail, and a late demo
     CHECK(!SupportedOn(Game::Carbon, Platform::Xbox));    // no files seen
     CHECK(SupportedOn(Game::Undercover, Platform::Wii));
     CHECK(SupportedOn(Game::Undercover, Platform::PC) && SupportedOn(Game::Undercover, Platform::Xbox360));
@@ -70,6 +70,9 @@ TEST("game: every database on disk says what it is, the early Most Wanted demos 
         {"gamecube/mw-vanilla", {"mw_gamecube", true}},       {"xbox/mw-vanilla", {"mw_xbox", true}},
         {"wii/prostreet-vanilla", {"prostreet_wii", true}},   {"wii/undercover-vanilla", {"undercover_wii", true}},
         {"wii/nitro-vanilla", {"nitro_wii", true}},           {"360/carbon-latedemo", {"carbon_x360", true}},
+        {"360/undercover-alpha161", {"undercover_x360", true}},
+        // Carbon's GameCube and 360 files share a Vers value and byte order; the bools' width tells them apart.
+        {"360/carbon-vanilla", {"carbon_x360", true}},
         {"xbox/mw-early-oxm-betademo", {"mw_xbox", true}},    {"ps2/mw-early-opm-betademo", {"mw_ps2", true}},
         // Carbon's PS3 and Wii files share a Vers value and byte order; attributes.bin's classes tell them apart.
         {"ps3/carbon-vanilla", {"carbon_ps3", true}},         {"ps3/carbon-latebeta", {"carbon_ps3", true}},
@@ -151,6 +154,23 @@ TEST("game: without a known Vers, the chunks, the type table and the folder name
         CHECK(!d.certain && !d.platformWeak);
         CHECK_EQ(d.target.id(), std::string("carbon_ps3"));
     }
+    // Carbon's GameCube and 360 files share one too: the width of attributes.bin's bools settles it.
+    if (std::filesystem::exists(Db("360/carbon-vanilla"))) {
+        d = DetectTarget("x/attributes.bin", ReadFile(Db("360/carbon-vanilla/ATTRIBUTES.BIN")));
+        CHECK(d.certain);
+        CHECK_EQ(d.target.id(), std::string("carbon_x360"));
+        CHECK(d.reason.find("1-byte bools, as on the Xbox 360") != std::string::npos);
+        d = DetectTarget("x/attributes.bin", ReadFile(Db("gamecube/carbon-vanilla/ATTRIBUTES.BIN")));
+        CHECK(d.certain);
+        CHECK_EQ(d.target.id(), std::string("carbon_gamecube"));
+        CHECK(d.reason.find("4-byte bools, as on the GameCube") != std::string::npos);
+        d = DetectTarget("x/GAMEPLAY.BIN", ReadFile(Db("360/carbon-vanilla/GAMEPLAY.BIN")));
+        CHECK(!d.certain && d.platformWeak);
+        CHECK(d.reason.find("Carbon's on GameCube and Xbox 360") != std::string::npos);
+        d = DetectTarget("360/GAMEPLAY.BIN", ReadFile(Db("360/carbon-vanilla/GAMEPLAY.BIN")));
+        CHECK(!d.certain && !d.platformWeak);
+        CHECK_EQ(d.target.id(), std::string("carbon_x360"));
+    }
     // Undercover's chunk order.
     d = DetectTarget("x/attributes.bin", WithUnknownVers(Db("pc/undercover-vanilla/ATTRIBUTES.BIN")));
     CHECK_EQ(d.target.id(), std::string("undercover_pc"));
@@ -215,22 +235,26 @@ TEST("game: the target picks the type schema; another game's never applies") {
         CHECK(d->typeSchema() == nullptr);
     }
     // Carbon's: the PC's layouts are the PS3's and the Wii's, the PS2's the
-    // GameCube's. The 360's and the PS2 demo's types are older (Most
-    // Wanted's StringKey). Undercover's Wii and PS2 version has a schema each,
-    // its current-gen version one for the PC and the 360.
+    // GameCube's. The retail 360 has the PC's but for the PS2's 20-byte
+    // SteeringSensitivityParameter. The 360 demo's and the PS2 demo's types
+    // are older (Most Wanted's StringKey). Undercover's Wii and PS2
+    // version has a schema each, its current-gen version one for the PC and
+    // the 360, and the 360 alpha one of its own.
     std::map<std::string, std::shared_ptr<const TypeSchema>> all;
-    for (const char* s : {"prostreet_pc", "prostreet_ps2", "carbon_pc", "carbon_ps2", "carbon_x360", "carbon_ps2_demo", "undercover_wii",
-                          "undercover_ps2", "undercover_pc"})
+    for (const char* s : {"prostreet_pc", "prostreet_ps2", "carbon_pc", "carbon_ps2", "carbon_x360", "carbon_x360_demo", "carbon_ps2_demo", "undercover_wii",
+                          "undercover_ps2", "undercover_pc", "undercover_x360_alpha"})
         all[s] = TypeSchema::Load(test::DataPath(std::string("data/schema/") + s + ".txt"));
     CHECK(all["carbon_pc"]->game == Game::Carbon);
     CHECK(all["carbon_pc"]->platforms == (std::vector<Platform>{Platform::PC, Platform::PS3, Platform::Wii}));
-    CHECK(all["carbon_ps2"]->platforms == (std::vector<Platform>{Platform::PS2, Platform::GameCube}));
     CHECK(all["carbon_x360"]->platforms == std::vector<Platform>{Platform::Xbox360});
+    CHECK(all["carbon_ps2"]->platforms == (std::vector<Platform>{Platform::PS2, Platform::GameCube}));
+    CHECK(all["carbon_x360_demo"]->platforms == std::vector<Platform>{Platform::Xbox360});
     CHECK(all["carbon_ps2_demo"]->platforms == std::vector<Platform>{Platform::PS2});
     CHECK(all["undercover_wii"]->game == Game::Undercover);
     CHECK(all["undercover_wii"]->platforms == std::vector<Platform>{Platform::Wii});
     CHECK(all["undercover_ps2"]->platforms == std::vector<Platform>{Platform::PS2});
     CHECK(all["undercover_pc"]->platforms == (std::vector<Platform>{Platform::PC, Platform::Xbox360}));
+    CHECK(all["undercover_x360_alpha"]->platforms == std::vector<Platform>{Platform::Xbox360});
     auto loadAll = [&](const std::string& file, std::optional<Target> t) {
         auto db = std::make_unique<Database>();
         if (t) db->setTarget(*t);
@@ -245,10 +269,13 @@ TEST("game: the target picks the type schema; another game's never applies") {
              // Two schemas lay out the PS2: the one that fits the files wins.
              {"ps2/carbon-vanilla/attributes.bin", "carbon_ps2"},
              {"ps2/carbon-demo/attributes.bin", "carbon_ps2_demo"},
-             {"360/carbon-latedemo/ATTRIBUTES.BIN", "carbon_x360"},
+             // And two lay out the 360: the retail files' and the late demo's.
+             {"360/carbon-vanilla/ATTRIBUTES.BIN", "carbon_x360"},
+             {"360/carbon-latedemo/ATTRIBUTES.BIN", "carbon_x360_demo"},
              {"wii/undercover-vanilla/attributes.bin", "undercover_wii"},
              {"pc/undercover-vanilla/ATTRIBUTES.BIN", "undercover_pc"},
              {"360/undercover-vanilla/ATTRIBUTES.BIN", "undercover_pc"},
+             {"360/undercover-alpha161/ATTRIBUTES.BIN", "undercover_x360_alpha"},
              {"pc/world-final/attributes.bin", "world_pc"}}) {
         if (!std::filesystem::exists(Db(folder))) continue;
         d = loadAll(Db(folder), std::nullopt);

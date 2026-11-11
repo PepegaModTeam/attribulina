@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate Attribulina's type schemas from the games' debug headers.
 
-    python3 scripts/gen_schema.py [--game prostreet|carbon|undercover|mw|world] [--platform pc|ps2|wii|x360|xbox|gamecube] [--demo]
+    python3 scripts/gen_schema.py [--game prostreet|carbon|undercover|mw|world] [--platform pc|ps2|wii|x360|xbox|gamecube] [--demo|--alpha]
                                   [--header H] [--enums H] [--attributes ATTRIBUTES.BIN]
                                   [--fallback F ...] [--out data/schema/<game>_<platform>.txt]
 
@@ -10,16 +10,20 @@ Run from the repo root. Each game's defaults are in GAMES below:
                 pc writes prostreet_pc.txt (PC, 360, Wii), ps2 prostreet_ps2.txt.
     carbon      --header nfs-data/carbon/ps3-milestone/types_pahole.txt (pahole of the PS3
                 build's DWARF, has offsets; no namespaces, no enums) and --enums from the same
-                build's IDA header (EBOOT.ELF.h). pc writes carbon_pc.txt (PC, PS3, Wii), ps2
-                carbon_ps2.txt (PS2, GameCube). x360 writes carbon_x360.txt from a late 360 demo
-                (older types: Most Wanted's StringKey, from its header), and --platform ps2 --demo
-                carbon_ps2_demo.txt from the PS2 demo.
+                build's IDA header (EBOOT.ELF.h). pc writes carbon_pc.txt (PC, PS3, Wii),
+                ps2 carbon_ps2.txt (PS2, GameCube). x360 writes carbon_x360.txt for the retail
+                360: the PC's types but for SteeringSensitivityParameter. That one is 20 bytes on
+                the PS2, the GameCube and the 360, from scripts/carbon_ps2_x360_types.h. --platform x360 --demo writes carbon_x360_demo.txt from a late
+                360 demo (older types: Most Wanted's StringKey, from its header), and
+                --platform ps2 --demo carbon_ps2_demo.txt from the PS2 demo.
     undercover  pc writes undercover_pc.txt (PC, Xbox 360) for the current-gen game from
                 nfs-data/SpeedDebugOpt-enUS.h (the 360 debug build: member order, no offsets),
-                laid out naturally. The Wii's and the PS2's version runs on Carbon's engine:
-                Carbon's headers, then Undercover's debug header for its own types. wii writes
-                undercover_wii.txt; ps2 writes undercover_ps2.txt from the Wii's types sized as
-                Carbon's PS2 table has them (no PS2 files seen).
+                laid out naturally. --platform x360 --alpha writes undercover_x360_alpha.txt
+                for the 360 alpha (build 161), with the types it changes from
+                scripts/undercover_alpha_types.h. The Wii's and the PS2's version runs on
+                Carbon's engine: Carbon's headers, then Undercover's debug header for its own
+                types. wii writes undercover_wii.txt; ps2 writes undercover_ps2.txt from the
+                Wii's types sized as Carbon's PS2 table has them (no PS2 files seen).
     mw          exes/gamecube/mw-vanilla/NFSMWRELEASE.h (the GameCube build's DWARF dump: no
                 offsets, no namespaces), laid out naturally. pc writes mw_pc.txt (PC, Xbox, the
                 360 beta), gamecube mw_gamecube.txt (GameCube, the PS2 beta: 4-byte bools).
@@ -452,6 +456,7 @@ class Gen:
         for name in list(self.pdefs) + list(self.penums):
             self.short[name.split('::')[-1]].add(name)
         self.state = {}                     # name -> 'busy' | 'done'
+        self.field_enums = []               # (class, field, enum, why) for `field` lines
 
     # pick a definition
     def best_def(self, name, defs, want_size=None):
@@ -817,6 +822,12 @@ class Gen:
             if not used and name in self.structs:
                 del self.structs[name]
                 self.report['attribute size mismatch (left out)'].append(name)
+        for (cls, field), (enum, why) in self.FIELD_ENUMS.items():
+            if self.enum_for(enum):
+                self.field_enums.append((cls, field, enum, why))
+                self.report['field enums'].append('%s.%s' % (cls, field))
+            else:
+                self.report['field enums not found'].append('%s.%s: %s' % (cls, field, enum))
         self.apply_hints_and_counts()
 
     def enum_in_fallbacks(self, name):
@@ -843,6 +854,15 @@ class Gen:
     MEMBER_HINTS = {('GameCore::KeyValuePair', 'KeyHash'): 'key'}
     BINKEY_STRUCTS = {'type_bStringHash'}
     VEC_TYPES = {'UMath::Vector3', 'UMath::Vector4', 'bVector3', 'bVector4', 'UMath::Vector2', 'bVector2'}
+
+    # Fields the type table gives a plain integer type that the game reads as
+    # an enum: (class, field) -> (enum, why). Written as `field` lines.
+    FIELD_ENUMS = {
+        ('light_flares_cg', 'flare_texture'): (
+            'eLightFlareTextures',
+            'UpdateLightFlareParameters copies it into eLightFlareParams::TextureID (MW GameCube 0x800fa1a0),\n'
+            'which picks a texture from eLightFlareTextureNameHashes.'),
+    }
 
     def apply_hints_and_counts(self):
         for sname, s in self.structs.items():
@@ -905,10 +925,26 @@ class Gen:
                 if 'hint' in ex: parts.append('hint=%s' % ex['hint'])
                 w(' '.join(parts) + '\n')
             w('end\n\n')
+        for cls, field, enum, why in self.field_enums:
+            for line in ('%s.%s: %s' % (cls, field, why)).split('\n'): w('# %s\n' % line)
+            w('field %s %s %s\n\n' % (cls, field, sanitize(enum)))
 
+
+# Current-gen Undercover (PC, 360) isn't Carbon's engine: its own debug header.
+UNDERCOVER_CURRENT_GEN = dict(
+    header='nfs-data/SpeedDebugOpt-enUS.h', enums=None, natural=True, overrides=None,
+    fallback=['nfs-data/ProStreet08Milestone.h', 'nfs-data/carbon/ps3-milestone/EBOOT.ELF.h',
+              'exes/gamecube/mw-vanilla/NFSMWRELEASE.h'],
+    same={'pc': ['x360']},
+    # u8 counts, 2 to 4 elements in the data
+    counts={('FEQuickUpgrade', 'Packages'): 'mPackageLength',
+            ('FEAutosculptAliasing::Alias', 'sliders'): 'slidersLength'})
 
 # What each game's schema is made from. `same` lists the platforms whose type
-# layouts are another's (checked by the round-trip tests).
+# layouts are another's (checked by the round-trip tests). `demos` and
+# `alphas` name a platform's demo and alpha folders (--demo, --alpha), with
+# `demo_overrides`/`alpha_overrides` the header of the types they change, and
+# `retail_overrides` a platform's for its retail files (neither flag).
 GAMES = {
     'prostreet': dict(
         title='Need for Speed: ProStreet', name='Pro Street', folder='prostreet-vanilla',
@@ -922,11 +958,18 @@ GAMES = {
         fallback=['nfs-data/carbon/ps3-milestone/EBOOT.ELF.h', 'exes/gamecube/mw-vanilla/NFSMWRELEASE.h',
                   'nfs-data/SpeedDebugOpt-enUS.h'],
         same={'pc': ['ps3', 'wii'], 'ps2': ['gamecube']},
-        # No retail 360 files here: a demo made after release, whose types are
-        # older (Most Wanted's 16-byte StringKey; NFSMWRELEASE.h has it).
-        folders={'x360': 'carbon-latedemo'},
-        # --demo: the PS2 demo, an older build again (carbon_ps2_demo.txt).
-        demos={'ps2': 'carbon-demo'}),
+        # The retail 360's type table is the PC's but for the PS2's and the
+        # GameCube's 20-byte SteeringSensitivityParameter, which no header lays
+        # out: carbon_ps2.txt and carbon_x360.txt take it from
+        # scripts/carbon_ps2_x360_types.h (not the demos' schemas).
+        retail_overrides={'ps2': ['scripts/carbon_ps2_x360_types.h'], 'x360': ['scripts/carbon_ps2_x360_types.h']},
+        note={'x360': 'Carbon\'s retail 360: the PC\'s types (the PS3 milestone\'s), but for the 20-byte\n'
+                      'SteeringSensitivityParameter it shares with the PS2 and the GameCube, from scripts/carbon_ps2_x360_types.h:\n'
+                      'the PC\'s without its two dead zones, read from the files. The 360\'s code doesn\'t read that type.'},
+        # --demo: the PS2 demo, an older build (carbon_ps2_demo.txt), and a 360
+        # demo made after release, whose types are older still (Most Wanted's
+        # 16-byte StringKey; NFSMWRELEASE.h has it): carbon_x360_demo.txt.
+        demos={'ps2': 'carbon-demo', 'x360': 'carbon-latedemo'}),
     # The Wii's Undercover runs on Carbon's engine: Carbon's types, then
     # Undercover's (360 debug) header for the ones Carbon lacks. The
     # current-gen game (PC, 360) has its own types: `platforms` below.
@@ -939,21 +982,24 @@ GAMES = {
         # No PS2 files seen. The PS2's is the Wii's game: its types, with the
         # sizes of Carbon's PS2 table (4-byte bools) where Carbon has the type.
         tables={'ps2': ['attrib/databases/ps2/carbon-vanilla', 'attrib/databases/wii/undercover-vanilla']},
+        # Its own types, read before Carbon's (eLightFlareTextures has the sun's textures).
+        overrides=['scripts/undercover_wii_types.h'],
         note={'ps2': 'No PS2 files seen: the types are the Wii\'s, sized as in Carbon\'s PS2 type table where it has\n'
                      'them. The others are laid out with 4-byte bools, unchecked; the editor applies a struct only\n'
                      'where its size matches the files\' type table.',
               'pc': 'Current-gen Undercover. SpeedDebugOpt-enUS.h is the 360 debug build\'s (its SchemaVersion() is\n'
                     'the retail 360 Vers); laid out naturally, its structs match the offsets of that build\'s PDB. The\n'
-                    'PC\'s and the 360\'s types have the same sizes, no bitfields and a 12-byte Vector3.'},
+                    'PC\'s and the 360\'s types have the same sizes, no bitfields and a 12-byte Vector3.',
+              'x360_alpha': 'Undercover\'s 360 alpha, build 161: retail\'s types (SpeedDebugOpt-enUS.h, laid out naturally),\n'
+                            'and the seven it sizes differently from scripts/undercover_alpha_types.h, read from its files.\n'
+                            'Each struct has the size of the alpha\'s type table.'},
         # Settings a platform overrides. Current-gen Undercover (PC, 360, and
         # likely the PS3, whose files no one has seen) isn't Carbon's engine.
-        platforms={'pc': dict(header='nfs-data/SpeedDebugOpt-enUS.h', enums=None, natural=True,
-                              fallback=['nfs-data/ProStreet08Milestone.h', 'nfs-data/carbon/ps3-milestone/EBOOT.ELF.h',
-                                        'exes/gamecube/mw-vanilla/NFSMWRELEASE.h'],
-                              same={'pc': ['x360']},
-                              # u8 counts, 2 to 4 elements in the data
-                              counts={('FEQuickUpgrade', 'Packages'): 'mPackageLength',
-                                      ('FEAutosculptAliasing::Alias', 'sliders'): 'slidersLength'})}),
+        platforms={'pc': UNDERCOVER_CURRENT_GEN, 'x360': UNDERCOVER_CURRENT_GEN},
+        # --alpha: the 360 alpha (build 161), whose changed types come from
+        # scripts/undercover_alpha_types.h (undercover_x360_alpha.txt).
+        alphas={'x360': 'undercover-alpha161'},
+        alpha_overrides='scripts/undercover_alpha_types.h'),
     # Most Wanted: the GameCube build's DWARF dump (MetroWerks; no offsets, no
     # namespaces), laid out naturally with each platform's bools. Every
     # platform's type table has the same types and sizes but for the bool
@@ -1010,7 +1056,9 @@ def main():
     ap.add_argument('--out')
     ap.add_argument('--title')
     ap.add_argument('--demo', action='store_true', help="the game's demo files for the platform (<game>_<platform>_demo.txt)")
+    ap.add_argument('--alpha', action='store_true', help="the game's alpha files for the platform (<game>_<platform>_alpha.txt)")
     args = ap.parse_args()
+    build = 'demo' if args.demo else 'alpha' if args.alpha else None
     cfg = GAMES[args.game]
     cfg = dict(cfg, **cfg.get('platforms', {}).get(args.platform, {}))
     if cfg.get('counts'):
@@ -1019,12 +1067,13 @@ def main():
     args.enums = args.enums or cfg['enums']
     args.fallback = cfg['fallback'] if args.fallback is None else args.fallback
     args.title = args.title or cfg['title']
-    if args.demo:
-        demo = cfg.get('demos', {}).get(args.platform)
-        if not demo: raise SystemExit('no %s demo files for %s' % (args.game, args.platform))
-        args.attributes = args.attributes or find_attributes('attrib/databases/%s/%s' % (args.platform, demo))
+    if build:
+        folder = cfg.get(build + 's', {}).get(args.platform)
+        if not folder: raise SystemExit('no %s %s files for %s' % (args.game, build, args.platform))
+        platform_dir = '360' if args.platform == 'x360' else args.platform
+        args.attributes = args.attributes or find_attributes('attrib/databases/%s/%s' % (platform_dir, folder))
 
-    args.out = args.out or 'data/schema/%s_%s%s.txt' % (args.game, args.platform, '_demo' if args.demo else '')
+    args.out = args.out or 'data/schema/%s_%s%s.txt' % (args.game, args.platform, '_' + build if build else '')
     unchecked = []
     tables = cfg.get('tables', {}).get(args.platform)
     if tables and not args.attributes:
@@ -1059,7 +1108,9 @@ def main():
             fd, fe = parse_header(f, with_offsets=False)
             fallbacks.append((f, fd, fe))
     overrides = None
-    paths = cfg.get('overrides') or ([cfg['demo_overrides']] if args.demo and cfg.get('demo_overrides') else [])
+    paths = cfg.get('overrides') or ([cfg[build + '_overrides']] if build and cfg.get(build + '_overrides') else [])
+    if not build:
+        paths = list(paths) + cfg.get('retail_overrides', {}).get(args.platform, [])
     if paths:
         odefs, oenums = defaultdict(list), defaultdict(list)
         for path in paths:
@@ -1072,8 +1123,8 @@ def main():
     g.run()
     os.makedirs(os.path.dirname(args.out) or '.', exist_ok=True)
     with open(args.out, 'w', newline='\n') as out:
-        g.emit(out, args.game, args.title, [args.platform] + ([] if args.demo else cfg['same'].get(args.platform, [])),
-               cfg.get('note', {}).get(args.platform))
+        g.emit(out, args.game, args.title, [args.platform] + ([] if build else cfg['same'].get(args.platform, [])),
+               cfg.get('note', {}).get(args.platform + ('_' + build if build else '')))
 
     nmem = sum(len(s['members']) for s in g.structs.values())
     print('wrote %s: %d structs, %d enums, %d members' % (args.out, len(g.structs), len(g.enums), nmem))

@@ -319,9 +319,11 @@ What it can't do, beyond 5.0's list:
 | Pro Street PC (`gameplay.lzc`) | 5.0     | 251 / 251       | 251 / 251                            |
 | Most Wanted PC                 | 5.0     | 258 / 258       | 258 / 258                            |
 | Carbon PC                      | 5.0     | 312 / 312       | 312 / 312                            |
+| Carbon 360                     | 5.0     | 311 / 311       | 311 / 311                            |
 | Undercover Wii                 | 5.0     | 455 / 455       | 455 / 455                            |
 | Undercover 360                 | 5.1     | 214 / 214       | 214 / 214                            |
 | Undercover PC                  | 5.1     | 214 / 214       | 214 / 214                            |
+| Undercover 360 alpha (161)     | 5.1     | 207 / 207       | 207 / 207                            |
 | World 2009 beta `lithium.bin`  | 5.1     | the whole chunk | 268 / 268 functions, each as a chunk |
 
 `tests/test_lua.cpp` checks all of these through `Database` (`attribtests lua:`),

@@ -35,13 +35,14 @@ namespace attrib
 			case LzKind::Jdlz: return "JDLZ";
 			case LzKind::Huff: return "HUFF";
 			case LzKind::Raww: return "RAWW";
+			case LzKind::Rfpk: return "RFPK";
 		}
 		return "?";
 	}
 
 	std::optional<LzKind> ParseLzKind(std::string_view name)
 	{
-		for (LzKind k : {LzKind::Jdlz, LzKind::Huff, LzKind::Raww})
+		for (LzKind k : {LzKind::Jdlz, LzKind::Huff, LzKind::Raww, LzKind::Rfpk})
 		{
 			const char* n = LzKindName(k);
 			if (name.size() == 4 && std::equal(name.begin(), name.end(), n, [](char a, char b)
@@ -61,6 +62,7 @@ namespace attrib
 		if (MagicIs(d, "JDLZ")) h.kind = LzKind::Jdlz;
 		else if (MagicIs(d, "HUFF")) h.kind = LzKind::Huff;
 		else if (MagicIs(d, "RAWW")) h.kind = LzKind::Raww;
+		else if (MagicIs(d, "RFPK")) h.kind = LzKind::Rfpk;
 		else return std::nullopt;
 		h.version = d[4];
 		h.headerSize = d[5];
@@ -113,6 +115,20 @@ namespace attrib
 				// HUFF is LZHeader + a raw Huffman stream: skip the header.
 				got = HUFF_decompress(in.data() + h->headerSize, out.data());
 				break;
+			case LzKind::Rfpk:
+			{
+				// LZHeader + a RefPack stream, which starts with its own size; the
+				// decoder writes that many bytes and checks nothing.
+				const uint8_t* s = in.data() + h->headerSize;
+				const uint32_t type = (uint32_t(s[0]) << 8) | s[1];
+				const bool wide = type & 0x8000;
+				const uint8_t* n = s + 2 + ((type & 0x100) ? (wide ? 4 : 3) : 0);
+				const uint32_t streamSize = wide ? load32(n, Endian::Big) : (uint32_t(n[0]) << 16) | (uint32_t(n[1]) << 8) | n[2];
+				if ((type & 0x7EFF) != 0x10FB || streamSize != h->uncompressedSize)
+					throw FormatError("RFPK block's stream doesn't match its header");
+				got = int(REFPACK_Decompress(out.data(), s));
+				break;
+			}
 		}
 		if (got != int(h->uncompressedSize))
 			throw FormatError(std::string(LzKindName(h->kind)) + " decode produced " + std::to_string(got) +
@@ -155,6 +171,20 @@ namespace attrib
 				// The game's HUFF blocks count only the stream (as all 235 retail
 				// ones do); JDLZ's codec counts the whole block.
 				WriteHeader(out.data(), "HUFF", 1, usize, uint32_t(n));
+				return out;
+			}
+			case LzKind::Rfpk:
+			{
+				// Literals cost a byte per 112 at worst. The encoder hashes 3
+				// bytes ahead, so it gets zeros past the end.
+				Bytes in(data.begin(), data.end());
+				in.resize(in.size() + 16, 0);
+				out.resize(kHeaderSize + size_t(usize) + usize / 64 + 1024);
+				int n = REFPACK_Compress(out.data() + kHeaderSize, in.data(), int(usize));
+				if (n <= 0 || size_t(n) + kHeaderSize > out.size())
+					throw FormatError("RFPK encode failed");
+				out.resize(kHeaderSize + size_t(n));
+				WriteHeader(out.data(), "RFPK", 1, usize, uint32_t(n));
 				return out;
 			}
 		}

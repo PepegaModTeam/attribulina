@@ -9,12 +9,12 @@
 // Detection goes by the Vers chunk at the start of every vault: its u64 value
 // differs between games and between versions of their data, and byte order
 // tells most platforms that share one apart (Pro Street's PC and 360 files,
-// its PS2 and Wii files), and a class attributes.bin has the rest (Carbon's
-// Wii and PS3 files). A value from kKnownVersions (Game.cpp) that settles on
-// one platform is taken as certain. One that doesn't (a pack without
-// attributes.bin), or none (Most Wanted's vaults have no Vers chunk), leaves a
-// guess from the chunk order, the type table and the folder names, and the
-// editor asks.
+// its PS2 and Wii files), and a class attributes.bin has or the width of its
+// bools the rest (Carbon's Wii and PS3 files, its GameCube and 360 files). A
+// value from kKnownVersions (Game.cpp) that settles on one platform is taken
+// as certain. One that doesn't (a pack without attributes.bin), or none (Most
+// Wanted's vaults have no Vers chunk), leaves a guess from the chunk order,
+// the type table and the folder names, and the editor asks.
 
 #include "Bytes.h"
 

@@ -261,9 +261,9 @@ Every database is one game on one platform, and the `game` line names it as `<ga
 | Game | Id | Platforms | Edited on |
 | --- | --- | --- | --- |
 | Most Wanted | `mw` | `pc`, `ps2`, `xbox`, `x360`, `gamecube` | all (`x360` and `ps2` from betas; the early `ps2` and `xbox` demos too) |
-| Carbon | `carbon` | `pc`, `ps2`, `ps3`, `xbox`, `x360`, `gamecube`, `wii` | `pc`, `ps2`, `ps3`, `x360` (from a late demo), `gamecube`, `wii` |
+| Carbon | `carbon` | `pc`, `ps2`, `ps3`, `xbox`, `x360`, `gamecube`, `wii` | `pc`, `ps2`, `ps3`, `x360` (retail, and a late demo), `gamecube`, `wii` |
 | Pro Street | `prostreet` | `pc`, `ps2`, `ps3`, `x360`, `wii` | all |
-| Undercover | `undercover` | `pc`, `ps2`, `ps3`, `x360`, `wii` | `pc`, `x360`, `ps2`, `wii` (the last two on Carbon's engine) |
+| Undercover | `undercover` | `pc`, `ps2`, `ps3`, `x360`, `wii` | `pc`, `x360` (retail, and an alpha), `ps2`, `wii` (the last two on Carbon's engine) |
 | World | `world` | `pc` | none yet |
 | Nitro | `nitro` | `wii` | none yet |
 

@@ -4,16 +4,18 @@
 // inside gameplay vaults. The codecs are the game's own (BBXCompression/).
 //
 //   LZHeader (0x10, little-endian):
-//     +0x0 char ID[4]            "JDLZ" | "HUFF" | "RAWW"
-//     +0x4 u8   Version          JDLZ 2, HUFF 1, RAWW 1
+//     +0x0 char ID[4]            "JDLZ" | "HUFF" | "RAWW" | "RFPK"
+//     +0x4 u8   Version          JDLZ 2, HUFF 1, RAWW 1, RFPK 1
 //     +0x5 u8   HeaderSize       0x10
 //     +0x6 u16  Flags            0 in all retail data
 //     +0x8 u32  UncompressedSize
-//     +0xC u32  CompressedSize   JDLZ: the whole block; the game's HUFF and RAWW
-//                                blocks: the payload after this header
+//     +0xC u32  CompressedSize   JDLZ: the whole block; the game's HUFF, RAWW and
+//                                RFPK blocks: the payload after this header
 //
 // JDLZ's codec writes this header itself; HUFF is the header followed by a raw
-// EA Huffman stream (0x30FB); RAWW is the header followed by stored bytes.
+// EA Huffman stream (0x30FB); RAWW is the header followed by stored bytes;
+// RFPK is the header followed by an EA RefPack stream (0x10FB). Only
+// Undercover's code reads RFPK, and only its 360 alpha's gameplay.lzc uses it.
 
 #include "Bytes.h"
 
@@ -25,7 +27,7 @@ namespace attrib
 
 	enum class LzKind : uint8_t
 	{
-		Jdlz, Huff, Raww
+		Jdlz, Huff, Raww, Rfpk
 	};
 
 	struct LzHeader
@@ -55,7 +57,7 @@ namespace attrib
 	Bytes CompressBest(ByteSpan data);
 
 	const char* LzKindName(LzKind kind);
-	// "jdlz", "huff" or "raww", in any case; nullopt for anything else.
+	// "jdlz", "huff", "raww" or "rfpk", in any case; nullopt for anything else.
 	std::optional<LzKind> ParseLzKind(std::string_view name);
 
 } // namespace attrib

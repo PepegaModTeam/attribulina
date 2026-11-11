@@ -74,11 +74,12 @@ const SearchHit* Find(const SearchResult& r, uint32_t cls, uint32_t key, uint32_
     return nullptr;
 }
 
-SearchResult Values(const std::string& text, bool whole, uint32_t inClass = 0) {
+SearchResult Values(const std::string& text, bool whole, uint32_t inClass = 0, app::SearchHash hash = app::SearchHash::StringHash32) {
     SearchQuery q;
     q.text = text;
     q.wholeValue = whole;
     q.inClass = inClass;
+    q.hexHash = hash;
     q.limit = 1000000;
     return app::RunSearch(Full(), q);
 }
@@ -408,6 +409,129 @@ TEST("search: an empty query is an error") {
         const SearchResult r = app::RunSearch(Full(), q);
         CHECK_EQ(r.error, std::string("Type something to search for"));
         CHECK(r.hits.empty());
+    }
+}
+
+TEST("search: a collection is found by its name, an unknown name by its hex or part of it, and its children by their parent") {
+    // Pro Street's packages nobody has a name for: nothing refers to them but
+    // their children's parent link.
+    const Database& db = Full();
+    const Collection* unnamed = nullptr;
+    for (const auto& cls : db.classes())
+        for (const Collection* c : cls->collections)
+            if (!unnamed && !db.names().find(c->key) && c->children.size() > 2) unnamed = c;
+    CHECK(unnamed);
+    if (!unnamed) return;
+    const std::string hex = Hex(unnamed->key);
+    SearchResult r = Values(hex, true);
+    const SearchHit* self = Find(r, unnamed->classKey, unnamed->key, 0, "(name)");
+    CHECK(self);
+    if (self) CHECK_EQ(self->value, hex);
+    for (const Collection* ch : unnamed->children) {
+        const SearchHit* h = Find(r, ch->classKey, ch->key, 0, "parent");
+        CHECK(h);
+        if (h) CHECK_EQ(h->value, hex);
+    }
+    // In lower case, and part of it when the whole value isn't asked for.
+    CHECK(Find(Values(app::ToLower(hex), true), unnamed->classKey, unnamed->key, 0, "(name)"));
+    const std::string part = hex.substr(0, 6);
+    CHECK(Find(Values(part, false), unnamed->classKey, unnamed->key, 0, "(name)"));
+    CHECK(!Find(Values(part, true), unnamed->classKey, unnamed->key, 0, "(name)"));
+    // Children list their parent only when the query names it whole.
+    CHECK(!Find(Values(part, false), unnamed->children.front()->classKey, unnamed->children.front()->key, 0, "parent"));
+
+    // A named collection: by its name, and the template it is made from.
+    const Collection& race = Gp(kRace);
+    r = Values(kRace, true);
+    CHECK(Find(r, kGameplay, race.key, 0, "(name)"));
+    if (race.parent) CHECK(Find(Values(db.names().format(race.parentKey), true), kGameplay, race.key, 0, "parent"));
+}
+
+TEST("search: a 0x... number finds the text and names it is the StringHash32 or bStringHash of") {
+    const Database& db = Full();
+    const uint32_t race = StringHash32(kRace), layout = StringHash32("TrackLayout");
+    // TrackLayout is a key (GCollectionKey): its stored number either way, its
+    // name's bStringHash as bStringHash.
+    CHECK(Find(Values(Hex(race), true), kGameplay, race, 0, "(name)"));
+    for (app::SearchHash h : {app::SearchHash::StringHash32, app::SearchHash::BinHash})
+        CHECK(Find(Values(Hex(StringHash32(kLayout)), true, 0, h), kGameplay, race, layout, "TrackLayout"));
+    CHECK(!Find(Values(Hex(BinHash(kLayout)), true), kGameplay, race, layout, "TrackLayout"));
+    CHECK(Find(Values(Hex(BinHash(kLayout)), true, 0, app::SearchHash::BinHash), kGameplay, race, layout, "TrackLayout"));
+
+    // A Text field stores no hash: its text is hashed, by the hash chosen.
+    const Found text = FirstAttribute([](const Collection&, const Attribute& a, const app::ValueType& vt) {
+        const PtrSlot* s = vt.kind == TypeKind::Text ? a.data.ptrAt(0) : nullptr;
+        return s && s->text.size() > 3;
+    });
+    const std::string t = text.a->data.ptrAt(0)->text, tw = FieldName(text.a->key);
+    const uint32_t tc = text.c->classKey;
+    CHECK(Find(Values(Hex(StringHash32(t)), true, tc), tc, text.c->key, text.a->key, tw));
+    CHECK(!Find(Values(Hex(BinHash(t)), true, tc), tc, text.c->key, text.a->key, tw));
+    CHECK(Find(Values(Hex(BinHash(t)), true, tc, app::SearchHash::BinHash), tc, text.c->key, text.a->key, tw));
+    CHECK(!Find(Values(Hex(StringHash32(t)), true, tc, app::SearchHash::BinHash), tc, text.c->key, text.a->key, tw));
+
+    // A bin key (stored as a bStringHash) with a known name: by its value
+    // either way, and by its name's StringHash32 as StringHash32.
+    const Found bin = FirstAttribute([&](const Collection& c, const Attribute& a, const app::ValueType& vt) {
+        if (vt.kind != TypeKind::BinKey) return false;
+        const std::string* n = db.binNames().find(load32(a.data.bytes.data(), EndianOf(c)));
+        return n && StringHash32(*n) != load32(a.data.bytes.data(), EndianOf(c));
+    });
+    const uint32_t stored = load32(bin.a->data.bytes.data(), EndianOf(*bin.c));
+    const std::string name = *db.binNames().find(stored), where = FieldName(bin.a->key);
+    for (app::SearchHash h : {app::SearchHash::StringHash32, app::SearchHash::BinHash})
+        CHECK(Find(Values(Hex(stored), true, bin.c->classKey, h), bin.c->classKey, bin.c->key, bin.a->key, where));
+    CHECK(Find(Values(Hex(StringHash32(name)), true, bin.c->classKey), bin.c->classKey, bin.c->key, bin.a->key, where));
+
+    // A key (a StringHash32) with a known name: by its name's bStringHash as bStringHash.
+    const Found key = FirstAttribute([&](const Collection& c, const Attribute& a, const app::ValueType& vt) {
+        return vt.kind == TypeKind::Key && db.names().find(load32(a.data.bytes.data(), EndianOf(c)));
+    });
+    const std::string keyName = *db.names().find(load32(key.a->data.bytes.data(), EndianOf(*key.c)));
+    CHECK(Find(Values(Hex(BinHash(keyName)), true, key.c->classKey, app::SearchHash::BinHash), key.c->classKey, key.c->key, key.a->key,
+               FieldName(key.a->key)));
+
+    // Field names: the field's key, or its name's bStringHash.
+    SearchQuery q;
+    q.mode = SearchMode::Fields;
+    q.text = Hex(layout);
+    q.inClass = kGameplay;
+    CHECK(Find(app::RunSearch(db, q), kGameplay, race, layout, "TrackLayout"));
+    q.text = Hex(BinHash("TrackLayout"));
+    CHECK(!Find(app::RunSearch(db, q), kGameplay, race, layout, "TrackLayout"));
+    q.hexHash = app::SearchHash::BinHash;
+    CHECK(Find(app::RunSearch(db, q), kGameplay, race, layout, "TrackLayout"));
+}
+
+TEST("search: ValueLines lists every value under one with the inspector's paths") {
+    // FEPartData: a struct with a pointer to one value (PartDetails, its row
+    // "[0]") and a counted array (autosculptCamera1).
+    const Database& db = Full();
+    const ClassDef* cls = db.findClass(StringHash32("part_fedata"));
+    CHECK(cls);
+    if (!cls) return;
+    const uint32_t partData = StringHash32("partData");
+    for (const Collection* c : cls->collections) {
+        const Attribute* a = c->find(partData);
+        if (!a || !a->count) continue;
+        const app::ValueType vt = app::TypeOfAttribute(*a, "partData");
+        const std::vector<app::ValueLine> lines = app::ValueLines(db, a->data, 0, vt, EndianOf(*c), "partData[0]");
+        CHECK(lines.size() > 4);
+        bool logo = false;
+        for (const app::ValueLine& l : lines) {
+            CHECK(l.path.rfind("partData[0].", 0) == 0);
+            logo |= l.path == "partData[0].PartDetails[0].Logo";
+        }
+        CHECK(logo);
+        break;
+    }
+    // A plain value is one line: its path and the text the inspector shows.
+    const Found f = FirstAttribute([](const Collection&, const Attribute&, const app::ValueType& vt) { return vt.kind == TypeKind::Float; });
+    const std::vector<app::ValueLine> one = app::ValueLines(db, f.a->data, 0, f.vt, EndianOf(*f.c), "x");
+    CHECK_EQ(one.size(), size_t(1));
+    if (!one.empty()) {
+        CHECK_EQ(one[0].path, std::string("x"));
+        CHECK_EQ(one[0].value, app::FormatValue(db, f.a->data, 0, f.vt, EndianOf(*f.c)));
     }
 }
 

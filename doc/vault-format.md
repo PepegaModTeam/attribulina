@@ -21,20 +21,26 @@ Struct layouts come from `nfs-data/ProStreet08Milestone.h`.
   (`bool32` in `data/schema/prostreet_ps2.txt`), and `FEPartData` is 68 bytes
   instead of 56 (see Pointer-bearing types).
 
-**Carbon** follows every rule here too, on PC, PS3, Wii, PS2 and GameCube: all
-three packs of each rebuild byte for byte. **V** The PS3's and the Wii's are
-big-endian with the PC's layouts; the PS2's and the GameCube's bools are 4
-bytes (`carbon_ps2.txt`), the GameCube's values big-endian. Its types come from
+**Carbon** follows every rule here too, on PC, PS3, Wii, PS2, GameCube and
+360: all three packs of each rebuild byte for byte. **V** The PS3's, the Wii's
+and the 360's are big-endian with the PC's layouts; the PS2's and the
+GameCube's bools are 4 bytes (`carbon_ps2.txt`), the GameCube's values
+big-endian. Its types come from
 the PS3 build's DWARF types (`nfs-data/carbon/ps3-milestone/types_pahole.txt`).
 They explain the 24 string pointers in `attributes.bin` and the 22 in
 `gameplay.bin` that nothing did before: `CopCountRecord.CopType` and
 `GMapRegionInfo.mName` are `EA::Reflection::Text`, a `char*`. Its handler blobs
-can have a short size (see Lua).
+can have a short size (see Lua). The 360's files carry the PS2's and the
+GameCube's `Vers` value, and their type table is the PC's but for the PS2's
+20-byte `SteeringSensitivityParameter`, which no header lays out.
+`carbon_ps2.txt` and `carbon_x360.txt` lay it out on all three as the PC's
+without its two dead zones (`scripts/carbon_ps2_x360_types.h`, inferred from
+the data).
 
-**Carbon's two demos** (a 360 one made after release, which stands in for
-the retail 360 files, and the PS2 one) use Most Wanted's vault layout (below)
-and older types: Most Wanted's 16-byte `StringKey`, with `carbon_x360.txt` and
-`carbon_ps2_demo.txt` taking it from Most Wanted's header. The 360 demo's
+**Carbon's two demos** (a 360 one made after release and a PS2 one) use Most
+Wanted's vault layout (below) and older types: Most Wanted's 16-byte
+`StringKey`, with `carbon_x360_demo.txt` and `carbon_ps2_demo.txt` taking it
+from Most Wanted's header. The 360 demo's
 packs rebuild byte for byte, and so do the PS2 demo's `attributes.bin` and
 `FE_ATTRIB.bin`. **V** Two of the PS2 demo's 127 gameplay vaults
 (`race_bin_challenge`, `race_bin_drift`) keep 254 and 8 strings in `StrE` that
@@ -70,8 +76,9 @@ is the same game; no files of it have been seen.
 NFS-VltEd 4.6 (each `StrE` starts with the string `NFS-VltEd 4.6.0.0 by
 nfsu360`, which nothing points at), so they are no reference for a retail
 writer: they load with every pointer explained, and saving writes them in the
-retail layout. No PS3 files have been seen. Nitro hasn't been checked against
-this.
+retail layout. A 360 alpha (build 161) follows the same rules, and its five
+files rebuild byte for byte too. **V** No PS3 files have been seen. Nitro
+hasn't been checked against this.
 
 **World** (the final PC build) is current-gen Undercover's layout with `EndC`
 chunks, and its event vaults are files of their own with a signature (below).
@@ -232,7 +239,8 @@ offsets. The PC's and the 360's types have the same sizes, no bitfields and a
   like. **V**
 - **`Vers`** `0x8364A394EF316ABD` on the 360's `attributes.bin`, `cars_vault`,
   `FE_ATTRIB` and 14 gameplay vaults, `0xCE50492389B94950` on its other 207;
-  `0x1445379ED96333E1` on all of the PC's. **V**
+  `0x1445379ED96333E1` on all of the PC's; `0x482E894A9E6DE7F2` on all of the
+  360 alpha's. **V**
 - **Definition flag 0x20** (`kHasHandler` in the debug header): the type has a
   constructor or a destructor (`RefSpec`, the `ClassRefSpec_*` types, `Curve`
   and what holds them). Every entry of such a field has node flag 8
@@ -266,6 +274,27 @@ that nothing points at, bins padded to 8, 16 bytes past each JDLZ handler
 block (it writes `headerSize + CompressedSize`, and JDLZ's size counts its
 header already), the pack's vaults packed end to end after a first bin at
 0x40, and 394 blocks of `db` placed off the retail rule. **V**
+
+The **360 alpha** (build 161, `360/undercover-alpha161`) follows the rules above
+on all 272 of its vaults. **V** Its type table has 474 types to retail's 489:
+seven at other sizes, 22 of retail's missing, and seven of its own (four
+`ClassRefSpec_*` types and three enums). The seven come from its files, read
+against retail's members (`scripts/undercover_alpha_types.h`, laid out in
+`undercover_x360_alpha.txt`): `CollisionReactionRecord` and `PhysicsUpgrade`
+are Pro Street's 24 and 20 bytes; `HighwayPatternCarData`, `PresetRidePaint`
+(and `PresetRideRandomPaint`), `Sound::SirenTuning` and
+`RenderReflect::cSamplerStateAttribDefinition` are retail's without their last
+members (the sampler without the three PS3 members whose enums the table
+lacks; its `mName` explains the 36 string pointers of `db` that retail's
+64-byte layout left uncovered). **I** for the member names, which no header of
+the build gives. Its `gameplay.lzc` is RFPK, an EA RefPack stream in an
+LZHeader (`LzKind::Rfpk`): `CompressedSize` counts the stream only, the stream
+starts with `10 FB` and the uncompressed size in three big-endian bytes, and
+it holds `gameplay.bin` whole. The game's encoder (`REFPACK_Compress`, from the
+360 debug build) writes the file again byte for byte. **V** Of the two builds
+whose `LZDecompress` was read, Undercover's 360 debug build has an RFPK case
+and Pro Street's milestone none, and no other file seen uses it. Its 207
+handlers are Lua 5.1.
 
 ### World
 

@@ -664,6 +664,64 @@ namespace attrib
 		return true;
 	}
 
+	std::string Database::unloadProblem(const LoadedPack& pack) const
+	{
+		if (std::none_of(packs_.begin(), packs_.end(), [&](const auto& p) { return p.get() == &pack; }))
+			return "it isn't open in this database";
+		for (const auto& v : pack.vaults)
+		{
+			if (v->isDatabase) return "it holds the database's type table and classes";
+			if (!v->classes.empty()) return "its vault " + v->name + " holds classes";
+		}
+		return {};
+	}
+
+	std::string Database::unloadPack(const LoadedPack& pack)
+	{
+		if (std::string problem = unloadProblem(pack); !problem.empty()) return problem;
+		auto gone = [&](const Collection* c)
+		{
+			return c && c->vault && c->vault->pack == &pack;
+		};
+		std::vector<const Collection*> removed;
+		for (const auto& c : collections_)
+			if (gone(c.get())) removed.push_back(c.get());
+		for (auto& cls : classes_)
+			cls->collections.erase(std::remove_if(cls->collections.begin(), cls->collections.end(), gone), cls->collections.end());
+		// The index: a name another pack also defines is that pack's again
+		// (the last loaded of them, as findCollection has it).
+		std::unordered_set<uint64_t> erased;
+		for (const Collection* c : removed)
+		{
+			const uint64_t id = CollectionId(c->classKey, c->key);
+			if (auto it = collectionByKey_.find(id); it != collectionByKey_.end() && it->second == c)
+			{
+				collectionByKey_.erase(it);
+				erased.insert(id);
+			}
+		}
+		for (const auto& c : collections_)
+			if (!gone(c.get()) && erased.count(CollectionId(c->classKey, c->key)))
+				collectionByKey_[CollectionId(c->classKey, c->key)] = c.get(); // the last one stands
+		// Re-link what stays: children that went, and parents that did.
+		for (auto& c : collections_)
+		{
+			if (gone(c.get())) continue;
+			c->children.erase(std::remove_if(c->children.begin(), c->children.end(), gone), c->children.end());
+		}
+		for (auto& c : collections_)
+		{
+			if (gone(c.get()) || !gone(c->parent)) continue;
+			c->parent = findCollection(c->classKey, c->parentKey);
+			if (gone(c->parent)) c->parent = nullptr;
+			if (c->parent) c->parent->children.push_back(c.get());
+		}
+		collections_.erase(std::remove_if(collections_.begin(), collections_.end(), [&](const std::unique_ptr<Collection>& c) { return gone(c.get()); }),
+			collections_.end());
+		packs_.erase(std::find_if(packs_.begin(), packs_.end(), [&](const auto& p) { return p.get() == &pack; }));
+		return {};
+	}
+
 	void Database::loadVault(Vault& vault)
 	{
 		const RawVault& raw = vault.raw;

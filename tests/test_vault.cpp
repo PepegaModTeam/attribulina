@@ -354,3 +354,61 @@ TEST("vaults: a vault made in each pack of every game folder, with a collection 
     }
     CHECK(tried > 60);
 }
+
+TEST("packs: unloading one takes its collections out; what other packs inherit from them falls back, and their files write as read") {
+    if (!std::filesystem::exists(WorldDir() + "/gc.vaults/gpcore.bin")) return;
+    // World's event vaults make collections from gpcore.bin's templates.
+    Database db;
+    LoadWorld(db, {"gpcore.bin", "15_2_1_sprint.bin"});
+    LoadedPack* gpcore = nullptr;
+    LoadedPack* event = nullptr;
+    for (const auto& p : db.packs()) {
+        if (p->path.find("gpcore.bin") != std::string::npos) gpcore = p.get();
+        if (p->path.find("15_2_1_sprint.bin") != std::string::npos) event = p.get();
+    }
+    CHECK(gpcore && event);
+    if (!gpcore || !event) return;
+    const Bytes eventFile = ReadFile(event->path), gpcoreFile = ReadFile(gpcore->path);
+    std::vector<Collection*> children;
+    for (const auto& v : event->vaults)
+        for (Collection* c : v->collections)
+            if (c->parent && c->parent->vault->pack == gpcore) children.push_back(c);
+    CHECK(!children.empty());
+    const uint32_t gameplay = StringHash32("gameplay");
+    const uint32_t someKey = gpcore->vaults.front()->collections.front()->key;
+
+    // The database's pack and a pack holding classes can't go alone.
+    for (const auto& p : db.packs())
+        if (p->path.find("attributes.bin") != std::string::npos) CHECK(!db.unloadProblem(*p).empty());
+
+    // A second copy of gpcore.bin, loaded last, is what names find and children inherit from.
+    LoadedPack& copy = db.loadPack(WorldDir() + "/gc.vaults/gpcore_copy.bin", gpcoreFile);
+    for (Collection* c : children) CHECK(c->parent && c->parent->vault->pack == &copy);
+    const size_t before = db.collectionCount();
+    size_t inCopy = 0;
+    for (const auto& v : copy.vaults) inCopy += v->collections.size();
+    CHECK(inCopy > 0);
+    CHECK(db.unloadPack(copy).empty());
+    CHECK_EQ(db.collectionCount(), before - inCopy);
+    for (Collection* c : children) {
+        CHECK(c->parent && c->parent->vault->pack == gpcore);
+        if (c->parent) CHECK(std::count(c->parent->children.begin(), c->parent->children.end(), c) == 1);
+    }
+    const Collection* found = db.findCollection(gameplay, someKey);
+    CHECK(found && found->vault->pack == gpcore);
+
+    // Unloaded alone, its children keep their parent's key and write as read.
+    CHECK(db.unloadPack(*gpcore).empty());
+    CHECK(!db.findCollection(gameplay, someKey));
+    for (Collection* c : children) CHECK(!c->parent && c->parentKey);
+    for (const auto& cls : db.classes())
+        for (const Collection* c : cls->collections) {
+            CHECK(c->vault && (c->vault->pack == event || c->vault->pack->path.find("attributes.bin") != std::string::npos));
+            for (const Collection* ch : c->children) CHECK(ch->parent == c);
+        }
+    CHECK(WritePack(db, *event) == eventFile);
+    CHECK_EQ(db.packs().size(), size_t(2));
+    // Loaded again, they find their parents.
+    db.loadPack(WorldDir() + "/gc.vaults/gpcore.bin");
+    for (Collection* c : children) CHECK(c->parent && c->parent->key == c->parentKey);
+}

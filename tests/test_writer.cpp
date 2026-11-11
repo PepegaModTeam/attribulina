@@ -149,10 +149,10 @@ TEST("writer: Pro Street PS2 packs round trip byte for byte") {
 
 TEST("writer: Carbon's and the Wii's Undercover packs round trip byte for byte") {
     // Every pack of each folder, with all the schemas, as the editor opens it.
-    // Carbon's PC layouts are the PS3's and the Wii's; its PS2's (4-byte
-    // bools) are the GameCube's. The Wii's Undercover is Carbon's engine. The
-    // two demos use Most Wanted's vault layout and older types, each with
-    // its own schema.
+    // Carbon's PC layouts are the PS3's, the Wii's and the retail 360's; its
+    // PS2's (4-byte bools) are the GameCube's. The Wii's Undercover is
+    // Carbon's engine. The two demos use Most Wanted's vault layout and older
+    // types, each with its own schema.
     struct Folder {
         std::string path, target, schema;
     };
@@ -163,7 +163,8 @@ TEST("writer: Carbon's and the Wii's Undercover packs round trip byte for byte")
         {"wii/carbon-vanilla", "carbon_wii", "carbon_pc.txt"},
         {"ps2/carbon-vanilla", "carbon_ps2", "carbon_ps2.txt"},
         {"gamecube/carbon-vanilla", "carbon_gamecube", "carbon_ps2.txt"},
-        {"360/carbon-latedemo", "carbon_x360", "carbon_x360.txt"},
+        {"360/carbon-vanilla", "carbon_x360", "carbon_x360.txt"},
+        {"360/carbon-latedemo", "carbon_x360", "carbon_x360_demo.txt"},
         {"ps2/carbon-demo", "carbon_ps2", "carbon_ps2_demo.txt"},
         {"wii/undercover-vanilla", "undercover_wii", "undercover_wii.txt"},
         // VLTEd's re-save: every pointer explained, but it lays the packs out its own way.
@@ -171,7 +172,8 @@ TEST("writer: Carbon's and the Wii's Undercover packs round trip byte for byte")
     for (const auto& [folder, target, schema] : folders) {
         Database db;
         for (const char* s :
-             {"prostreet_pc", "prostreet_ps2", "carbon_pc", "carbon_ps2", "carbon_x360", "carbon_ps2_demo", "undercover_wii", "undercover_ps2"})
+             {"prostreet_pc", "prostreet_ps2", "carbon_pc", "carbon_ps2", "carbon_x360", "carbon_x360_demo", "carbon_ps2_demo", "undercover_wii",
+              "undercover_ps2"})
             db.addTypeSchema(TypeSchema::Load(test::DataPath(std::string("data/schema/") + s + ".txt")));
         for (const FolderFile& f : FolderPacks(test::DataPath("attrib/databases/" + folder))) {
             if (!f.skipped.empty()) continue;
@@ -202,19 +204,29 @@ TEST("writer: Carbon's and the Wii's Undercover packs round trip byte for byte")
     }
 }
 
-TEST("writer: current-gen Undercover: the 360's packs round trip byte for byte; the PC's (NFS-VltEd's re-save) load clean") {
+TEST("writer: current-gen Undercover: the 360's packs and its alpha's round trip byte for byte; the PC's (NFS-VltEd's re-save) load clean") {
     // Pro Street's layout with StrN before DepN, and four static index tables
-    // whose type no type table lists. Both platforms use undercover_pc.txt.
-    for (const char* folder : {"360/undercover-vanilla", "pc/undercover-vanilla"}) {
+    // whose type no type table lists. Both platforms use undercover_pc.txt;
+    // the 360 alpha (build 161) has a schema of its own, and its
+    // gameplay.lzc is RFPK, which the game's encoder writes again exactly.
+    struct Folder {
+        const char* path;
+        const char* schema;
+    };
+    for (const auto& [folder, schema] : std::vector<Folder>{{"360/undercover-vanilla", "undercover_pc.txt"},
+                                                            {"pc/undercover-vanilla", "undercover_pc.txt"},
+                                                            {"360/undercover-alpha161", "undercover_x360_alpha.txt"}}) {
         const std::string dir = test::DataPath(std::string("attrib/databases/") + folder);
         if (!std::filesystem::exists(dir)) continue;
         Database db;
-        for (const char* s : {"prostreet_pc", "carbon_pc", "undercover_wii", "undercover_ps2", "undercover_pc"})
+        for (const char* s : {"prostreet_pc", "carbon_pc", "undercover_wii", "undercover_ps2", "undercover_pc", "undercover_x360_alpha"})
             db.addTypeSchema(TypeSchema::Load(test::DataPath(std::string("data/schema/") + s + ".txt")));
-        const bool vlted = std::string(folder).rfind("pc/", 0) == 0;
+        const bool vlted = std::string(folder).rfind("pc/", 0) == 0, alpha = std::string(folder).find("alpha") != std::string::npos;
+        size_t packs = 0;
         for (const FolderFile& f : FolderPacks(dir)) {
             if (!f.skipped.empty()) continue;
             LoadedPack& p = db.loadPack(f.path);
+            ++packs;
             for (const auto& v : p.vaults) {
                 for (const auto& w : v->warnings) std::printf("        %s %s: %s\n", folder, v->name.c_str(), w.c_str());
                 CHECK(v->warnings.empty());
@@ -223,10 +235,16 @@ TEST("writer: current-gen Undercover: the 360's packs round trip byte for byte; 
             }
             if (vlted) continue;
             const Bytes file = ReadFile(f.path);
-            CheckIdentical(WritePack(db, p), ParseLzHeader(file) ? Decompress(file) : file, (std::string(folder) + " " + f.path).c_str());
+            const Bytes written = WritePack(db, p);
+            CheckIdentical(written, ParseLzHeader(file) ? Decompress(file) : file, (std::string(folder) + " " + f.path).c_str());
+            if (alpha && p.compression) {
+                CHECK(*p.compression == LzKind::Rfpk);
+                CheckIdentical(Compress(*p.compression, written), file, (std::string(folder) + " " + f.path + " as RFPK").c_str());
+            }
         }
+        CHECK_EQ(packs, size_t(4)); // the alpha loads GAMEPLAY.LZC, not its twin GAMEPLAY.BIN
         CHECK_EQ(db.target().id(), std::string(vlted ? "undercover_pc" : "undercover_x360"));
-        CHECK(db.typeSchema() && db.typeSchema()->source.find("undercover_pc.txt") != std::string::npos);
+        CHECK(db.typeSchema() && db.typeSchema()->source.find(schema) != std::string::npos);
     }
 }
 
@@ -414,7 +432,7 @@ TEST("writer: Most Wanted's packs round trip byte for byte") {
                                          {"ps2/mw-beta", "mw_ps2", "mw_gamecube.txt"}};
     for (const auto& [folder, target, schema] : folders) {
         Database db;
-        for (const char* s : {"prostreet_pc", "carbon_pc", "carbon_x360", "mw_pc", "mw_gamecube"})
+        for (const char* s : {"prostreet_pc", "carbon_pc", "carbon_x360_demo", "mw_pc", "mw_gamecube"})
             db.addTypeSchema(TypeSchema::Load(test::DataPath(std::string("data/schema/") + s + ".txt")));
         size_t packs = 0;
         for (const FolderFile& f : FolderPacks(test::DataPath("attrib/databases/" + folder))) {

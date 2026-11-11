@@ -20,6 +20,39 @@ namespace app
 	{
 		const ImVec4 kError(1.0f, 0.42f, 0.38f, 1.0f);
 		const char* kWindowSearch = "Search";
+
+		// The result table's columns as text, for the clipboard.
+		enum Column
+		{
+			kCollection, kField, kValue
+		};
+		std::string Cell(const KeyNames& names, const SearchHit& h, int column)
+		{
+			switch (column)
+			{
+				case kCollection: return names.format(h.classKey) + "/" + names.format(h.key);
+				case kField: return h.where;
+				default: return h.value;
+			}
+		}
+		// One hit as a line: its columns split by tabs, which a text editor shows
+		// as columns and a spreadsheet pastes into them.
+		std::string Line(const KeyNames& names, const SearchHit& h)
+		{
+			return Cell(names, h, kCollection) + "\t" + Cell(names, h, kField) + "\t" + Cell(names, h, kValue);
+		}
+		std::string Lines(const KeyNames& names, const std::vector<SearchHit>& hits, int column = -1)
+		{
+			std::string out;
+			if (column < 0) out = "Collection\tField\tValue\n";
+			for (const SearchHit& h : hits) out += (column < 0 ? Line(names, h) : Cell(names, h, column)) + "\n";
+			return out;
+		}
+		// A value cell on its own: a text without the quotes it is shown in.
+		std::string Unquoted(const std::string& v)
+		{
+			return v.size() >= 2 && v.front() == '"' && v.back() == '"' ? v.substr(1, v.size() - 2) : v;
+		}
 	} // namespace
 
 	void App::openSearch()
@@ -145,6 +178,15 @@ namespace app
 			if (ImGui::IsItemHovered())
 				ImGui::SetTooltip(searchQuery_.mode == SearchMode::Values ? "Off: values that contain the text. Numbers always match whole."
 								  : "Off: fields whose name contains the text.");
+			ImGui::SameLine();
+			int hash = int(searchQuery_.hexHash);
+			ImGui::SetNextItemWidth(em * 10);
+			if (ImGui::Combo("##hash", &hash, "0x is StringHash32\0" "0x is bStringHash\0")) searchQuery_.hexHash = SearchHash(hash);
+			if (ImGui::IsItemHovered())
+				ImGui::SetTooltip("A 0x... number finds what holds that number, and the names and text it is the hash of.\n"
+								  "StringHash32 hashes keys and collection and field names, and 0xBD014895 is HELLO's.\n"
+								  "bStringHash hashes type_bStringHash values, and 0x02E8DF33 is HELLO's.\n"
+								  "A name nobody knows shows as its hash, and part of the hash finds it too, as 0xBD01 does.");
 		}
 		ImGui::SameLine();
 		const SearchResult& r = searchResult_;
@@ -182,6 +224,7 @@ namespace app
 			ImGui::TableHeadersRow();
 			std::optional<size_t> open, refsOf;
 			bool openInTab = false;
+			auto copy = [](const std::string& text) { ImGui::SetClipboardText(text.c_str()); };
 			ImGuiListClipper clip;
 			clip.Begin(int(r.hits.size()));
 			while (clip.Step())
@@ -193,20 +236,25 @@ namespace app
 					ImGui::TableSetColumnIndex(0);
 					ImGui::PushID(i);
 					const std::string label = names.format(h.classKey) + "/" + names.format(h.key);
-					ImGui::BeginDisabled(!c);
-					if (ImGui::Selectable(label.c_str(), c && c == selected_, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap))
+					// A hit whose collection is gone (unloaded) is grey, not disabled: a
+					// disabled item never opens its menu, and its text can still be copied.
+					if (!c) ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+					if (ImGui::Selectable(label.c_str(), c && c == selected_, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap) && c)
 					{
 						open = size_t(i);
 						openInTab = ImGui::GetIO().KeyCtrl;
 					}
-					if (ImGui::IsItemClicked(ImGuiMouseButton_Middle))
+					if (!c) ImGui::PopStyleColor();
+					if (c && ImGui::IsItemClicked(ImGuiMouseButton_Middle))
 					{
 						open = size_t(i);
 						openInTab = true;
 					}
-					ImGui::EndDisabled();
-					if (c && ImGui::BeginPopupContextItem())
+					if (ImGui::IsItemFocused() && !ImGui::GetIO().WantTextInput && ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_C, ImGuiInputFlags_RouteFocused))
+						copy(Line(names, h));
+					if (ImGui::BeginPopupContextItem())
 					{
+						ImGui::BeginDisabled(!c);
 						if (ImGui::MenuItem("Open")) open = size_t(i);
 						if (ImGui::MenuItem("Open in New Tab", "Ctrl+Enter"))
 						{
@@ -214,7 +262,29 @@ namespace app
 							openInTab = true;
 						}
 						if (ImGui::MenuItem("Find References to It")) refsOf = size_t(i);
-						if (ImGui::MenuItem("Copy Name")) ImGui::SetClipboardText(names.format(h.key).c_str());
+						ImGui::EndDisabled();
+						ImGui::Separator();
+						if (ImGui::MenuItem("Copy Line", "Ctrl+C")) copy(Line(names, h));
+						if (ImGui::IsItemHovered()) ImGui::SetTooltip("Collection, field and value, split by tabs");
+						if (ImGui::MenuItem("Copy Collection")) copy(Cell(names, h, kCollection));
+						if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", label.c_str());
+						if (ImGui::MenuItem("Copy Name")) copy(names.format(h.key));
+						if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", names.format(h.key).c_str());
+						if (ImGui::MenuItem("Copy Field")) copy(h.where);
+						if (ImGui::MenuItem("Copy Value")) copy(Unquoted(h.value));
+						ImGui::Separator();
+						if (ImGui::BeginMenu("Copy Column"))
+						{
+							// Every hit's, one per line, as the table lists them.
+							if (ImGui::MenuItem("Collection")) copy(Lines(names, r.hits, kCollection));
+							if (ImGui::MenuItem("Field")) copy(Lines(names, r.hits, kField));
+							if (ImGui::MenuItem("Value")) copy(Lines(names, r.hits, kValue));
+							ImGui::EndMenu();
+						}
+						if (ImGui::IsItemHovered()) ImGui::SetTooltip("One column of every hit, one per line");
+						if (ImGui::MenuItem("Copy All")) copy(Lines(names, r.hits));
+						if (ImGui::IsItemHovered())
+							ImGui::SetTooltip("All %zu hits, one per line, split by tabs, with the column names first", r.hits.size());
 						ImGui::EndPopup();
 					}
 					ImGui::PopID();

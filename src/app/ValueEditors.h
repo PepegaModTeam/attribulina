@@ -126,6 +126,10 @@ namespace app
 	// One-line text for a value, for previews and summaries.
 	std::string FormatValue(const attrib::Database& db, const attrib::DataBlock& b, uint32_t offset, const ValueType& vt,
 							attrib::Endian e);
+	// FormatValue with nothing left out, for copying: a matrix's 16 numbers
+	// (rows split by "; ") and a curve's points as (x, y) pairs.
+	std::string FormatValueInFull(const attrib::Database& db, const attrib::DataBlock& b, uint32_t offset, const ValueType& vt,
+		attrib::Endian e);
 
 	std::string ToLower(std::string s);
 

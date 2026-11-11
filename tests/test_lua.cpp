@@ -15,6 +15,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <map>
 #include <sstream>
@@ -59,14 +60,18 @@ const std::vector<Handler>& Handlers() {
     return handlers;
 }
 
-// Undercover's on the 360 (retail) and the PC (re-saved by NFS-VltEd, the
-// chunks unchanged), Lua 5.1.
+// Undercover's on the 360 (retail, and the alpha's 207) and the PC (re-saved
+// by NFS-VltEd, the chunks unchanged), Lua 5.1.
 const std::vector<Handler>& Undercover360() {
     static const std::vector<Handler> handlers = LoadHandlers("360/undercover-vanilla");
     return handlers;
 }
 const std::vector<Handler>& UndercoverPc() {
     static const std::vector<Handler> handlers = LoadHandlers("pc/undercover-vanilla");
+    return handlers;
+}
+const std::vector<Handler>& UndercoverAlpha() {
+    static const std::vector<Handler> handlers = LoadHandlers("360/undercover-alpha161");
     return handlers;
 }
 
@@ -308,7 +313,8 @@ TEST("lua: compiled source decompiles back to the same bytecode") {
 
 TEST("lua: Most Wanted's, Carbon's and the Wii's Undercover handlers read, write and decompile exactly with Lua 5.0") {
     // The 5.1 work must leave the other games' 5.0 path as it was.
-    for (const char* folder : {"pc/mw-vanilla", "pc/carbon-vanilla", "wii/undercover-vanilla"}) {
+    for (const char* folder : {"pc/mw-vanilla", "pc/carbon-vanilla", "360/carbon-vanilla", "wii/undercover-vanilla"}) {
+        if (!std::filesystem::exists(test::DataPath(std::string("attrib/databases/") + folder))) continue;
         const std::vector<Handler> hs = LoadHandlers(folder);
         CHECK(!hs.empty());
         int same = 0;
@@ -324,9 +330,10 @@ TEST("lua: Most Wanted's, Carbon's and the Wii's Undercover handlers read, write
     }
 }
 
-TEST("lua: Undercover's gameplay databases hold 214 Lua 5.1 handlers each") {
-    for (const auto* hs : {&Undercover360(), &UndercoverPc()}) {
-        CHECK_EQ(hs->size(), size_t(214));
+TEST("lua: Undercover's gameplay databases hold 214 Lua 5.1 handlers each, its 360 alpha's 207") {
+    for (const auto* hs : {&Undercover360(), &UndercoverPc(), &UndercoverAlpha()}) {
+        if (hs == &UndercoverAlpha() && !std::filesystem::exists(test::DataPath("attrib/databases/360/undercover-alpha161"))) continue;
+        CHECK_EQ(hs->size(), size_t(hs == &UndercoverAlpha() ? 207 : 214));
         for (const Handler& h : *hs) {
             CHECK(lua::DetectVersion(h.chunk) == lua::Version::Lua51);
             // Named as Pro Street names them: "h_" + the collection's key.
@@ -344,7 +351,7 @@ TEST("lua: Undercover's gameplay databases hold 214 Lua 5.1 handlers each") {
 
 TEST("lua: every Lua 5.1 chunk reads and writes back byte for byte") {
     int same = 0, total = 0;
-    for (const auto* hs : {&Undercover360(), &UndercoverPc()})
+    for (const auto* hs : {&Undercover360(), &UndercoverPc(), &UndercoverAlpha()})
         for (const Handler& h : *hs) {
             ++total;
             const Bytes written = lua::WriteChunk(lua::ReadChunk(h.chunk));
@@ -435,7 +442,7 @@ TEST("lua: every Lua 5.1 handler decompiles to source that compiles back byte fo
                     !c.ok() ? c.error.c_str() : d.warnings.empty() ? "different bytecode" : d.warnings[0].c_str());
         return false;
     };
-    for (const auto* hs : {&Undercover360(), &UndercoverPc()}) {
+    for (const auto* hs : {&Undercover360(), &UndercoverPc(), &UndercoverAlpha()}) {
         int same = 0;
         for (const Handler& h : *hs) same += roundTrip(h.chunk, "h_" + Hex8(h.collectionKey));
         std::printf("        %d of %zu identical\n", same, hs->size());

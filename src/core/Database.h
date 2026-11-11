@@ -327,6 +327,14 @@ namespace attrib
 		// Drops a pack whose vaults hold nothing (no collections, no classes, not
 		// the database). False when one does or the pack isn't this database's.
 		bool removePack(const LoadedPack& pack);
+		// Takes a pack out of the database with its collections, leaving its file
+		// alone. A collection elsewhere whose parent was in it keeps the parent's
+		// key and takes another pack's collection of that name, as loading would.
+		// Empty when it did; else why not: the pack holding the database or a
+		// class can't go while other packs need them.
+		std::string unloadPack(const LoadedPack& pack);
+		// Why unloadPack would refuse the pack (empty: it wouldn't).
+		std::string unloadProblem(const LoadedPack& pack) const;
 
 		bool hasSchema() const
 		{

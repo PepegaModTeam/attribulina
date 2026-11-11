@@ -161,6 +161,11 @@ namespace app
 		// whose vault was deleted): Save All removes them.
 		std::vector<std::string> removedFiles() const;
 		bool removeFile(const std::string& path);
+		// Takes a pack out of the editor (Unload on its menu in the Files tab).
+		// Its file stays as it is, unsaved changes to it are dropped, and the
+		// undo history starts again, as when a file is opened. The pack holding
+		// the database can't go alone: unloading it closes everything.
+		bool unloadPack(attrib::LoadedPack& pack);
 		// How a compressed pack (gameplay.lzc) is saved: JDLZ as retail files are,
 		// HUFF, or RAWW (stored). It starts as the file is; a change is an undo step.
 		void setPackCompression(attrib::LoadedPack& pack, attrib::LzKind kind);
@@ -675,7 +680,25 @@ namespace app
 							 uint32_t structOff, bool editable);
 		bool drawArrayRows(EditEnv& env, const std::string& label, attrib::Attribute& a, const ValueType& vt, bool editable,
 						   const RowExtras& extras);
-		void rowDecorations(const RowExtras* extras, const std::string& label);
+		// What a row's Copy Value and Copy Name and Value take: `count` values of
+		// `type` in `block` from `off`, `stride` apart, each with "[i]" after the
+		// row's path when `indexed` (an array's or a pointer's elements). No
+		// block: nothing to copy (a field that isn't set).
+		struct RowCopy
+		{
+			const attrib::DataBlock* block = nullptr;
+			uint32_t off = 0, stride = 0, count = 1;
+			const ValueType* type = nullptr;
+			attrib::Endian endian = attrib::Endian::Little;
+			bool indexed = false;
+		};
+		// The tooltip and the right-click menu of a row's name cell.
+		void rowDecorations(const RowExtras* extras, const std::string& label, const RowCopy& copy);
+		void rowCopyItems(const std::string& path, const RowCopy& copy, bool field);
+		// A row's path from its field ("Checkpoint[3].mPosition"): rowPath_ holds
+		// the labels of the rows it is under.
+		std::string rowPath(const std::string& label) const;
+		std::vector<std::string> rowPath_;
 		void applyPendingEdit();
 		void stepHistory(int delta);
 		void jumpHistory(int pos); // to that entry of the active tab's history
@@ -805,7 +828,7 @@ namespace app
 			None, NewChild, Rename, Delete, ConfirmClose, ConfirmCloseAll, ConfirmReplace, About,
 			GameplayNew, GameplayDuplicate, GameplayDelete, NewState, NewHandler, MoveToVault,
 			ApplyScript, ExportChanges, ExportFields, NfsmsSetup, ChooseTarget, DeleteClass,
-			NewVault, RenameVault, DeleteVault, NewEventVault
+			NewVault, RenameVault, DeleteVault, NewEventVault, UnloadPack
 		};
 		void request(Pending p, attrib::Collection* target = nullptr);
 		void requestNew(attrib::ClassDef* cls, attrib::Collection* parent);
@@ -1064,7 +1087,7 @@ namespace app
 		attrib::Collection* pendingTarget_ = nullptr;
 		attrib::ClassDef* pendingClass_ = nullptr;
 		attrib::Vault* pendingVault_ = nullptr;
-		attrib::LoadedPack* pendingPack_ = nullptr; // New Vault's pack
+		attrib::LoadedPack* pendingPack_ = nullptr; // New Vault's pack, or the one to unload
 		std::string pendingPath_;
 		std::string nameInput_;
 		// State Graph Builder.

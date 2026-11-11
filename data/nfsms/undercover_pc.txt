@@ -14,7 +14,8 @@
 #
 # NFS-VltEd's Undercover is the PC game, the current-generation one (PC, 360). Its
 # Wii and PS2 versions are another game on Carbon's engine with mostly other types
-# (the "# not on wii" comments). This script lays the PC's types out from
+# (the "# not on wii" comments), and its 360 alpha (build 161) sizes seven types
+# otherwise (the "x360 alpha" comments). This script lays the PC's types out from
 # nfs-data/SpeedDebugOpt-enUS.h (the 360 debug build, member order only) at the PC's
 # alignment, checked against the PC type table's sizes, as
 # data/schema/undercover_pc.txt does, and the paths name those members.
@@ -285,6 +286,7 @@ type CameraCurveReactionRecord
   13 48 :i32 mCurve.allocatedMemory
   # not on wii: its files have no CameraCurveReactionRecord
   # not on ps2: no struct CameraCurveReactionRecord in undercover_ps2.txt, so the paths don't resolve there
+  # not on x360 alpha: its files have no CameraCurveReactionRecord
 end
 
 type CameraReactionRecord
@@ -438,6 +440,7 @@ type CollisionReactionRecord
   # not on wii: 24 bytes there, not 16
   # not on ps2: word Elasticity (Restitution): no member Restitution in CollisionReactionRecord
   # not on ps2: 24 bytes there, not 16
+  # on x360 alpha: 24 bytes there, not 16; every word has a path that resolves
 end
 
 type COLLISIONSFX_LAYERS
@@ -947,6 +950,7 @@ type FEVinylGroupInfo
   5 16 :u32 price
   # not on wii: its files have no FEVinylGroupInfo
   # not on ps2: no struct FEVinylGroupInfo in undercover_ps2.txt, so the paths don't resolve there
+  # not on x360 alpha: its files have no FEVinylGroupInfo
 end
 
 type FFBWaveRecord
@@ -1127,6 +1131,8 @@ type HighwayPatternCarData
   Unk 24 :i32 mChangeDist
   # not on wii: its files have no HighwayPatternCarData
   # not on ps2: no struct HighwayPatternCarData in undercover_ps2.txt, so the paths don't resolve there
+  # not on x360 alpha: word Unk (mChangeDist): no member mChangeDist in HighwayPatternCarData
+  # not on x360 alpha: 24 bytes there, not 28
 end
 
 type ICEContextIDs
@@ -1176,6 +1182,7 @@ type LightFlash
   2 4 :f32 mDuration
   # not on wii: its files have no LightFlash
   # not on ps2: no struct LightFlash in undercover_ps2.txt, so the paths don't resolve there
+  # not on x360 alpha: its files have no LightFlash
 end
 
 type MovieVolume
@@ -1354,6 +1361,7 @@ type PhysicsUpgrade
   BlendingPower 8 :f32 mBlendingPower
   # not on wii: its files have no PhysicsUpgrade
   # not on ps2: no struct PhysicsUpgrade in undercover_ps2.txt, so the paths don't resolve there
+  # on x360 alpha: 20 bytes there, not 12; every word has a path that resolves
 end
 
 type PresetRideAutosculpt
@@ -1388,6 +1396,8 @@ type PresetRidePaint
   8 28 :u32 mMaterialFlags
   # not on wii: its files have no PresetRidePaint
   # not on ps2: no struct PresetRidePaint in undercover_ps2.txt, so the paths don't resolve there
+  # not on x360 alpha: word 8 (mMaterialFlags): no member mMaterialFlags in PresetRidePaint
+  # not on x360 alpha: 28 bytes there, not 32
 end
 
 type PresetRidePart
@@ -1414,6 +1424,8 @@ type PresetRideRandomPaint
   Chance 32 :f32 chance
   # not on wii: its files have no PresetRideRandomPaint
   # not on ps2: no struct PresetRideRandomPaint in undercover_ps2.txt, so the paths don't resolve there
+  # not on x360 alpha: word 8 (paint.mMaterialFlags): no member mMaterialFlags in PresetRidePaint
+  # not on x360 alpha: 32 bytes there, not 36
 end
 
 type RenderReflect::cBlendStateAttribDefinition
@@ -1552,6 +1564,10 @@ type RenderReflect::cSamplerStateAttribDefinition
   16 60 :i32 mDoGammaCorrectionPS3
   # not on wii: its files have no RenderReflect::cSamplerStateAttribDefinition
   # not on ps2: no struct RenderReflect::cSamplerStateAttribDefinition in undercover_ps2.txt, so the paths don't resolve there
+  # not on x360 alpha: word 13 (mBrilinearSlope): no member mBrilinearSlope in RenderReflect::cSamplerStateAttribDefinition
+  # not on x360 alpha: word 15 (mConv): no member mConv in RenderReflect::cSamplerStateAttribDefinition
+  # not on x360 alpha: word 16 (mDoGammaCorrectionPS3): no member mDoGammaCorrectionPS3 in RenderReflect::cSamplerStateAttribDefinition
+  # not on x360 alpha: 52 bytes there, not 64
 end
 
 type RoadblockSetup
@@ -1695,6 +1711,7 @@ type Sound::JittererParams
   8 14 :u16 Multiplier+2
   # not on wii: its files have no Sound::JittererParams
   # not on ps2: no struct Sound::JittererParams in undercover_ps2.txt, so the paths don't resolve there
+  # not on x360 alpha: its files have no Sound::JittererParams
   # note: NFS-VltEd reads the value as eight u16s; the game's struct is four floats (SpeedDebugOpt-enUS.h), so each word sets half of one.
 end
 
@@ -1762,6 +1779,11 @@ type Sound::SirenTuning
   17 64 :f32 PriorityRadius_Online
   # not on wii: its files have no Sound::SirenTuning
   # not on ps2: no struct Sound::SirenTuning in undercover_ps2.txt, so the paths don't resolve there
+  # not on x360 alpha: word 14 (MaxWailing): no member MaxWailing in Sound::SirenTuning
+  # not on x360 alpha: word 15 (MaxYelping): no member MaxYelping in Sound::SirenTuning
+  # not on x360 alpha: word 16 (MaxPriorityCount): no member MaxPriorityCount in Sound::SirenTuning
+  # not on x360 alpha: word 17 (PriorityRadius_Online): no member PriorityRadius_Online in Sound::SirenTuning
+  # not on x360 alpha: 52 bytes there, not 68
 end
 
 type SPCHType_1_EventID

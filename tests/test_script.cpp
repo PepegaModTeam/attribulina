@@ -772,7 +772,8 @@ TEST("script: Carbon's and the Wii's Undercover databases write as scripts and a
     auto load = [](const std::string& folder) {
         auto db = std::make_unique<Database>();
         for (const char* s :
-             {"prostreet_pc", "prostreet_ps2", "carbon_pc", "carbon_ps2", "carbon_x360", "carbon_ps2_demo", "undercover_wii", "undercover_ps2"})
+             {"prostreet_pc", "prostreet_ps2", "carbon_pc", "carbon_ps2", "carbon_x360", "carbon_x360_demo", "carbon_ps2_demo", "undercover_wii",
+              "undercover_ps2"})
             db->addTypeSchema(TypeSchema::Load(test::DataPath(std::string("data/schema/") + s + ".txt")));
         db->names().loadFile(test::DataPath("data/attrib_keys.txt"));
         for (const FolderFile& f : FolderPacks(test::DataPath("attrib/databases/" + folder)))
@@ -798,13 +799,14 @@ TEST("script: Carbon's and the Wii's Undercover databases write as scripts and a
     changed.push_back({"pvehicle", "be_car"});
     std::string pcBefore, pcAfter;
     // Handlers left as bytes: JDLZ blocks whose last byte holds whatever the
-    // encoder read past its input. The 360's files are a late demo (Most
-    // Wanted's vault layout, older data), so the edits skip it.
+    // encoder read past its input. The 360's late demo has Most Wanted's
+    // vault layout and older data, so the edits skip it.
     const std::vector<std::pair<std::string, size_t>> folders = {
         {"pc/carbon-vanilla", 2},       {"ps3/carbon-vanilla", 2},      {"wii/carbon-vanilla", 2},
-        {"ps2/carbon-vanilla", 2},      {"gamecube/carbon-vanilla", 2}, {"wii/undercover-vanilla", 4},
-        {"360/carbon-latedemo", 2}};
+        {"ps2/carbon-vanilla", 2},      {"gamecube/carbon-vanilla", 2}, {"360/carbon-vanilla", 2},
+        {"wii/undercover-vanilla", 4},  {"360/carbon-latedemo", 2}};
     for (const auto& [folder, handlersAsBytes] : folders) {
+        if (!std::filesystem::exists(test::DataPath("attrib/databases/" + folder))) continue;
         auto db = load(folder);
         const bool carbon = db->target().game == Game::Carbon && folder.find("demo") == std::string::npos;
         for (const auto& p : db->packs())
@@ -839,6 +841,22 @@ TEST("script: Carbon's and the Wii's Undercover databases write as scripts and a
             std::vector<const Collection*> fly = {&Col(*clone, "controller", "fly")};
             CHECK(sc::Print(sc::NewScript(*clone, sc::Export(*clone, fly))).find("mDeviceID = \"ALX_R\"") != std::string::npos);
         }
+        if (folder == "360/carbon-vanilla" || folder == "ps2/carbon-vanilla" || folder == "gamecube/carbon-vanilla") {
+            // The 20-byte SteeringSensitivityParameter of the retail 360, the PS2
+            // and the GameCube: the PC's members without the dead zones,
+            // NumberOfSteps a u16 at +16.
+            std::vector<const Collection*> drive = {&Col(*clone, "controller", "drive")};
+            const std::string t = sc::Print(sc::NewScript(*clone, sc::Export(*clone, drive)));
+            CHECK(t.find("NumberOfSteps = 2") != std::string::npos);
+            CHECK(t.find("CurveMultiplierHighSpeed = 1") != std::string::npos);
+            CHECK(t.find("InnerDeadZone") == std::string::npos);
+            CHECK_OK(Run(*clone, "attribulina 1\nedit controller/drive { LowSensitivitySteeringParameters.NumberOfSteps = 7 }\n"));
+            const Attribute& a = Own(Col(*clone, "controller", "drive"), "LowSensitivitySteeringParameters");
+            CHECK_EQ(a.elemSize, 20u);
+            const Endian e = Col(*clone, "controller", "drive").vault->raw.endian;
+            CHECK(e == (folder == "ps2/carbon-vanilla" ? Endian::Little : Endian::Big));
+            CHECK_EQ(load32(a.data.bytes.data() + 16, e), e == Endian::Big ? 0x00070000u : 7u);
+        }
         if (!carbon) continue;
 
         // The edits, without a warning, read back as on PC.
@@ -852,7 +870,8 @@ TEST("script: Carbon's and the Wii's Undercover databases write as scripts and a
         // Written out and read again, nothing differs.
         Database again;
         again.setTarget(clone->target());
-        for (const char* s : {"carbon_pc", "carbon_ps2"}) again.addTypeSchema(TypeSchema::Load(test::DataPath(std::string("data/schema/") + s + ".txt")));
+        for (const char* s : {"carbon_pc", "carbon_ps2", "carbon_x360"})
+            again.addTypeSchema(TypeSchema::Load(test::DataPath(std::string("data/schema/") + s + ".txt")));
         again.names().loadFile(test::DataPath("data/attrib_keys.txt"));
         for (const auto& p : clone->packs()) again.loadPack(p->path, WritePack(*clone, *p));
         CHECK_EQ(Changes(sc::Diff(*clone, again)), size_t(0));
@@ -930,6 +949,78 @@ TEST("script: current-gen Undercover's databases (360, PC) write as scripts and 
         for (const auto& p : clone->packs()) again.loadPack(p->path, WritePack(*clone, *p));
         CHECK_EQ(Changes(sc::Diff(*clone, again)), size_t(0));
     }
+}
+
+TEST("script: Undercover's 360 alpha writes as a script and applies back unchanged; the types it sizes otherwise edit by their "
+     "members") {
+    const std::string dir = test::DataPath("attrib/databases/360/undercover-alpha161");
+    if (!std::filesystem::exists(dir)) return;
+    auto load = [&] {
+        auto db = std::make_unique<Database>();
+        for (const char* s : {"undercover_wii", "undercover_ps2", "undercover_pc", "undercover_x360_alpha"})
+            db->addTypeSchema(TypeSchema::Load(test::DataPath(std::string("data/schema/") + s + ".txt")));
+        db->names().loadFile(test::DataPath("data/attrib_keys.txt"));
+        for (const FolderFile& f : FolderPacks(dir))
+            if (f.skipped.empty()) db->loadPack(f.path);
+        return db;
+    };
+    auto db = load();
+    CHECK(db->typeSchema() && db->typeSchema()->source.find("undercover_x360_alpha.txt") != std::string::npos);
+    auto clone = sc::CloneDatabase(*db);
+    std::vector<const Collection*> all;
+    for (const auto& cls : db->classes())
+        for (const Collection* c : cls->collections) all.push_back(c);
+    const std::string text = sc::Print(sc::NewScript(*db, sc::Export(*db, all)));
+    CHECK(text.find("\ngame undercover_x360\n") != std::string::npos);
+    // Its 207 handlers come out as Lua 5.1 source.
+    size_t asBytes = 0, asLua = 0;
+    for (size_t at = text.find("bytecode = bytes"); at != std::string::npos; at = text.find("bytecode = bytes", at + 1)) ++asBytes;
+    for (size_t at = text.find("bytecode = lua"); at != std::string::npos; at = text.find("bytecode = lua", at + 1)) ++asLua;
+    CHECK_EQ(asBytes, size_t(0));
+    CHECK_EQ(asLua, size_t(207));
+    // The alpha's own layouts, by their members.
+    CHECK(text.find("mZFunc = ") != std::string::npos);
+    CHECK(text.find("mBrilinearSlope") == std::string::npos);
+    CHECK(text.find("LoopXFadeRange = [10, 150]") != std::string::npos);
+    CHECK(text.find("StunTime = ") != std::string::npos);
+    const sc::ApplyReport back = sc::Apply(*clone, sc::Parse(text, "everything.amod"));
+    CHECK_OK(back);
+    if (back.summary() != "no changes") std::fprintf(stderr, "%s\n", sc::Print(sc::Diff(*db, *clone)).substr(0, 3000).c_str());
+    CHECK_EQ(back.summary(), std::string("no changes"));
+    CHECK_EQ(back.warnings(), size_t(0));
+    for (size_t i = 0; i < db->packs().size(); ++i) CHECK(WritePack(*clone, *clone->packs()[i]) == WritePack(*db, *db->packs()[i]));
+
+    const sc::ApplyReport r = Run(*clone, "attribulina 1\n"
+                                          "game undercover_x360\n"
+                                          "edit pursuitaudio/default { SirenTune.LoopXFadeRange[1] = 160 }\n"
+                                          "edit highway_pattern/light7 { CarsInPattern[1].mChange = LANECHG_RIGHT }\n"
+                                          "edit presetride/terlingua { Paints[0].mVariance = 0.5 }\n"
+                                          "edit physics_upgrade_set/nos { PhysicsUpgrades[0].mMemberIndex = 3 }\n");
+    CHECK_OK(r);
+    CHECK_EQ(r.warnings(), size_t(0));
+    const Endian e = Endian::Big;
+    auto f32 = [&](const uint8_t* p) {
+        const uint32_t w = load32(p, e);
+        float f;
+        std::memcpy(&f, &w, 4);
+        return f;
+    };
+    CHECK(f32(Own(Col(*clone, "pursuitaudio", "default"), "SirenTune").data.bytes.data() + 48) == 160.0f);
+    const Attribute& cars = Own(Col(*clone, "highway_pattern", "light7"), "CarsInPattern");
+    CHECK_EQ(cars.elemSize, 24u);
+    CHECK_EQ(load32(cars.elem(1) + 20, e), 2u);
+    const Attribute& paints = Own(Col(*clone, "presetride", "terlingua"), "Paints");
+    CHECK_EQ(paints.elemSize, 28u);
+    CHECK(f32(paints.elem(0) + 24) == 0.5f);
+    CHECK_EQ(load32(Own(Col(*clone, "physics_upgrade_set", "nos"), "PhysicsUpgrades").elem(0) + 12, e), 3u);
+    // Written out and read again, nothing differs.
+    Database again;
+    again.setTarget(clone->target());
+    again.addTypeSchema(TypeSchema::Load(test::DataPath("data/schema/undercover_pc.txt")));
+    again.addTypeSchema(TypeSchema::Load(test::DataPath("data/schema/undercover_x360_alpha.txt")));
+    again.names().loadFile(test::DataPath("data/attrib_keys.txt"));
+    for (const auto& p : clone->packs()) again.loadPack(p->path, WritePack(*clone, *p));
+    CHECK_EQ(Changes(sc::Diff(*clone, again)), size_t(0));
 }
 
 TEST("script: World's databases (the final build and its betas, event vaults too) write as scripts and apply back unchanged; "

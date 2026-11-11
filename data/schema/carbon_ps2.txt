@@ -2541,6 +2541,15 @@ struct ControllerDataRecord 20 4
   mUpperDZ float 16
 end
 
+# source: carbon_ps2_x360_types.h (natural PS2 layout; size matches the PS2 type table)
+struct SteeringSensitivityParameter 20 4
+  CurveStyle eSteeringCurveStyle 0
+  CurvePower float 4
+  CurveMultiplierLowSpeed float 8
+  CurveMultiplierHighSpeed float 12
+  NumberOfSteps uint16 16
+end
+
 struct FFBWaveRecord 32 4
   Frequency_A float 0
   Amplitude_A float 4

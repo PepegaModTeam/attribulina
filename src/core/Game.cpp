@@ -32,11 +32,13 @@ namespace attrib
 		// each supported platform, and tests/test_nfsms.cpp checks every word leads
 		// to the same member on each), its Vers values below, then list the platform
 		// in `supported`. The Game and Platform prompt lists every game already.
-		// Pro Street's PS3 files, Carbon's retail 360 files and its Xbox files, and
-		// Undercover's PS2 and PS3 files haven't been seen; Carbon's 360 schema comes
-		// from a demo made after release. Undercover's PS3 may share the 360's Vers
-		// value (it would be detected as the 360), so it stays unsupported until its
-		// files show what tells them apart.
+		// Pro Street's PS3 files, Carbon's Xbox files, and Undercover's PS2 and PS3
+		// files haven't been seen. Carbon's retail 360 files carry its PS2's and
+		// GameCube's Vers value and the PC's layouts; a demo made after release has
+		// older ones (carbon_x360_demo.txt). Undercover's 360 alpha (build 161) has
+		// a schema of its own (undercover_x360_alpha.txt). Undercover's PS3 may share
+		// the 360's Vers value (it would be detected as the 360), so it stays
+		// unsupported until its files show what tells them apart.
 		const std::vector<GameInfo> kGames = {
 			// The 360's and the PS2's files here are betas.
 			{Game::MostWanted, "mw", "Most Wanted", {P::PC, P::PS2, P::Xbox, P::Xbox360, P::GameCube}, {P::PC, P::PS2, P::Xbox, P::Xbox360, P::GameCube}},
@@ -70,9 +72,11 @@ namespace attrib
 			Game game;
 			Platform platform;
 			// For files that share a value and byte order: a class attributes.bin
-			// has (or, with `without`, lacks) on this platform.
+			// has (or, with `without`, lacks) on this platform,
 			uint32_t classKey = 0;
 			bool without = false;
+			// or the width of EA::Reflection::Bool in its type table.
+			uint32_t boolSize = 0;
 		};
 
 		constexpr uint32_t kPipEventTrigger = 0x4D25C5ACu; // StringHash32("pip_event_trigger")
@@ -84,12 +88,14 @@ namespace attrib
 		// hold two). The game never checks it: it only sends it to Attribulator's live
 		// link, as "AttribSys.<platform>\<16 hex digits>". It follows the schema's
 		// fields, not a platform's layouts: Pro Street's PS2 files (4-byte bools) and
-		// Wii files (the PC's layouts) share one. Byte order tells most pairs apart
-		// (Pro Street's PC and 360 files, Carbon's PS2 and GameCube files). Carbon's
-		// Wii and PS3 files share a value and byte order, and only the PS3's
-		// attributes.bin has the picture-in-picture classes. A platform with no files
-		// there (Pro Street and Undercover on PS3, Carbon's retail 360 and Xbox files)
-		// may share a value too, and would be detected as the platform listed here.
+		// Wii files (the PC's layouts) share one, and Carbon's PS2, GameCube and 360
+		// files another. Byte order tells most pairs apart (Pro Street's PC and 360
+		// files, Carbon's PS2 and GameCube files). Carbon's Wii and PS3 files share a
+		// value and byte order (only the PS3's attributes.bin has the
+		// picture-in-picture classes), and so do its GameCube and 360 files (the
+		// GameCube's bools are 4 bytes). A platform with no files there (Pro Street
+		// and Undercover on PS3, Carbon's Xbox files) may share a value too, and
+		// would be detected as the platform listed here.
 		constexpr KnownVersion kKnownVersions[] = {
 			{0xD0A78AB8BE7F5412ull, Endian::Little, Game::ProStreet, P::PC},
 			{0xD0A78AB8BE7F5412ull, Endian::Big, Game::ProStreet, P::Xbox360},
@@ -99,7 +105,8 @@ namespace attrib
 			{0x2217DA39ED2E3778ull, Endian::Big, Game::Carbon, P::Wii, kPipEventTrigger, true},
 			{0x2217DA39ED2E3778ull, Endian::Big, Game::Carbon, P::PS3, kPipEventTrigger},
 			{0x672CE560AA76F3B3ull, Endian::Little, Game::Carbon, P::PS2},
-			{0x672CE560AA76F3B3ull, Endian::Big, Game::Carbon, P::GameCube},
+			{0x672CE560AA76F3B3ull, Endian::Big, Game::Carbon, P::GameCube, 0, false, 4},
+			{0x672CE560AA76F3B3ull, Endian::Big, Game::Carbon, P::Xbox360, 0, false, 1},
 			{0x9D112D3EEB4C5396ull, Endian::Little, Game::Carbon, P::PS2},     // the PS2 demo: attributes.bin,
 			{0xF649D472EE93BDB5ull, Endian::Little, Game::Carbon, P::PS2},     // FE_ATTRIB.bin
 			{0xDD773A275FF41CFFull, Endian::Little, Game::Carbon, P::PS2},     // and gameplay.bin
@@ -108,6 +115,7 @@ namespace attrib
 			{0x1445379ED96333E1ull, Endian::Little, Game::Undercover, P::PC},
 			{0x8364A394EF316ABDull, Endian::Big, Game::Undercover, P::Xbox360},
 			{0xCE50492389B94950ull, Endian::Big, Game::Undercover, P::Xbox360}, // its gameplay.bin
+			{0x482E894A9E6DE7F2ull, Endian::Big, Game::Undercover, P::Xbox360}, // an alpha, build 161
 			{0x0E657D8D9C499917ull, Endian::Big, Game::Undercover, P::Wii},     // Carbon's engine
 			// Not seen: the PS2's is the Wii's game, the only little-endian one, and
 			// the PS2's and the Wii's (or GameCube's) files share a value in Pro
@@ -348,15 +356,21 @@ namespace attrib
 			if (c.version)
 			{
 				std::vector<Target> hits;
-				bool byClass = false;
+				bool byClass = false, byBools = false;
 				for (const KnownVersion& k : kKnownVersions)
 				{
 					if (k.value != *c.version || k.endian != *c.endian) continue;
-					// A class that tells platforms apart, when attributes.bin was read.
+					// A class or the bool width that tells platforms apart, when
+					// attributes.bin was read.
 					if (k.classKey && c.typeTable)
 					{
 						if ((c.classes.count(k.classKey) != 0) == k.without) continue;
 						byClass = true;
+					}
+					if (k.boolSize && c.boolSize)
+					{
+						if (k.boolSize != c.boolSize) continue;
+						byBools = true;
 					}
 					hits.push_back({ k.game, k.platform });
 				}
@@ -366,6 +380,7 @@ namespace attrib
 					d.target = hits.front();
 					d.certain = true;
 					if (byClass) vers += std::string(", its classes are ") + InfoOf(d.target.platform).name + "'s";
+					if (byBools) vers += ", " + std::to_string(c.boolSize) + "-byte bools, as on the " + InfoOf(d.target.platform).name;
 					d.reason = vers;
 					return d;
 				}

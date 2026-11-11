@@ -1075,6 +1075,63 @@ namespace app
 				: "An empty vault in this file. Collections go in with Move to Vault, or by choosing\n"
 				"it when you make one.");
 		if (eventFile && canMakeEventVaults()) drawNewEventVaultItem();
+		ImGui::Separator();
+		// Deferred to a prompt: the Files tree is walking the packs while this menu is open.
+		const std::string problem = db_ ? db_->unloadProblem(pack) : std::string();
+		const bool database = std::any_of(pack.vaults.begin(), pack.vaults.end(), [](const auto& v) { return v->isDatabase; });
+		if (ImGui::MenuItem(database ? "Unload (Closes All)..." : "Unload...", nullptr, false, database || problem.empty()))
+		{
+			request(Pending::UnloadPack);
+			pendingPack_ = &pack;
+		}
+		if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+			ImGui::SetTooltip("%s", database ? "It holds the database's types and classes, which every other file needs.\n"
+										   "Unloading it closes them all."
+				: !problem.empty() ? ("It can't be unloaded alone, since " + problem + ".").c_str()
+				: "Takes it out of the editor with its collections. The file stays as it is.");
+	}
+
+	bool App::unloadPack(LoadedPack& pack)
+	{
+		if (!db_ || std::none_of(db_->packs().begin(), db_->packs().end(), [&](const auto& p) { return p.get() == &pack; })) return false;
+		const std::string path = pack.path;
+		if (std::any_of(pack.vaults.begin(), pack.vaults.end(), [](const auto& v) { return v->isDatabase; }))
+		{
+			closeAll();
+			log(LogLevel::Info, "Unloaded " + path + ", which holds the database, and with it every other file");
+			return true;
+		}
+		if (const std::string problem = db_->unloadProblem(pack); !problem.empty())
+		{
+			log(LogLevel::Error, "Could not unload " + path + ": " + problem);
+			return false;
+		}
+		size_t collections = 0;
+		for (const auto& v : pack.vaults)
+		{
+			for (Collection* c : v->collections) forgetCollection(c, nullptr, false);
+			collections += v->collections.size();
+			if (pendingVault_ == v.get()) pendingVault_ = nullptr;
+		}
+		if (pendingPack_ == &pack) pendingPack_ = nullptr;
+		const size_t vaults = pack.vaults.size();
+		if (const std::string problem = db_->unloadPack(pack); !problem.empty())
+		{
+			log(LogLevel::Error, "Could not unload " + path + ": " + problem);
+			return false;
+		}
+		// Not a file Save All removes, and not a change for the recorder.
+		savedPacks_.erase(path);
+		savedCompression_.erase(path);
+		structureChanged();
+		recordBase_.reset();
+		recordDirty_.clear();
+		recordStructure_ = false;
+		resetUndo(); // as after opening a file: the history starts from what is open now
+		updateTitle();
+		log(LogLevel::Info, "Unloaded " + path + ", its " + std::to_string(vaults) + " vault" + (vaults == 1 ? "" : "s") + " and " +
+			std::to_string(collections) + " collection" + (collections == 1 ? "" : "s") + ". The file is as it was.");
+		return true;
 	}
 
 	void App::drawVaultItems(Vault& vault)
@@ -1350,6 +1407,82 @@ namespace app
 				ImGui::EndDisabled();
 				ImGui::SameLine();
 				if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape)) done();
+			}
+			ImGui::EndPopup();
+		}
+
+		if (begin("Unload File"))
+		{
+			LoadedPack* pk = pendingPack_;
+			const bool open = db_ && pk && std::any_of(db_->packs().begin(), db_->packs().end(), [&](const auto& p) { return p.get() == pk; });
+			if (!open)
+			{
+				done();
+			}
+			else
+			{
+				const bool database = std::any_of(pk->vaults.begin(), pk->vaults.end(), [](const auto& v) { return v->isDatabase; });
+				size_t collections = 0, inheriting = 0;
+				for (const auto& v : pk->vaults)
+				{
+					collections += v->collections.size();
+					for (const Collection* c : v->collections)
+						for (const Collection* ch : c->children) inheriting += ch->vault && ch->vault->pack != pk;
+				}
+				// What unloading drops unsaved: this pack, or (for the database) every one.
+				const bool unsaved = database ? hasUnsavedChanges() : pk->dirty;
+				ImGui::Text("Unload %s?", FileOf(*pk).c_str());
+				if (database)
+				{
+					ImGui::TextColored(kWarn, "It holds the database's types and classes, which every other file needs,\n"
+						"so unloading it closes every file.");
+				}
+				else
+				{
+					ImGui::TextDisabled("Its %zu vault%s and %zu collection%s leave the editor. The file stays as it is.", pk->vaults.size(),
+						pk->vaults.size() == 1 ? "" : "s", collections, collections == 1 ? "" : "s");
+					if (inheriting)
+						ImGui::TextColored(kWarn, "%zu collection%s in other files inherit%s from its collections and keep%s the parent's\n"
+							"name, without its values, until the file is open again.",
+							inheriting, inheriting == 1 ? "" : "s", inheriting == 1 ? "s" : "", inheriting == 1 ? "s" : "");
+					ImGui::TextDisabled("Undo starts again from here, as when a file is opened.");
+				}
+				if (unsaved) ImGui::TextColored(kWarn, database ? "Some files have unsaved changes." : "It has unsaved changes.");
+				bool save = false, discard = false, unload = false, cancel = false;
+				if (unsaved)
+				{
+					// As in every prompt about unsaved changes: Save, Cancel, Discard,
+					// with the keyboard on Cancel.
+					save = ImGui::Button(database ? "Save All and Close" : "Save and Unload");
+					ImGui::SameLine();
+					if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
+					cancel = ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape);
+					cancel |= CancelKey();
+					ImGui::SameLine(0, ImGui::GetFontSize() * 2);
+					discard = ImGui::Button(database ? "Discard and Close" : "Discard and Unload");
+				}
+				else
+				{
+					unload = ImGui::Button(database ? "Close All" : "Unload");
+					ImGui::SameLine();
+					cancel = ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape);
+					if (ConfirmKey()) unload = true;
+				}
+				if (save)
+				{
+					const bool ok = database ? saveAll() : savePackAs(*pk, pk->path);
+					done();
+					if (ok) unloadPack(*pk);
+				}
+				else if (discard || unload)
+				{
+					done();
+					unloadPack(*pk);
+				}
+				else if (cancel)
+				{
+					done();
+				}
 			}
 			ImGui::EndPopup();
 		}

@@ -19,12 +19,25 @@ namespace app
 		Values, Fields, References
 	};
 
+	// The hash a 0x... query stands for when it is matched against text and
+	// names: "0xBD014895" finds HELLO as StringHash32, "0x02E8DF33" as
+	// bStringHash. Values stored as that number are found either way.
+	enum class SearchHash
+	{
+		StringHash32, BinHash
+	};
+
 	struct SearchQuery
 	{
 		SearchMode mode = SearchMode::Values;
-		// Values: the value to look for (text, a name, a number, 0x...).
+		// Values: the value to look for (text, a name, a number, 0x...). A
+		// collection's own name and its parent count as values of it: hits with
+		// `where` "(name)" and "parent" (the parent only when the text names it
+		// whole). A name nobody knows is its hash, "0x" and 8 hex digits.
 		// Fields: part of a field name. References: unused (see refClass).
 		std::string text;
+		// Values and Fields: what a 0x... query is the hash of (SearchHash).
+		SearchHash hexHash = SearchHash::StringHash32;
 		// Values: the whole value must equal the text instead of containing it.
 		// Fields: the whole field name must match.
 		bool wholeValue = false;
@@ -44,7 +57,8 @@ namespace app
 		// (References: a child of the target).
 		uint32_t field = 0;
 		// Field name with the element and member path ("Checkpoint[3].mPosition"),
-		// or "parent" for a child of the target.
+		// "parent" for a child of the target (or of a collection a Values query
+		// names), "(name)" for a collection whose own name matched.
 		std::string where;
 		std::string value; // the value as the inspector would summarize it
 	};
@@ -62,6 +76,17 @@ namespace app
 	};
 
 	SearchResult RunSearch(const attrib::Database& db, const SearchQuery& q);
+
+	// Every value under one, as the inspector's rows show them, for copying:
+	// the path of each (`path` names the value itself; its struct members follow
+	// as "path.member", elements as "path[3]", a pointer's one value as
+	// "path[0]") and its text (FormatValueInFull). A plain value is one line.
+	struct ValueLine
+	{
+		std::string path, value;
+	};
+	std::vector<ValueLine> ValueLines(const attrib::Database& db, const attrib::DataBlock& b, uint32_t off, const ValueType& vt,
+		attrib::Endian e, const std::string& path);
 
 	// "class/collection" or "class" (names, or 0x... hashes) to a References
 	// target: key is 0 for a class. False when the class isn't in the database

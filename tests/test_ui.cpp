@@ -135,8 +135,11 @@ TEST("ui: Pro Street's console folders, Carbon's, Undercover's, Most Wanted's (i
                             Folder{"wii/carbon-vanilla", "carbon_wii", "carbon_pc"},
                             Folder{"ps2/carbon-vanilla", "carbon_ps2", "carbon_ps2"},
                             Folder{"gamecube/carbon-vanilla", "carbon_gamecube", "carbon_ps2"},
+                            Folder{"360/carbon-vanilla", "carbon_x360", "carbon_x360.txt"},
                             Folder{"wii/undercover-vanilla", "undercover_wii", "undercover_wii"},
                             Folder{"360/undercover-vanilla", "undercover_x360", "undercover_pc"},
+                            // Its gameplay.lzc is RFPK: saved as RFPK, with its .bin twin.
+                            Folder{"360/undercover-alpha161", "undercover_x360", "undercover_x360_alpha"},
                             Folder{"pc/undercover-vanilla", "undercover_pc", "undercover_pc", false},
                             Folder{"gamecube/mw-vanilla", "mw_gamecube", "mw_gamecube"},
                             Folder{"xbox/mw-early-oxm-betademo", "mw_xbox", "mw_xbox_demo"},
@@ -192,8 +195,13 @@ TEST("ui: Pro Street's console folders, Carbon's, Undercover's, Most Wanted's (i
             if (!e.is_regular_file()) continue;
             // A saved .lzc is compressed again: the pack inside is the same.
             const Bytes saved = ReadFile((tmp / fs::relative(e.path(), from)).string()), original = ReadFile(e.path().string());
-            if (ParseLzHeader(original)) CHECK(Decompress(saved) == Decompress(original));
-            else CHECK(saved == original);
+            if (const auto h = ParseLzHeader(original)) {
+                CHECK(Decompress(saved) == Decompress(original));
+                // The game's RefPack encoder gives the alpha's file back whole.
+                if (h->kind == LzKind::Rfpk) CHECK(saved == original);
+            } else {
+                CHECK(saved == original);
+            }
         }
         fs::remove_all(tmp);
     }
@@ -4116,6 +4124,47 @@ TEST("ui: File > Compression shows how gameplay.lzc is compressed; a change is a
     choose("RAWW");
     CHECK(a.undoLabels() == labels);
     CHECK(!a.hasUnsavedChanges());
+    // RefPack is offered only where a game is known to read it (Undercover) or the file has it.
+    auto openMenu = [&](app::App& app) {
+        ClickItem(imgui, app, probe.find("File"));
+        imgui.run(app, 1);
+        ClickItem(imgui, app, probe.find("Compression"));
+        imgui.run(app, 1);
+    };
+    openMenu(a);
+    CHECK(probe.find("HUFF") && !probe.find("RFPK"));
+    imgui.key(a, ImGuiKey_Escape);
+    imgui.run(a, 2);
+    for (const auto& c : probe.conflicts) std::printf("        ID conflict: %s\n", c.c_str());
+    CHECK(probe.conflicts.empty());
+}
+
+TEST("ui: File > Compression offers RFPK for Undercover's 360 alpha, whose gameplay.lzc has it") {
+    const std::string alpha = test::DataPath("attrib/databases/360/undercover-alpha161");
+    if (!std::filesystem::exists(alpha)) return;
+    platform::HeadlessImGui imgui;
+    imgui.beforeFrame = ProbeBefore;
+    imgui.afterFrame = ProbeAfter;
+    test::UiProbe& probe = test::UiProbe::get();
+    probe.conflicts.clear();
+    platform::HeadlessHost host;
+    app::App a(host);
+    a.setup(1.0f, "");
+    a.setUserKeysPath("");
+    CHECK(a.open(alpha));
+    if (!a.database()) return;
+    imgui.run(a, 2);
+    bool inFile = false;
+    for (const auto& pk : a.database()->packs())
+        if (pk->compression) inFile |= *pk->compression == LzKind::Rfpk && a.savedCompression(*pk) == LzKind::Rfpk;
+    CHECK(inFile);
+    ClickItem(imgui, a, probe.find("File"));
+    imgui.run(a, 1);
+    ClickItem(imgui, a, probe.find("Compression"));
+    imgui.run(a, 1);
+    CHECK(probe.find("RFPK") && probe.find("JDLZ"));
+    CHECK(!a.hasUnsavedChanges());
+    CHECK_EQ(Errors(a), size_t(0));
     for (const auto& c : probe.conflicts) std::printf("        ID conflict: %s\n", c.c_str());
     CHECK(probe.conflicts.empty());
 }
@@ -5476,4 +5525,293 @@ TEST("ui: World: a new event vault file is written by Save All; deleted from its
     for (const auto& c : probe.conflicts) std::printf("        ID conflict: %s\n", c.c_str());
     CHECK(probe.conflicts.empty());
     fs::remove_all(tmp);
+}
+
+TEST("ui: F12 in the Script panel and the nfsms window shows the value under the caret, its rows opened") {
+    platform::HeadlessImGui imgui;
+    imgui.beforeFrame = ProbeBefore;
+    imgui.afterFrame = ProbeAfter;
+    test::UiProbe& probe = test::UiProbe::get();
+    probe.conflicts.clear();
+    platform::HeadlessHost host;
+    app::App a(host);
+    a.setup(1.0f, "");
+    a.setUserKeysPath("");
+    CHECK(a.open(ProStreetDir() + "/ATTRIBUTES.BIN"));
+    Database* db = a.database();
+    Collection* ride = db->findCollection(StringHash32("presetride"), StringHash32("player_d_day"));
+    Collection* rev = db->findCollection(StringHash32("audio_revlimiter"), StringHash32("default"));
+    CHECK(ride && rev);
+    if (!ride || !rev) return;
+    // The caret on the value of line 3, then F12.
+    auto caretOn = [&](const char* editorId, const char* window, int line) {
+        const test::ProbeItem* editor = probe.find(editorId, window);
+        CHECK(editor);
+        if (!editor) return;
+        imgui.click(a, editor->rect.Min.x + 60, editor->rect.Min.y + 8);
+        imgui.run(a, 1);
+        imgui.key(a, ImGuiMod_Ctrl | ImGuiKey_Home);
+        for (int i = 1; i < line; ++i) imgui.key(a, ImGuiKey_DownArrow);
+        imgui.key(a, ImGuiKey_End);
+        imgui.run(a, 1);
+    };
+
+    a.setScriptText("attribulina 1\n"
+                    "edit presetride/player_d_day {\n"
+                    "    Parts[7].mKitNumber = 3\n"
+                    "}\n");
+    a.select(rev, true);
+    imgui.run(a, 2);
+    FrontTab(imgui, a, "Script");
+    imgui.run(a, 2);
+    caretOn("##script", "Script", 3);
+    CHECK(!probe.find("mKitNumber", "Collection")); // Parts is closed
+    imgui.key(a, ImGuiKey_F12);
+    imgui.run(a, 3);
+    CHECK(a.selection() == ride);
+    // Parts and its element 7 opened, and only that one.
+    CHECK(probe.find("mKitNumber", "Collection"));
+    CHECK_EQ(probe.count("mKitNumber", "Collection"), 1);
+    CHECK(a.scriptStatus().find("Parts[7].mKitNumber") != std::string::npos);
+
+    // nfsms: NFS-VltEd's word leads to the same member, on another element.
+    a.setNfsmsText("version 4.6\n"
+                   "game PS\n"
+                   "update_field presetride player_d_day Parts[2] KitNumber 3\n");
+    a.select(rev, true);
+    imgui.run(a, 2);
+    FrontTab(imgui, a, "Script (nfsms)");
+    imgui.run(a, 2);
+    caretOn("##nfsms", "Script (nfsms)", 3);
+    imgui.key(a, ImGuiKey_F12);
+    imgui.run(a, 3);
+    CHECK(a.selection() == ride);
+    CHECK(a.nfsmsStatus().find("Parts[2].mKitNumber") != std::string::npos);
+    CHECK(probe.find("mKitNumber", "Collection"));
+    for (const auto& c : probe.conflicts) std::printf("        ID conflict: %s\n", c.c_str());
+    CHECK(probe.conflicts.empty());
+}
+
+TEST("ui: Unload on a pack's menu in the Files tab takes it out; unsaved changes are saved or dropped first; the database's pack closes all") {
+    namespace fs = std::filesystem;
+    if (!fs::exists(ProStreetDir() + "/gameplay.lzc")) return;
+    // A copy: Save and Unload writes the pack.
+    const fs::path tmp = fs::temp_directory_path() / "attribulina_unload_test";
+    fs::remove_all(tmp);
+    fs::create_directories(tmp);
+    for (const char* f : {"ATTRIBUTES.BIN", "cars_vault.BIN", "FE_ATTRIB.BIN", "gameplay.lzc", "gameplay.bin"})
+        fs::copy_file(fs::path(ProStreetDir()) / f, tmp / f);
+    const std::string lzc = (tmp / "gameplay.lzc").string();
+    const Bytes lzcFile = ReadFile(lzc);
+    platform::HeadlessImGui imgui;
+    imgui.beforeFrame = ProbeBefore;
+    imgui.afterFrame = ProbeAfter;
+    test::UiProbe& probe = test::UiProbe::get();
+    probe.conflicts.clear();
+    platform::HeadlessHost host;
+    app::App a(host);
+    a.setup(1.0f, "");
+    a.setUserKeysPath("");
+    CHECK(a.open(tmp.string()));
+    if (!a.database()) return;
+    const size_t packs = a.database()->packs().size();
+    const uint32_t gp = StringHash32("gameplay"), race = StringHash32("prostreet_career/bins/race_bin_an_2_1/gr_1");
+    auto gameplayPack = [&]() -> LoadedPack* {
+        for (const auto& p : a.database()->packs())
+            if (p->path == lzc) return p.get();
+        return nullptr;
+    };
+    // Tabs on a gameplay element and on a collection that stays.
+    Collection* street = a.database()->findCollection(StringHash32("pvehicle"), StringHash32("street"));
+    CHECK(street);
+    a.select(street, true);
+    a.openInNewTab(a.database()->findCollection(gp, race), true);
+    imgui.run(a, 2);
+    CHECK_EQ(a.tabs().size(), size_t(2));
+    ClickItem(imgui, a, probe.find("Files"));
+    imgui.run(a, 1);
+    auto unload = [&](const char* node, const char* item, const char* button) {
+        Rightclick(imgui, a, FilesNode(node));
+        ClickItem(imgui, a, probe.find(item, "##Popup"));
+        imgui.run(a, 2);
+        ClickItem(imgui, a, probe.find(button, "Unload File"));
+        imgui.run(a, 2);
+    };
+
+    // Unchanged: it goes, and its file stays as it is. Undo starts again.
+    unload("gameplay.lzc", "Unload...", "Unload");
+    CHECK(!gameplayPack());
+    CHECK_EQ(a.database()->packs().size(), packs - 1);
+    CHECK(!a.database()->findCollection(gp, race));
+    CHECK_EQ(a.tabs().size(), size_t(1));
+    CHECK(a.selection() == street);
+    CHECK(!a.hasUnsavedChanges() && a.removedFiles().empty());
+    CHECK_EQ(a.undoLabels().size(), size_t(1));
+    // Save All writes the others and leaves its file alone.
+    CHECK(a.saveAll());
+    CHECK(fs::exists(lzc) && ReadFile(lzc) == lzcFile);
+
+    // Changed, then discarded: the file is still as it was.
+    auto changeOne = [&]() {
+        CHECK(a.open(lzc));
+        imgui.run(a, 2);
+        Collection* r = a.database()->findCollection(gp, race);
+        CHECK(r && gameplayPack());
+        if (!r) return;
+        r->find(StringHash32("TrackLayout"))->data.bytes[0] ^= 1;
+        a.markDirty(r);
+        imgui.run(a, 2);
+        CHECK(gameplayPack() && gameplayPack()->dirty && a.hasUnsavedChanges());
+    };
+    changeOne();
+    unload("gameplay.lzc", "Unload...", "Discard and Unload");
+    CHECK(!gameplayPack() && !a.hasUnsavedChanges());
+    CHECK(ReadFile(lzc) == lzcFile);
+    // Changed, then saved first: the file has the change and its original is kept.
+    changeOne();
+    unload("gameplay.lzc", "Unload...", "Save and Unload");
+    CHECK(!gameplayPack() && !a.hasUnsavedChanges());
+    CHECK(ReadFile(lzc) != lzcFile && fs::exists(lzc + ".bak"));
+    // Cancel keeps it.
+    CHECK(a.open(lzc));
+    imgui.run(a, 2);
+    Rightclick(imgui, a, FilesNode("gameplay.lzc"));
+    ClickItem(imgui, a, probe.find("Unload...", "##Popup"));
+    imgui.run(a, 2);
+    imgui.key(a, ImGuiKey_Escape);
+    imgui.run(a, 2);
+    CHECK(gameplayPack());
+
+    // The pack holding the database takes every other with it.
+    unload("ATTRIBUTES.BIN", "Unload (Closes All)...", "Close All");
+    CHECK(!a.database() || a.database()->packs().empty());
+    CHECK_EQ(Errors(a), size_t(0));
+    for (const auto& c : probe.conflicts) std::printf("        ID conflict: %s\n", c.c_str());
+    CHECK(probe.conflicts.empty());
+    fs::remove_all(tmp);
+}
+
+TEST("ui: an inspector row's menu copies its value, and its name with it, one line per value under it") {
+    platform::HeadlessImGui imgui;
+    imgui.beforeFrame = ProbeBefore;
+    imgui.afterFrame = ProbeAfter;
+    test::UiProbe& probe = test::UiProbe::get();
+    probe.conflicts.clear();
+    platform::HeadlessHost host;
+    app::App a(host);
+    a.setup(1.0f, "");
+    a.setUserKeysPath("");
+    CHECK(a.open(ProStreetDir()));
+    if (!a.database()) return;
+    Database& db = *a.database();
+    auto menu = [&](const char* row, const char* item) {
+        Rightclick(imgui, a, probe.find(row, "Collection"));
+        ClickItem(imgui, a, probe.find(item, "##Popup"));
+        imgui.run(a, 1);
+    };
+    // A plain value: the name and the value as the row shows it.
+    const std::string layout = "tracks/autobahn_gd/autobahn_gd_grip_1";
+    CHECK(ShowField(imgui, a, "gameplay", "prostreet_career/bins/race_bin_an_2_1/gr_1", "TrackLayout"));
+    menu("TrackLayout", "Copy Value");
+    CHECK_EQ(Clipboard(), layout);
+    menu("TrackLayout", "Copy Name and Value");
+    CHECK_EQ(Clipboard(), "TrackLayout = " + layout);
+    menu("TrackLayout", "Copy Field Name");
+    CHECK_EQ(Clipboard(), std::string("TrackLayout"));
+
+    // An array of structs, opened: every value under it, and a member's path.
+    a.viewOptions().expandArrays = true;
+    const ClassDef* fe = db.findClass(StringHash32("part_fedata"));
+    CHECK(fe);
+    if (!fe) return;
+    const uint32_t partData = StringHash32("partData");
+    // One element with the fewest camera entries, so Logo stays above the fold.
+    const Collection* c = nullptr;
+    int fewest = 1 << 30;
+    for (const Collection* x : fe->collections)
+        if (const Attribute* pd = x->find(partData); pd && pd->count == 1 && db.names().find(x->key) && pd->data.bytes.size() >= 56) {
+            const PtrSlot* d = pd->data.ptrAt(db.typeSchema()->findStruct("FEPartData")->member("PartDetails")->offset);
+            const int cams = pd->data.bytes[28] + pd->data.bytes[29] + pd->data.bytes[30];
+            if (d && d->data && cams < fewest) {
+                c = x;
+                fewest = cams;
+            }
+        }
+    CHECK(c);
+    if (!c) return;
+    CHECK(ShowField(imgui, a, "part_fedata", db.names().format(c->key).c_str(), "partData"));
+    const Attribute& pd = *c->find(partData);
+    const app::ValueType vt = app::TypeOfAttribute(pd, "partData");
+    const std::vector<app::ValueLine> lines = app::ValueLines(db, pd.data, 0, vt, Endian::Little, "partData[0]");
+    std::string expected;
+    for (size_t i = 0; i < lines.size(); ++i) expected += (i ? "\n" : "") + lines[i].path + " = " + lines[i].value;
+    menu("partData", "Copy Name and Value");
+    CHECK_EQ(Clipboard(), expected);
+    menu("Logo", "Copy Path");
+    CHECK_EQ(Clipboard(), std::string("partData[0].PartDetails[0].Logo"));
+    menu("Logo", "Copy Name and Value");
+    CHECK(Clipboard().rfind("partData[0].PartDetails[0].Logo = ", 0) == 0);
+    CHECK_EQ(Errors(a), size_t(0));
+    for (const auto& x : probe.conflicts) std::printf("        ID conflict: %s\n", x.c_str());
+    CHECK(probe.conflicts.empty());
+}
+
+TEST("ui: search: a hit's menu copies a cell, its line, a column or every line, split by tabs") {
+    platform::HeadlessImGui imgui;
+    imgui.beforeFrame = ProbeBefore;
+    imgui.afterFrame = ProbeAfter;
+    test::UiProbe& probe = test::UiProbe::get();
+    probe.conflicts.clear();
+    platform::HeadlessHost host;
+    app::App a(host);
+    a.setup(1.0f, "");
+    CHECK(a.open(ProStreetDir()));
+    if (!a.database()) return;
+    imgui.run(a, 2);
+    imgui.key(a, ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_F);
+    imgui.run(a, 1);
+    const std::string layout = "tracks/autobahn_gd/autobahn_gd_grip_1";
+    imgui.type(a, layout.c_str());
+    imgui.key(a, ImGuiKey_Enter);
+    imgui.run(a, 2);
+    const std::string raceLabel = "gameplay/prostreet_career/bins/race_bin_an_2_1/gr_1";
+    const std::string line = raceLabel + "\tTrackLayout\t" + layout;
+    auto menu = [&](const char* item) {
+        Rightclick(imgui, a, probe.find(raceLabel, "Search"));
+        ClickItem(imgui, a, probe.find(item, "##Popup"));
+        imgui.run(a, 1);
+    };
+    menu("Copy Line");
+    CHECK_EQ(Clipboard(), line);
+    menu("Copy Collection");
+    CHECK_EQ(Clipboard(), raceLabel);
+    menu("Copy Field");
+    CHECK_EQ(Clipboard(), std::string("TrackLayout"));
+    menu("Copy Value");
+    CHECK_EQ(Clipboard(), layout);
+    menu("Copy All");
+    const std::string all = Clipboard();
+    CHECK(all.rfind("Collection\tField\tValue\n", 0) == 0);
+    CHECK(all.find(line + "\n") != std::string::npos);
+    const size_t rows = size_t(std::count(all.begin(), all.end(), '\n'));
+    CHECK(rows > 2);
+    // A column: one cell per hit.
+    Rightclick(imgui, a, probe.find(raceLabel, "Search"));
+    ClickItem(imgui, a, probe.find("Copy Column", "##Popup"));
+    imgui.run(a, 1);
+    ClickItem(imgui, a, probe.find("Field", "##Menu"));
+    imgui.run(a, 1);
+    const std::string fields = Clipboard();
+    CHECK_EQ(size_t(std::count(fields.begin(), fields.end(), '\n')), rows - 1);
+    CHECK(fields.find("TrackLayout\n") != std::string::npos);
+    // Ctrl+C on the hit that has the keyboard copies its line.
+    ImGui::SetClipboardText("");
+    ClickItem(imgui, a, probe.find(raceLabel, "Search"));
+    imgui.run(a, 1);
+    imgui.key(a, ImGuiMod_Ctrl | ImGuiKey_C);
+    imgui.run(a, 1);
+    CHECK_EQ(Clipboard(), line);
+    CHECK_EQ(Errors(a), size_t(0));
+    for (const auto& x : probe.conflicts) std::printf("        ID conflict: %s\n", x.c_str());
+    CHECK(probe.conflicts.empty());
 }

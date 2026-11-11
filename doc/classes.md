@@ -31,7 +31,7 @@ only.
 ## How a design is laid out
 
 `LayOutClass` follows the rules every retail class follows (checked on all
-2309 classes of the 25 supported folders, 44602 fields; `tests/test_class.cpp`):
+2561 classes of the 27 supported folders, 49078 fields; `tests/test_class.cpp`):
 
 - Layout fields in the design's order, each at its type's natural alignment;
   an array's header goes on the element's alignment. Static fields the same way
@@ -53,7 +53,7 @@ only.
 - Definitions are written sorted by key (the game binary-searches them).
 - `mCollectionReserve` starts at max(1, 1.4 × collections).
 
-What the rules don't give is kept as a stored value in the design: 27 offsets
+What the rules don't give is kept as a stored value in the design: 28 offsets
 (Most Wanted's packed GameCube and PS2 bools, layout arrays whose capacity only
 their collections give), World's layout counts, key shifts and static sizes,
 the PS2's and GameCube's unrounded layout sizes, and every class's collection

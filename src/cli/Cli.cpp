@@ -64,7 +64,8 @@ apply:
                     an array made longer than its definition allows are errors;
                     for nfsms, warnings are errors and the first failing line stops it
   --out <dir>       write the changed packs there instead of over the originals
-  --compress <kind> save gameplay.lzc with jdlz (as retail), huff or raww (stored)
+  --compress <kind> save gameplay.lzc with jdlz (as retail), huff, raww (stored)
+                    or rfpk (EA RefPack, which only Undercover's code reads)
   --no-backup       don't keep the first original as <file>.bak
   --vlted           read nfsms scripts as NFS-VltEd 4.6 does (doc/nfsms.md,
                     "NFS-VltEd compatible"): its value widths and quirks
@@ -493,7 +494,7 @@ which decides how values read; lines that fail come out as comments.
 				if (a.positional.empty()) throw Failed{ "apply needs a database" };
 				std::optional<LzKind> compress;
 				if (a.has("--compress") && !(compress = ParseLzKind(a.get("--compress"))))
-					throw Failed{ "--compress takes jdlz, huff or raww, not " + a.get("--compress") };
+					throw Failed{ "--compress takes jdlz, huff, raww or rfpk, not " + a.get("--compress") };
 				if (a.positional.size() < 2 && !a.has("-e") && !compress) throw Failed{ "apply needs a script (or -e statements)" };
 				std::vector<sc::Script> scripts;
 				std::vector<ns::Script> nfsmsScripts;

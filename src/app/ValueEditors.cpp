@@ -1741,4 +1741,32 @@ namespace app
 		return "?";
 	}
 
+	std::string FormatValueInFull(const Database& db, const DataBlock& b, uint32_t off, const ValueType& vt, Endian e)
+	{
+		if (off + std::max<uint32_t>(vt.size, 1) > b.bytes.size()) return FormatValue(db, b, off, vt, e);
+		char buf[64];
+		if (vt.kind == TypeKind::Matrix)
+		{
+			std::string s;
+			for (int i = 0; i < 16; ++i)
+			{
+				std::snprintf(buf, sizeof(buf), "%.6g", loadf32(b.bytes.data() + off + i * 4, e));
+				s += (i == 0 ? "" : i % 4 ? ", " : "; ") + std::string(buf);
+			}
+			return s;
+		}
+		if (vt.kind == TypeKind::Curve)
+		{
+			const CurveValue c = ReadCurve(b, off, e, vt.size);
+			std::string s;
+			for (size_t i = 0; i < c.x.size() && i < c.y.size(); ++i)
+			{
+				std::snprintf(buf, sizeof(buf), "(%.6g, %.6g)", c.realX(i), c.realY(i));
+				s += (i ? ", " : "") + std::string(buf);
+			}
+			return s.empty() ? "no points" : s;
+		}
+		return FormatValue(db, b, off, vt, e);
+	}
+
 } // namespace app

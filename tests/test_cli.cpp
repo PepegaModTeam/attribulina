@@ -207,8 +207,8 @@ TEST("cli: apply --compress saves gameplay.lzc with another codec, and its .bin 
     const attrib::Bytes pack = attrib::ReadFile(vanilla + "/gameplay.bin");
 
     CHECK(run({"apply", vanilla, "--compress", "zip"}) != 0);
-    CHECK(run.err.find("--compress takes jdlz, huff or raww") != std::string::npos);
-    for (const char* kind : {"huff", "RAWW"}) {
+    CHECK(run.err.find("--compress takes jdlz, huff, raww or rfpk") != std::string::npos);
+    for (const char* kind : {"huff", "RAWW", "rfpk"}) {
         const fs::path out = tmp / kind;
         CHECK_EQ(run({"apply", vanilla, "--compress", kind, "--out", out.string()}), 0);
         const attrib::Bytes lzc = attrib::ReadFile((out / "gameplay.lzc").string());
