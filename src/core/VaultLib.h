@@ -37,23 +37,29 @@
 //   - Undercover's and World's index tables with no values block, mVals at
 //     whatever follows (Static_Inorder_N_to_1.cs), and speech's the wrong way
 //     round: a table that doesn't hold is written again from the class's
-//     collections, which are all in its vault (Edit.h RebuildIndexTables). The
-//     order of a parent's children is theirs, not retail's, which isn't kept.
+//     collections, which are all in its vault (Edit.h RebuildIndexTables), as
+//     the games' files have them: World's children in the order of their names,
+//     speech's default mapped to 0x4F8B31A9. Undercover's children go in the
+//     order of the collections: retail's follows nothing found and isn't kept.
+//   - Every Attrib::Blob packed with JDLZ (Frameworks.Speed/Attrib/Blob.cs):
+//     packed again as the game's LZCompress packs it (CompressBest), the same
+//     Lua, which gives back the game's bytes (Undercover's 211, 253 of Most
+//     Wanted's 258; its other 5 are JDLZ blocks the game's encoder wrote reading
+//     past its input, which no run of it writes again).
 //   - Undercover's vinyl layers with four bytes written 0 (VinylLayer.cs,
 //     VinylColor.cs) and autosculpt aliases without their sliders (Alias.cs):
 //     a warning, as the values aren't in the file. Lost without a warning, as
-//     no retail value shows it: StringKey hashes worked out from the text
+//     no value in the file shows it: StringKey hashes worked out from the text
 //     (a mangled name's original), entries for fields the class lacks (World's
 //     coop_pursuit_1), values above 1 in bytes it reads as bools (Undercover's
-//     ParticleAnimationInfo.RandomStartFrame, a paint's mMaterialFlags), and
-//     edits of fields its types can't hold (DecalLayer, World's power-up
-//     records).
+//     ParticleAnimationInfo.RandomStartFrame, 2 in two retail emitters, and a
+//     paint's mMaterialFlags), and edits of fields its types can't hold
+//     (DecalLayer, World's power-up records).
 //   - Bin strings nothing points at (VaultBoy's two), PtrN entries for null
 //     pointers, 0x80 pack alignment, unaligned definition blocks: the writer
 //     leaves them out or lays them out again, as it always does.
 //   - mNumClasses, mDefaultDataSize, entries by field name, children in
-//     reverse, Lua repacked as JDLZ (the same Lua unpacked): read and kept, as
-//     the game reads them.
+//     reverse: read and kept, as the game reads them.
 //   - World's event vaults saved by OGVI as VPAKs in the folder above
 //     gc.vaults, without their VaultData export (Attribulator's own WorldProfile
 //     saves them to gameplay\ in the event vault format): FolderPacks loads such
@@ -62,10 +68,14 @@
 // VaultLib writes little-endian only (a plain BinaryWriter): PC files, and
 // Carbon's PS2 ones through Attribulator's CarbonProfilePs2, whose 4-byte bools
 // its 1-byte Bool can't write. Its files are read as any other.
-// Pro Street's files aren't repaired past what every game's get (its camera
-// lists and tiers VaultLib breaks, FEPartData.cs). Most Wanted's other
-// differences (PtrN nulls, 0 in vlt pointer slots, Lua placement) the writer
-// lays out again.
+// Pro Street doesn't work with VaultLib, and so not with Attribulator or OGVI:
+// VaultLib breaks its FEPartData camera lists and tiers (FEPartData.cs), which
+// nothing in the file gives back. Its files get only the repairs every game's
+// get. Most Wanted's other differences (PtrN nulls, 0 in vlt pointer slots,
+// Lua placement) the writer lays out again.
+// Against the retail folders OGVI saved (attrib/databases/pc/*-ogvi), World's
+// read as the retail database once repaired, and Most Wanted's and
+// Undercover's differ only in what is lost above (tests/test_vaultlib.cpp).
 
 #include "Database.h"
 

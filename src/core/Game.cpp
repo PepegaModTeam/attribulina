@@ -119,6 +119,12 @@ namespace attrib
 			{0xDD773A275FF41CFFull, Endian::Little, Game::Carbon, P::PS2},     // and gameplay.bin
 			{0x53378FC2333FFCAFull, Endian::Big, Game::Carbon, P::Xbox360},    // a 360 demo made after release,
 			{0xD6202625D020CCD1ull, Endian::Big, Game::Carbon, P::Xbox360},    // its gameplay.bin
+			// The PC's retail files share the 360's value (every vault, gameplay's
+			// too). RetailVersion takes the first entry for a platform.
+			{0x8364A394EF316ABDull, Endian::Little, Game::Undercover, P::PC},
+			// Another PC build's (pc/undercover-vlted: 256 gameplay vaults to
+			// retail's 219, unmarked, byte for byte as the writer writes them), and
+			// NFS-VltEd's re-save of it, which keeps Vers as read.
 			{0x1445379ED96333E1ull, Endian::Little, Game::Undercover, P::PC},
 			{0x8364A394EF316ABDull, Endian::Big, Game::Undercover, P::Xbox360},
 			{0xCE50492389B94950ull, Endian::Big, Game::Undercover, P::Xbox360}, // its gameplay.bin

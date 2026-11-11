@@ -695,7 +695,7 @@ namespace attrib
 			c->typeHashes.clear();
 			touch(c->vault);
 		}
-		UpdateIndexTables(cls);
+		UpdateIndexTables(cls, IndexTableNames(db_));
 		growDatabaseValues(cls);
 		touch(cls.vault);
 		return true;

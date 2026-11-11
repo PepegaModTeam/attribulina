@@ -2,6 +2,7 @@
 
 #include "ClassDesign.h"
 #include "ClassList.h"
+#include "Compression.h"
 #include "Edit.h"
 #include "Game.h"
 #include "Hash.h"
@@ -13,6 +14,7 @@
 #include <cstdio>
 #include <map>
 #include <string_view>
+#include <unordered_map>
 
 namespace attrib::vaultlib
 {
@@ -64,6 +66,51 @@ namespace attrib::vaultlib
 					store16(h + 6, fix(load16(h + 6, v.raw.endian), f), v.raw.endian);
 				}
 			return fixed;
+		}
+
+		// VaultLib packs every Attrib::Blob with JDLZ (Frameworks.Speed/Attrib/Blob.cs),
+		// where the games' files have them as LZCompress packs them (CompressBest):
+		// Huffman unless JDLZ is strictly smaller. Unpacked, the Lua is the same,
+		// and packed again it is the game's bytes: all 211 of Undercover's PC
+		// handlers VaultLib repacked, 253 of Most Wanted's 258 (its other 5 are
+		// JDLZ blocks the game's encoder wrote reading past its input). mSize
+		// follows the block, as VaultLib's and the editor's own do.
+		size_t RepackBlobs(Vault& v)
+		{
+			std::unordered_map<const DataBlock*, uint32_t> packed;
+			size_t n = 0;
+			for (Collection* c : v.collections)
+				for (Attribute& a : c->attributes)
+				{
+					if (!a.type || a.type->kind != TypeKind::Blob || a.elemSize < 8) continue;
+					for (uint32_t i = 0; i < a.count; ++i)
+					{
+						PtrSlot* p = a.data.ptrAt(i * a.elemSize + 4);
+						if (!p || !p->data) continue;
+						auto done = packed.find(p->data.get());
+						if (done == packed.end())
+						{
+							Bytes& b = p->data->bytes;
+							const auto h = ParseLzHeader(b);
+							if (!h || h->kind != LzKind::Jdlz) continue;
+							Bytes again;
+							try
+							{
+								again = CompressBest(Decompress(b));
+							}
+							catch (const std::exception&)
+							{
+								continue;
+							}
+							if (again == b) continue;
+							b = std::move(again);
+							done = packed.emplace(p->data.get(), uint32_t(b.size())).first;
+							++n;
+						}
+						store32(a.elem(i), done->second, v.raw.endian);
+					}
+				}
+			return n;
 		}
 
 		// Undercover's values VaultLib loses for good, which no repair brings back:
@@ -171,11 +218,11 @@ namespace attrib::vaultlib
 				if (!cls.vault || !cls.vault->vaultLib) continue;
 				if (cls.vault == &v)
 				{
-					if (RebuildIndexTables(cls)) rebuilt.push_back(db.names().format(cls.key));
+					if (RebuildIndexTables(cls, IndexTableNames(db))) rebuilt.push_back(db.names().format(cls.key));
 				}
 				else
 				{
-					UpdateIndexTables(cls);
+					UpdateIndexTables(cls, IndexTableNames(db));
 				}
 			}
 			if (rebuilt.empty()) return;
@@ -290,6 +337,9 @@ namespace attrib::vaultlib
 						"and it takes that again.");
 				}
 		RepairIndexTables(v, db);
+		if (RepackBlobs(v))
+			Repaired(v, "Its compiled Lua is packed with JDLZ, as VaultLib packs every blob. It is packed again as the game's LZCompress "
+				"packs it, Huffman unless JDLZ is smaller, which gives back the game's own bytes. The Lua is the same.");
 		if (t.game == Game::Undercover) WarnUndercoverLosses(v);
 	}
 

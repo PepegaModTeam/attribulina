@@ -60,8 +60,7 @@ const std::vector<Handler>& Handlers() {
     return handlers;
 }
 
-// Undercover's on the 360 (retail, and the alpha's 207) and the PC (re-saved
-// by NFS-VltEd, the chunks unchanged), Lua 5.1.
+// Undercover's on the 360 (retail, and the alpha's 207) and the PC, Lua 5.1.
 const std::vector<Handler>& Undercover360() {
     static const std::vector<Handler> handlers = LoadHandlers("360/undercover-vanilla");
     return handlers;

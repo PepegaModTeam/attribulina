@@ -129,13 +129,21 @@ namespace attrib
 	// a collection of the class is created, deleted, renamed or moved this brings
 	// the table in line: entries that still hold stay as stored (their order, a
 	// root's unexplained value in speech), the rest are added or dropped.
+	// speech's default with nothing stored maps to 0x4F8B31A9, as in
+	// Undercover's files (no collection has that key; its other root maps to 0).
+	// With `byName`, a parent's children go in the order of their names
+	// (strcmp), as every World build's files list them, when all are named;
+	// IndexTableNames gives it. Undercover's order follows nothing found.
 	// CollectionEditor calls it; true when a table changed.
-	bool UpdateIndexTables(ClassDef& cls);
+	bool UpdateIndexTables(ClassDef& cls, const KeyNames* byName = nullptr);
 	// The same, from nothing, for a table that names keys none of the class's
 	// collections has (VaultLib leaves the values block out, and mVals points at
 	// what follows: VaultLib.h). A table that holds keeps its order. True when
 	// one was written again.
-	bool RebuildIndexTables(ClassDef& cls);
+	bool RebuildIndexTables(ClassDef& cls, const KeyNames* byName = nullptr);
+	// The database's names when its game orders index tables by them (World),
+	// else null.
+	const KeyNames* IndexTableNames(const Database& db);
 
 	class CollectionEditor
 	{

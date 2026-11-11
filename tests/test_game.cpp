@@ -63,7 +63,9 @@ TEST("game: every database on disk says what it is, the early Most Wanted demos 
         {"ps2/prostreet-vanilla", {"prostreet_ps2", true}},   {"pc/carbon-vanilla", {"carbon_pc", true}},
         {"gamecube/carbon-vanilla", {"carbon_gamecube", true}},
         {"ps2/carbon-vanilla", {"carbon_ps2", true}},         {"ps2/carbon-demo", {"carbon_ps2", true}},
+        // Undercover's PC and 360 files share a Vers value; byte order tells them apart.
         {"pc/undercover-vanilla", {"undercover_pc", true}},   {"360/undercover-vanilla", {"undercover_x360", true}},
+        {"pc/undercover-vlted", {"undercover_pc", true}},
         {"pc/world-final", {"world_pc", true}},               {"pc/world-2010-beta", {"world_pc", true}},
         {"pc/world-2009-beta", {"world_pc", true}},           {"pc/mw-vanilla", {"mw_pc", true}},
         {"ps2/mw-beta", {"mw_ps2", true}},                    {"360/mw-beta", {"mw_x360", true}},

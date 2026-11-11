@@ -58,7 +58,7 @@ const ClassFolder kFolders[] = {
     {"xbox/mw-early-oxm-betademo", "mw_xbox_early_demo", "Most Wanted, Xbox OXM beta demo"},
     {"360/undercover-vanilla", "undercover_x360", "Undercover, Xbox 360 retail"},
     {"360/undercover-alpha161", "undercover_x360_alpha", "Undercover, Xbox 360 alpha (build 161)"},
-    {"pc/undercover-vanilla", "undercover_pc", "Undercover, PC retail (as NFS-VltEd re-saved it)"},
+    {"pc/undercover-vanilla", "undercover_pc", "Undercover, PC retail"},
     {"wii/undercover-vanilla", "undercover_wii", "Undercover, Wii retail"},
     {"pc/world-final", "world_pc", "World, PC final build"},
     {"pc/world-2010-beta", "world_pc_2010_beta", "World, PC 2010 beta"},

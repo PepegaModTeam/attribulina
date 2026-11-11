@@ -5,6 +5,7 @@
 #include "Test.h"
 
 #include "core/ClassList.h"
+#include "core/Compression.h"
 #include "core/Edit.h"
 #include "core/Folder.h"
 #include "core/Game.h"
@@ -15,6 +16,8 @@
 #include "core/VaultLib.h"
 #include "core/Writer.h"
 
+#include <algorithm>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 
@@ -103,8 +106,10 @@ TEST("vaultlib: a class whose layout size is short of its fields (OGVI's Carbon 
 
 TEST("vaultlib: a vault with VaultLib's World header (Attribulator, OGVI) reads as its game's and saves with that game's header") {
     // VaultLib writes every vault as World's final build's: its Vers, StrN
-    // before DepN, EndC chunks (VaultWriter.cs). Made here from Carbon's and Pro
-    // Street's retail packs, each comes back byte for byte once repaired.
+    // before DepN, EndC chunks (VaultWriter.cs), and packs every blob as JDLZ
+    // (Frameworks.Speed/Attrib/Blob.cs). Made here from retail packs, each comes
+    // back byte for byte once repaired: Undercover's PC files get the 360's Vers
+    // value back, and its handlers the game's packing.
     struct Case {
         const char* dir;
         const char* file;
@@ -116,6 +121,8 @@ TEST("vaultlib: a vault with VaultLib's World header (Attribulator, OGVI) reads 
         {"pc/carbon-vanilla", "fe_attrib.bin", {Game::Carbon, Platform::PC}, "carbon_pc"},
         {"pc/prostreet-vanilla", "ATTRIBUTES.BIN", {Game::ProStreet, Platform::PC}, "prostreet_pc"},
         {"360/undercover-vanilla", "attributes.bin", {Game::Undercover, Platform::Xbox360}, "undercover_pc"},
+        {"pc/undercover-vanilla", "attributes.bin", {Game::Undercover, Platform::PC}, "undercover_pc"},
+        {"pc/undercover-vanilla", "gameplay.lzc", {Game::Undercover, Platform::PC}, "undercover_pc"},
     };
     for (const Case& k : cases) {
         const std::string dir = test::DataPath(std::string("attrib/databases/") + k.dir);
@@ -128,8 +135,10 @@ TEST("vaultlib: a vault with VaultLib's World header (Attribulator, OGVI) reads 
             db.addTypeSchema(TypeSchema::Load(test::DataPath(std::string("data/schema/") + k.schema + ".txt")));
             if (!isDb) db.loadPack(*attrs);
         };
-        const Bytes retail = ReadFile(*file);
+        Bytes retail = ReadFile(*file);
+        if (ParseLzHeader(retail)) retail = Decompress(retail);
         Bytes vaultLib;
+        size_t jdlz = 0;
         {
             Database db;
             load(db);
@@ -141,6 +150,18 @@ TEST("vaultlib: a vault with VaultLib's World header (Attribulator, OGVI) reads 
                 for (Collection* c : v->collections)
                     for (Attribute& a : c->attributes)
                         if (a.isArray && a.def) a.encodedTypePad = VaultLibPad(*a.def);
+                // Its blobs, packed as JDLZ, mSize their block's.
+                for (Collection* c : v->collections)
+                    for (Attribute& a : c->attributes) {
+                        if (!a.type || a.type->kind != TypeKind::Blob) continue;
+                        for (uint32_t i = 0; i < a.count; ++i) {
+                            PtrSlot* ptr = a.data.ptrAt(i * a.elemSize + 4);
+                            if (!ptr || !ptr->data || !ParseLzHeader(ptr->data->bytes) || ParseLzHeader(ptr->data->bytes)->kind == LzKind::Jdlz) continue;
+                            ptr->data->bytes = Compress(LzKind::Jdlz, Decompress(ptr->data->bytes));
+                            store32(a.elem(i), uint32_t(ptr->data->bytes.size()), v->raw.endian);
+                            ++jdlz;
+                        }
+                    }
                 for (ClassDef* cls : v->classes)
                     for (const FieldDef& f : cls->fields)
                         if (f.isStatic() && f.isArray() && f.offset + 8u <= cls->staticData.bytes.size())
@@ -161,12 +182,14 @@ TEST("vaultlib: a vault with VaultLib's World header (Attribulator, OGVI) reads 
             for (const std::string& w : v->warnings) {
                 // Undercover's vinyl layers and aliases are named whether or not VaultLib lost their bytes.
                 const bool known = w.find("as VaultLib writes it") != std::string::npos || w.find("mEncodedTypePad") != std::string::npos ||
-                                   w.find("vinyl layers") != std::string::npos || w.find("autosculpt aliases") != std::string::npos;
+                                   w.find("vinyl layers") != std::string::npos || w.find("autosculpt aliases") != std::string::npos ||
+                                   w.find("packed with JDLZ, as VaultLib packs every blob") != std::string::npos;
                 if (!known) std::printf("        %s %s: %s\n", k.dir, v->name.c_str(), w.c_str());
                 CHECK(known);
             }
         }
         CHECK(pads > 0);
+        if (std::string(k.file) == "gameplay.lzc") CHECK(jdlz > 200);
         const Bytes written = WritePack(db, p);
         if (written != retail) {
             size_t at = 0;
@@ -251,31 +274,43 @@ size_t Differences(const Database& a, const Database& b, std::string* text = nul
     size_t n = 0;
     for (const script::Statement& s : d.statements)
         n += s.kind != script::Statement::Kind::Header && s.kind != script::Statement::Kind::Meta && s.kind != script::Statement::Kind::Comment;
-    if (text && n) *text = script::Print(d).substr(0, 3000);
+    if (text && n) *text = script::Print(d).substr(0, std::getenv("ATTRIB_DIFF_ALL") ? std::string::npos : 3000);
     return n;
 }
 
 } // namespace
 
-TEST("vaultlib: OGVI's Most Wanted and World saves read as the retail files they were made from") {
+TEST("vaultlib: OGVI's Most Wanted, Undercover and World saves read as the retail files they were made from, but for what VaultLib lost") {
     // attrib/databases/pc/*-ogvi: the retail folders as OGVI saved them. Once
-    // repaired, Most Wanted's are the retail database; World's differ only in the
-    // order of the children in three index tables, which VaultLib reverses and
-    // the files don't keep.
+    // repaired, World's are the retail database. Most Wanted's differ in five
+    // handlers' packing: retail's are JDLZ blocks the game's encoder wrote
+    // reading past its input, which no run of it gives again (the Lua is the
+    // same). Undercover's differ in what VaultLib loses for good: the order of
+    // a parent's children in three index tables (World's go by name,
+    // Undercover's by nothing found), four bytes of every vinyl layer, the
+    // autosculpt aliases' sliders, and two RandomStartFrame bytes of 2 it wrote
+    // as a bool.
     struct Case {
         const char* ogvi;
         const char* retail;
         Target target;
         size_t differences;
+        // The statements of the difference it may have: a class, or an edit
+        // setting only these fields.
+        std::vector<std::string> classes, fields;
     };
-    for (const Case& k : {Case{"pc/mw-ogvi", "pc/mw-vanilla", {Game::MostWanted, Platform::PC}, 0},
-                          Case{"pc/world-final-ogvi", "pc/world-final", {Game::World, Platform::PC}, 3}}) {
+    for (const Case& k : {Case{"pc/mw-ogvi", "pc/mw-vanilla", {Game::MostWanted, Platform::PC}, 5, {}, {"bytecode"}},
+                          Case{"pc/world-final-ogvi", "pc/world-final", {Game::World, Platform::PC}, 0, {}, {}},
+                          Case{"pc/undercover-ogvi", "pc/undercover-vanilla", {Game::Undercover, Platform::PC}, 249,
+                               {"aud_moment", "traffic_engine", "traffic_horn"},
+                               {"VinylLayers", "autosculptAliases", "TextureAnimation"}}}) {
         const std::string ogvi = test::DataPath(std::string("attrib/databases/") + k.ogvi);
-        if (!std::filesystem::exists(ogvi)) continue;
-        // Detection takes neither for another game, though VaultLib wrote World's Vers into both.
+        const std::string retailDir = test::DataPath(std::string("attrib/databases/") + k.retail);
+        if (!std::filesystem::exists(ogvi) || !std::filesystem::exists(retailDir)) continue;
+        // Detection takes none for another game, though VaultLib wrote World's Vers into all.
         CHECK_EQ(DetectTarget(ogvi).target.id(), k.target.id());
         auto repaired = LoadFolderWithLists(ogvi, k.target);
-        auto retail = LoadFolderWithLists(test::DataPath(std::string("attrib/databases/") + k.retail), k.target);
+        auto retail = LoadFolderWithLists(retailDir, k.target);
         size_t vaults = 0, dirty = 0;
         for (const auto& p : repaired->packs()) {
             dirty += p->dirty;
@@ -289,6 +324,20 @@ TEST("vaultlib: OGVI's Most Wanted and World saves read as the retail files they
         const size_t n = Differences(*retail, *repaired, &text);
         if (n != k.differences) std::printf("        %s: %zu differences\n%s\n", k.ogvi, n, text.c_str());
         CHECK_EQ(n, k.differences);
+        auto listed = [](const std::vector<std::string>& list, const std::string& name) {
+            return std::find(list.begin(), list.end(), name) != list.end();
+        };
+        for (const script::Statement& st : script::Diff(*retail, *repaired).statements) {
+            if (st.kind == script::Statement::Kind::Class) {
+                if (!listed(k.classes, st.word)) std::printf("        %s: class %s differs\n", k.ogvi, st.word.c_str());
+                CHECK(listed(k.classes, st.word));
+            } else if (st.kind == script::Statement::Kind::Edit) {
+                for (const script::Statement& b : st.body) {
+                    if (!listed(k.fields, b.path.field)) std::printf("        %s: %s.%s differs\n", k.ogvi, st.target.text().c_str(), b.path.field.c_str());
+                    CHECK(listed(k.fields, b.path.field));
+                }
+            }
+        }
         // Written and read again, there is nothing left to repair.
         for (const auto& p : repaired->packs()) {
             Database again;
@@ -304,8 +353,7 @@ TEST("vaultlib: OGVI's Most Wanted and World saves read as the retail files they
 }
 
 TEST("vaultlib: OGVI's Undercover save is repaired as it loads: its index tables hold again, and written back nothing is left to repair") {
-    // No retail PC folder is here to compare with (undercover-vanilla is
-    // NFS-VltEd's re-save), so this checks what the repairs do.
+    // What the repairs do; the test above compares it with the retail files.
     const std::string ogvi = test::DataPath("attrib/databases/pc/undercover-ogvi");
     if (!std::filesystem::exists(ogvi)) return;
     const Target uc{Game::Undercover, Platform::PC};

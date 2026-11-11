@@ -32,9 +32,11 @@ import typetable  # noqa: E402
 SCHEMAS = os.path.join(REPO, 'data', 'schema')
 
 # checks: the other platforms' schemas, with the databases whose type tables say
-# which types each has (none seen for Undercover's PS2). The platforms that share
-# the PC's schema (Pro Street's 360 and Wii, Carbon's PS3 and Wii, Most Wanted's
-# Xbox and 360 beta) lay the types out as the PC does.
+# which types each has and their sizes (none seen for Undercover's PS2), and a
+# label when the schema is the PC's. The platforms that share the PC's schema
+# (Pro Street's 360 and Wii, Carbon's PS3 and Wii, Most Wanted's Xbox and 360
+# beta) lay the types out as the PC does. Carbon's retail 360 and Undercover's
+# 360 alpha have a schema of their own.
 GAMES = {
     'MW': dict(name='Most Wanted', out='mw_pc.txt', schema='mw_pc.txt',
                checks=[('mw_gamecube.txt', ['gamecube/mw-vanilla', 'ps2/mw-beta'])],
@@ -44,11 +46,15 @@ NFS-VltEd's classes for it skip both hashes, and a MODEL field has a third word,
 Collision64.'''),
     'C': dict(name='Carbon', out='carbon_pc.txt', schema='carbon_pc.txt',
               checks=[('carbon_ps2.txt', ['ps2/carbon-vanilla', 'gamecube/carbon-vanilla']),
-                      ('carbon_x360.txt', ['360/carbon-latedemo']),
+                      ('carbon_x360.txt', ['360/carbon-vanilla']),
+                      ('carbon_x360_demo.txt', ['360/carbon-latedemo']),
                       ('carbon_ps2_demo.txt', ['ps2/carbon-demo'])],
               example='update_field tires x GRIP_SCALE Front 1.1',
-              note='''Carbon's 360 files (a late demo) and its PS2 demo have Most Wanted's 16-byte
-StringKey, so a StringKey there is laid out otherwise (see the "# on" comments).'''),
+              note='''Carbon's PS2, GameCube and retail 360 files have a 20-byte
+SteeringSensitivityParameter, which carbon_ps2.txt and carbon_x360.txt lay out as the
+PC's without InnerDeadZone and OuterDeadZone. Its 360 demo (made after release) and its PS2 demo
+have Most Wanted's 16-byte StringKey, so a StringKey there is laid out otherwise
+(see the "# on" comments).'''),
     'PS': dict(name='Pro Street', out='prostreet_pc.txt', schema='prostreet_pc.txt',
                checks=[('prostreet_ps2.txt', ['ps2/prostreet-vanilla'])],
                example='update_field pvehicle x TORQUE MinY 90', note=None),
@@ -66,11 +72,13 @@ sources name, and the words NFS-VltEd numbers lead to Value<n> members.'''),
 with the final build's schema (data/schema/world_pc.txt): the paths name its members.
 A script for WB runs on a beta's files, one for W on the final build's.'''),
     'UC': dict(name='Undercover', out='undercover_pc.txt', schema=None,
-               checks=[('undercover_wii.txt', ['wii/undercover-vanilla']), ('undercover_ps2.txt', [])],
+               checks=[('undercover_wii.txt', ['wii/undercover-vanilla']), ('undercover_ps2.txt', []),
+                       ('undercover_x360_alpha.txt', ['360/undercover-alpha161'])],
                example='update_field car_tuning x TORQUE MinY 90',
                note='''NFS-VltEd's Undercover is the PC game, the current-generation one (PC, 360). Its Wii
 and PS2 versions are another game on Carbon's engine with mostly other types (the
-"# not on wii" comments). This script lays the PC's types out from
+"# not on wii" comments), and its 360 alpha (build 161) sizes seven types otherwise
+(the "x360 alpha" comments). This script lays the PC's types out from
 nfs-data/SpeedDebugOpt-enUS.h (the 360 debug build, member order only) at the PC's
 alignment, checked against the PC type table's sizes, as data/schema/undercover_pc.txt
 does, and the paths name those members.'''),
@@ -250,6 +258,14 @@ class Table:
                 c['absent'] += 1
                 continue
             cst = cs.structs.get(t)
+            if cst is not None and ptypes and t in ptypes and ptypes[t] != cst['size']:
+                # The editor applies a struct only at the files' size.
+                c['nostruct'] += 1
+                why = '%s lays %s out in %d bytes and its files have %d, so the paths don\'t resolve there' % (
+                    cs.name, t, cst['size'], ptypes[t])
+                out.append('  # not on %s: %s' % (label, why))
+                self.stats['failures'].append((self.game, label, t, '(every word)', why))
+                continue
             if cst is None:
                 if any(p for _, _, p, _ in paths):
                     c['nostruct'] += 1
@@ -431,7 +447,7 @@ def swapped(paths):
 
 
 def label_of(cs):
-    return ' and '.join(cs.platforms) + (' demo' if '_demo' in cs.name else '')
+    return ' and '.join(cs.platforms) + (' demo' if '_demo' in cs.name else ' alpha' if '_alpha' in cs.name else '')
 
 
 def main():
@@ -456,7 +472,7 @@ def main():
             for m in mism:
                 print('  undercover_pc: size mismatch', m)
         checks = []
-        for f, folders in cfg['checks']:
+        for f, folders, *label in cfg['checks']:
             cs = Schema.load(os.path.join(SCHEMAS, f))
             ptypes = None
             if folders:
@@ -465,7 +481,7 @@ def main():
                     for n, size in typetable.read_types(typetable.attributes_bin(
                             os.path.join(REPO, 'attrib', 'databases', folder))):
                         ptypes.setdefault(n, size)
-            checks.append((label_of(cs), cs, ptypes))
+            checks.append((label[0] if label else label_of(cs), cs, ptypes))
         tab = Table(game, regs, sch, checks, db)
         text = tab.build()
         path = os.path.join(args.out, cfg['out'])

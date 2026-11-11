@@ -30,7 +30,8 @@ Run from the repo root. Each game's defaults are in GAMES below:
                 --platform xbox --demo and --platform ps2 --demo write mw_xbox_demo.txt and
                 mw_ps2_demo.txt for the early beta demos (StringHash64 keys), with the types
                 they change from scripts/mw_demo_types.h.
-    world       pc writes world_pc.txt for World's final PC build. No World header is known:
+    world       pc writes world_pc.txt for World's PC builds (the final one, both betas and the
+                builds between, pc/world-various, which size every type laid out here alike). No World header is known:
                 Carbon's headers first (World began as Carbon), then scripts/world/easharp_types.h
                 (the 2010 beta's EASharp bindings, scripts/world/easharp.py) and
                 scripts/world/world_types.h (what NFS-VltEd's World classes and the data show),
@@ -1030,7 +1031,8 @@ GAMES = {
         # the final build's size (the 2009 beta's IndexedBarrierName is 2 bytes).
         extra_tables=['attrib/databases/pc/world-2010-beta', 'attrib/databases/pc/world-2009-beta'],
         same={},
-        note={'pc': 'World on PC: the final build and its 2009 and 2010 betas. No header of any World build is known:\n'
+        note={'pc': 'World on PC: the final build, its 2009 and 2010 betas, and the builds between (pc/world-various), which\n'
+                    'size every type laid out here alike. No header of any World build is known:\n'
                     'Carbon\'s types (it began as Carbon), then World\'s own from scripts/world/ (the 2010 beta\'s EASharp\n'
                     'bindings, and what NFS-VltEd\'s World classes and the data show), then Undercover\'s for the types\n'
                     'Carbon lacks. Each struct has the size of the final build\'s type table, or of a beta\'s for the\n'

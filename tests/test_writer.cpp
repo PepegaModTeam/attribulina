@@ -205,7 +205,7 @@ TEST("writer: Carbon's and the Wii's Undercover packs round trip byte for byte")
     }
 }
 
-TEST("writer: current-gen Undercover: the 360's packs and its alpha's round trip byte for byte; the PC's (NFS-VltEd's re-save) load clean") {
+TEST("writer: current-gen Undercover: the PC's, the 360's and its alpha's packs round trip byte for byte; NFS-VltEd's PC re-save loads clean") {
     // Pro Street's layout with StrN before DepN, and four static index tables
     // whose type no type table lists. Both platforms use undercover_pc.txt;
     // the 360 alpha (build 161) has a schema of its own, and its
@@ -214,15 +214,17 @@ TEST("writer: current-gen Undercover: the 360's packs and its alpha's round trip
         const char* path;
         const char* schema;
     };
-    for (const auto& [folder, schema] : std::vector<Folder>{{"360/undercover-vanilla", "undercover_pc.txt"},
-                                                            {"pc/undercover-vanilla", "undercover_pc.txt"},
+    for (const auto& [folder, schema] : std::vector<Folder>{{"pc/undercover-vanilla", "undercover_pc.txt"},
+                                                            {"360/undercover-vanilla", "undercover_pc.txt"},
+                                                            {"pc/undercover-vlted", "undercover_pc.txt"},
                                                             {"360/undercover-alpha161", "undercover_x360_alpha.txt"}}) {
         const std::string dir = test::DataPath(std::string("attrib/databases/") + folder);
         if (!std::filesystem::exists(dir)) continue;
         Database db;
         for (const char* s : {"prostreet_pc", "carbon_pc", "undercover_wii", "undercover_ps2", "undercover_pc", "undercover_x360_alpha"})
             db.addTypeSchema(TypeSchema::Load(test::DataPath(std::string("data/schema/") + s + ".txt")));
-        const bool vlted = std::string(folder).rfind("pc/", 0) == 0, alpha = std::string(folder).find("alpha") != std::string::npos;
+        const bool vlted = std::string(folder).find("vlted") != std::string::npos, alpha = std::string(folder).find("alpha") != std::string::npos;
+        const bool pc = std::string(folder).rfind("pc/", 0) == 0;
         size_t packs = 0;
         for (const FolderFile& f : FolderPacks(dir)) {
             if (!f.skipped.empty()) continue;
@@ -244,7 +246,7 @@ TEST("writer: current-gen Undercover: the 360's packs and its alpha's round trip
             }
         }
         CHECK_EQ(packs, size_t(4)); // the alpha loads GAMEPLAY.LZC, not its twin GAMEPLAY.BIN
-        CHECK_EQ(db.target().id(), std::string(vlted ? "undercover_pc" : "undercover_x360"));
+        CHECK_EQ(db.target().id(), std::string(pc ? "undercover_pc" : "undercover_x360"));
         CHECK(db.typeSchema() && db.typeSchema()->source.find(schema) != std::string::npos);
     }
 }
@@ -469,6 +471,60 @@ TEST("writer: current-gen Undercover's static index tables follow the collection
     }
     CHECK(WritePack(again, re) == WritePack(db, *pack));
     (void)extra;
+}
+
+TEST("writer: World's index tables list a parent's children by name, and a new child goes there") {
+    // Every World build's files order them so (strcmp); Undercover's follow
+    // nothing found, and a new child goes last there (the test above).
+    const std::string file = test::DataPath("attrib/databases/pc/world-final/attributes.bin");
+    if (!std::filesystem::exists(file)) return;
+    Database db;
+    db.setTarget(Target{Game::World, Platform::PC});
+    db.addTypeSchema(TypeSchema::Load(test::DataPath("data/schema/world_pc.txt")));
+    db.names().loadFile(test::DataPath("data/attrib_keys.txt"));
+    LoadedPack& pack = db.loadPack(file);
+    const Bytes original = WritePack(db, pack);
+    ClassDef* moment = db.findClass(StringHash32("aud_moment"));
+    CHECK(moment);
+    if (!moment) return;
+    const FieldDef* f = moment->field(StringHash32("IndexTable_CollectionName"));
+    CHECK(f);
+    if (!f) return;
+    auto children = [&](uint32_t parent) {
+        const DataBlock& b = moment->staticData;
+        const uint32_t n = load32(b.bytes.data() + f->offset, Endian::Little);
+        const DataBlock& keys = *b.ptrAt(f->offset + 4)->data;
+        const DataBlock& sets = *b.ptrAt(f->offset + 8)->data;
+        const DataBlock& vals = *b.ptrAt(f->offset + 12)->data;
+        std::vector<uint32_t> out;
+        for (uint32_t i = 0; i < n; ++i)
+            if (load32(keys.bytes.data() + i * 4, Endian::Little) == parent) {
+                const uint32_t at = load32(sets.bytes.data() + i * 8, Endian::Little), c = load32(sets.bytes.data() + i * 8 + 4, Endian::Little);
+                for (uint32_t j = 0; j < c; ++j) out.push_back(load32(vals.bytes.data() + (at + j) * 4, Endian::Little));
+            }
+        return out;
+    };
+    auto byName = [&](std::vector<uint32_t> v) {
+        std::sort(v.begin(), v.end(), [&](uint32_t a, uint32_t b) { return db.names().format(a) < db.names().format(b); });
+        return v;
+    };
+    Collection* parent = nullptr;
+    for (Collection* c : moment->collections)
+        if (c->children.size() >= 3 && !parent) parent = c;
+    CHECK(parent);
+    if (!parent) return;
+    const std::vector<uint32_t> stored = children(parent->key);
+    CHECK(stored.size() >= 3 && stored == byName(stored));
+    // A name that sorts after the first child's and before the last's.
+    const std::string name = db.names().format(stored.front()) + "_attribulina";
+    CollectionEditor ed(db);
+    Collection& kid = ed.create(*parent->vault, *moment, name, parent);
+    const std::vector<uint32_t> now = children(parent->key);
+    CHECK_EQ(now.size(), stored.size() + 1);
+    CHECK(now == byName(now));
+    CHECK(now.back() != kid.key); // by name it isn't last: the test would pass appending it
+    CHECK(ed.remove(kid));
+    CHECK(WritePack(db, pack) == original);
 }
 
 TEST("writer: Most Wanted's packs round trip byte for byte") {

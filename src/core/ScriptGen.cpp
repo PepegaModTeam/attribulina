@@ -922,10 +922,17 @@ namespace attrib::script
 		};
 
 		// Only packs open on both sides are compared: a pack the other side
-		// didn't load isn't deleted or new.
+		// didn't load isn't deleted or new. A .lzc and its .bin twin hold the
+		// same vaults (PackTwin): one folder may have loaded either.
+		auto packName = [](const std::string& path)
+		{
+			std::string n = Lower(FileName(path));
+			if (n.size() > 4 && n.compare(n.size() - 4, 4, ".lzc") == 0) n.replace(n.size() - 4, 4, ".bin");
+			return n;
+		};
 		std::unordered_set<std::string> oldFiles, newFiles;
-		for (const auto& pk : base.packs()) oldFiles.insert(Lower(FileName(pk->path)));
-		for (const auto& pk : cur.packs()) newFiles.insert(Lower(FileName(pk->path)));
+		for (const auto& pk : base.packs()) oldFiles.insert(packName(pk->path));
+		for (const auto& pk : cur.packs()) newFiles.insert(packName(pk->path));
 		// World's event vaults are files of their own. When both sides loaded the
 		// gc.vaults folder (each has one), a file only one side has was made or
 		// deleted, with its vault and collections.
@@ -940,15 +947,15 @@ namespace attrib::script
 		if (hasEventFiles(base) && hasEventFiles(cur))
 		{
 			for (const auto& pk : cur.packs())
-				if (pk->format == PackFormat::VaultFile && !oldFiles.count(Lower(FileName(pk->path)))) newEventFiles.push_back(pk.get());
+				if (pk->format == PackFormat::VaultFile && !oldFiles.count(packName(pk->path))) newEventFiles.push_back(pk.get());
 			for (const auto& pk : base.packs())
-				if (pk->format == PackFormat::VaultFile && !newFiles.count(Lower(FileName(pk->path)))) goneEventFiles.push_back(pk.get());
-			for (const LoadedPack* pk : newEventFiles) oldFiles.insert(Lower(FileName(pk->path)));
-			for (const LoadedPack* pk : goneEventFiles) newFiles.insert(Lower(FileName(pk->path)));
+				if (pk->format == PackFormat::VaultFile && !newFiles.count(packName(pk->path))) goneEventFiles.push_back(pk.get());
+			for (const LoadedPack* pk : newEventFiles) oldFiles.insert(packName(pk->path));
+			for (const LoadedPack* pk : goneEventFiles) newFiles.insert(packName(pk->path));
 		}
-		auto inPack = [](const Collection* c, const std::unordered_set<std::string>& files)
+		auto inPack = [&](const Collection* c, const std::unordered_set<std::string>& files)
 		{
-			return c->vault && c->vault->pack && files.count(Lower(FileName(c->vault->pack->path)));
+			return c->vault && c->vault->pack && files.count(packName(c->vault->pack->path));
 		};
 		std::unordered_map<uint64_t, const Collection*> oldById, newById;
 		std::vector<const Collection*> oldAll, newAll;
@@ -1040,7 +1047,7 @@ namespace attrib::script
 		{
 			const LoadedPack* old = nullptr;
 			for (const auto& o : base.packs())
-				if (Lower(FileName(o->path)) == Lower(FileName(pk->path))) old = o.get();
+				if (packName(o->path) == packName(pk->path)) old = o.get();
 			const bool newFile = std::find(newEventFiles.begin(), newEventFiles.end(), pk.get()) != newEventFiles.end();
 			if (!old && !newFile) continue;
 			std::vector<const Vault*> gone;
@@ -1094,9 +1101,9 @@ namespace attrib::script
 		};
 
 		// Classes made or changed, in packs open in both, before their collections.
-		auto classInPack = [](const ClassDef& c, const std::unordered_set<std::string>& files)
+		auto classInPack = [&](const ClassDef& c, const std::unordered_set<std::string>& files)
 		{
-			return c.vault && c.vault->pack && files.count(Lower(FileName(c.vault->pack->path)));
+			return c.vault && c.vault->pack && files.count(packName(c.vault->pack->path));
 		};
 		std::vector<Statement> classes, dropClasses;
 		for (const auto& c : cur.classes())
@@ -1187,7 +1194,7 @@ namespace attrib::script
 		{
 			const LoadedPack* pk = nullptr;
 			for (const auto& p : cur.packs())
-				if (Lower(FileName(o->path)) == Lower(FileName(p->path))) pk = p.get();
+				if (packName(o->path) == packName(p->path)) pk = p.get();
 			const bool goneFile = std::find(goneEventFiles.begin(), goneEventFiles.end(), o.get()) != goneEventFiles.end();
 			if (!pk && !goneFile) continue;
 			for (const auto& ov : o->vaults)

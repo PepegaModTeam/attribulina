@@ -257,12 +257,13 @@ TEST("cli: repair saves what opening repaired in files OGVI saved (VaultLib); Wo
     fs::create_directories(tmp);
     Cli run(tmp);
     // Retail files have nothing to repair.
-    const std::string retail = test::DataPath("attrib/databases/pc/mw-vanilla");
-    if (fs::exists(retail)) {
+    for (const char* folder : {"pc/mw-vanilla", "pc/undercover-vanilla"}) {
+        const std::string retail = test::DataPath(std::string("attrib/databases/") + folder);
+        if (!fs::exists(retail)) continue;
         CHECK_EQ(run({"repair", retail, "--dry-run"}), 0);
         CHECK(run.out.find("nothing to repair") != std::string::npos);
     }
-    for (const char* name : {"mw-ogvi", "world-final-ogvi"}) {
+    for (const char* name : {"mw-ogvi", "undercover-ogvi", "world-final-ogvi"}) {
         const fs::path from = test::DataPath(std::string("attrib/databases/pc/") + name);
         if (!fs::exists(from)) continue;
         const fs::path dir = tmp / name;

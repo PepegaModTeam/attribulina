@@ -503,6 +503,8 @@ namespace attrib
 
 	namespace
 	{
+		constexpr uint32_t kSpeechDefaultValue = 0x4F8B31A9u, kDefaultKey = 0xEEC2271Au; // StringHash32("default")
+
 		struct IndexTable
 		{
 			std::vector<std::pair<uint32_t, std::vector<uint32_t>>> entries; // keys ascending
@@ -568,7 +570,12 @@ namespace attrib
 		}
 	} // namespace
 
-	bool RebuildIndexTables(ClassDef& cls)
+	const KeyNames* IndexTableNames(const Database& db)
+	{
+		return db.target().game == Game::World ? &db.names() : nullptr;
+	}
+
+	bool RebuildIndexTables(ClassDef& cls, const KeyNames* byName)
 	{
 		bool any = false;
 		const Endian e = cls.vault ? cls.vault->raw.endian : Endian::Little;
@@ -594,11 +601,11 @@ namespace attrib
 			WriteIndexTable(cls.staticData, f.offset, IndexTable{}, e);
 			any = true;
 		}
-		if (any) UpdateIndexTables(cls);
+		if (any) UpdateIndexTables(cls, byName);
 		return any;
 	}
 
-	bool UpdateIndexTables(ClassDef& cls)
+	bool UpdateIndexTables(ClassDef& cls, const KeyNames* byName)
 	{
 		bool changed = false;
 		const Endian e = cls.vault ? cls.vault->raw.endian : Endian::Little;
@@ -630,13 +637,25 @@ namespace attrib
 			}
 			std::map<uint32_t, const std::vector<uint32_t>*> had;
 			for (const auto& [k, v] : stored.entries) had[k] = &v;
+			// World's files list a parent's children in the order of their names.
+			auto ordered = [&](std::vector<uint32_t> v)
+			{
+				if (!children || !byName) return v;
+				for (uint32_t x : v)
+					if (!byName->find(x)) return v;
+				std::stable_sort(v.begin(), v.end(), [&](uint32_t a, uint32_t b) { return *byName->find(a) < *byName->find(b); });
+				return v;
+			};
 			IndexTable t;
 			for (auto& [k, v] : want)
 			{
 				auto h = had.find(k);
 				if (h == had.end())
 				{
-					t.entries.emplace_back(k, v);
+					// Undercover's speech default maps to a key no collection has, in
+					// the PC's and the 360's files alike (its other root to 0).
+					if (!children && k == kDefaultKey && v.size() == 1 && !v[0]) v[0] = kSpeechDefaultValue;
+					t.entries.emplace_back(k, ordered(v));
 					continue;
 				}
 				std::vector<uint32_t> keep;
@@ -647,6 +666,7 @@ namespace attrib
 						if (std::find(v.begin(), v.end(), x) != v.end()) keep.push_back(x);
 					for (uint32_t x : v)
 						if (std::find(keep.begin(), keep.end(), x) == keep.end()) keep.push_back(x);
+					keep = ordered(std::move(keep));
 				}
 				else
 				{
@@ -731,7 +751,7 @@ namespace attrib
 		InsertExport(vault, *raw);
 		if (parent) parent->children.push_back(raw);
 		db_.collections_.push_back(std::move(col));
-		UpdateIndexTables(cls);
+		UpdateIndexTables(cls, IndexTableNames(db_));
 		return *raw;
 	}
 
@@ -757,7 +777,7 @@ namespace attrib
 			return p.get() == &col;
 		}),
 				  all.end());
-		if (cls) UpdateIndexTables(*cls);
+		if (cls) UpdateIndexTables(*cls, IndexTableNames(db_));
 		return true;
 	}
 
@@ -777,7 +797,7 @@ namespace attrib
 		db_.collectionByKey_[(uint64_t(col.classKey) << 32) | newKey] = &col;
 		for (Collection* child : col.children)
 			child->parentKey = newKey;
-		if (col.cls) UpdateIndexTables(*col.cls);
+		if (col.cls) UpdateIndexTables(*col.cls, IndexTableNames(db_));
 	}
 
 	void CollectionEditor::rename(Collection& col, uint32_t newKey)
@@ -798,7 +818,7 @@ namespace attrib
 		db_.collectionByKey_[(uint64_t(col.classKey) << 32) | newKey] = &col;
 		for (Collection* child : col.children)
 			child->parentKey = newKey;
-		if (col.cls) UpdateIndexTables(*col.cls);
+		if (col.cls) UpdateIndexTables(*col.cls, IndexTableNames(db_));
 	}
 
 	bool CollectionEditor::move(Collection& col, Collection* newParent)
@@ -817,7 +837,7 @@ namespace attrib
 		col.parentKey = newParent ? newParent->key : 0;
 		if (newParent) newParent->children.push_back(&col);
 		if (col.vault) KeepParentsFirst(*col.vault);
-		if (col.cls) UpdateIndexTables(*col.cls);
+		if (col.cls) UpdateIndexTables(*col.cls, IndexTableNames(db_));
 		return true;
 	}
 

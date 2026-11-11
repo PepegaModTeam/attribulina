@@ -16,6 +16,7 @@
 #include "core/Hash.h"
 #include "core/Nfsms.h"
 #include "core/Script.h"
+#include "core/Values.h"
 #include "core/Writer.h"
 #include "core/lua/Lua.h"
 #include "platform/headless/HeadlessHost.h"
@@ -140,7 +141,8 @@ TEST("ui: Pro Street's console folders, Carbon's, Undercover's, Most Wanted's (i
                             Folder{"360/undercover-vanilla", "undercover_x360", "undercover_pc"},
                             // Its gameplay.lzc is RFPK: saved as RFPK, with its .bin twin.
                             Folder{"360/undercover-alpha161", "undercover_x360", "undercover_x360_alpha"},
-                            Folder{"pc/undercover-vanilla", "undercover_pc", "undercover_pc", false},
+                            Folder{"pc/undercover-vanilla", "undercover_pc", "undercover_pc"},
+                            Folder{"pc/undercover-vlted", "undercover_pc", "undercover_pc", false},
                             Folder{"gamecube/mw-vanilla", "mw_gamecube", "mw_gamecube"},
                             Folder{"xbox/mw-early-oxm-betademo", "mw_xbox", "mw_xbox_demo"},
                             Folder{"ps2/mw-early-opm-betademo", "mw_ps2", "mw_ps2_demo"},
@@ -5865,8 +5867,12 @@ TEST("ui: a folder whose attributes.bin fails to load opens nothing more, and fr
 
 TEST("ui: a database VaultLib saved (Attribulator, OGVI) is repaired as it opens and saved as the game's files") {
     // crashdumps/crash5: OGVI had saved the user's Carbon folder with World's
-    // header on every vault and visuallook's layout 8 bytes short. Made here
-    // from the retail folder the same way, it opens repaired and saves as retail.
+    // header on every vault, visuallook's layout 8 bytes short and every blob
+    // packed as JDLZ. Made here from the retail folder the same way, it opens
+    // repaired and saves as retail: attributes.bin and fe_attrib.bin byte for
+    // byte, gameplay.bin's handlers the same Lua packed as the game packs it
+    // (retail's two JDLZ blocks the encoder wrote reading past its input, and
+    // its short mSizes, VaultLib's file doesn't keep).
     namespace fs = std::filesystem;
     const fs::path from = test::DataPath("attrib/databases/pc/carbon-vanilla");
     if (!fs::exists(from)) return;
@@ -5882,6 +5888,16 @@ TEST("ui: a database VaultLib saved (Attribulator, OGVI) is repaired as it opens
             for (auto& v : p.vaults) {
                 v->raw.version = kVaultLibVers;
                 v->raw.strNFirst = v->raw.endC = true;
+                for (Collection* c : v->collections)
+                    for (Attribute& at : c->attributes) {
+                        if (!at.type || at.type->kind != TypeKind::Blob) continue;
+                        for (uint32_t i = 0; i < at.count; ++i) {
+                            PtrSlot* ptr = at.data.ptrAt(i * at.elemSize + 4);
+                            if (!ptr || !ptr->data || !ParseLzHeader(ptr->data->bytes)) continue;
+                            ptr->data->bytes = Compress(LzKind::Jdlz, Decompress(ptr->data->bytes));
+                            store32(at.elem(i), uint32_t(ptr->data->bytes.size()), Endian::Little);
+                        }
+                    }
             }
             Bytes b = WritePack(db, p);
             if (std::string(f) == "attributes.bin")
@@ -5915,8 +5931,52 @@ TEST("ui: a database VaultLib saved (Attribulator, OGVI) is repaired as it opens
         CHECK_EQ(layout, size_t(1));
         CHECK(a.saveAll());
     }
-    for (const char* f : {"attributes.bin", "fe_attrib.bin", "gameplay.bin"})
-        CHECK(ReadFile((dir / f).string()) == ReadFile((from / f).string()));
+    for (const char* f : {"attributes.bin", "fe_attrib.bin"}) CHECK(ReadFile((dir / f).string()) == ReadFile((from / f).string()));
+    {
+        auto load = [&](const fs::path& folder) {
+            auto db = std::make_unique<Database>();
+            db->setTarget(Target{Game::Carbon, Platform::PC});
+            db->addTypeSchema(TypeSchema::Load(test::DataPath("data/schema/carbon_pc.txt")));
+            for (const char* f : {"attributes.bin", "fe_attrib.bin", "gameplay.bin"}) db->loadPack((folder / f).string());
+            return db;
+        };
+        auto retail = load(from), saved = load(dir);
+        // Only blobs differ (handlers' bytecode, and one more blob field of
+        // gameplay's), and each is retail's Lua packed as the game packs it.
+        auto isBlob = [&](const Database& db, const script::Statement& st, const std::string& field) {
+            uint32_t ck = 0, fk = 0;
+            if (!ParseKey(st.target.cls, ck, false) || !ParseKey(field, fk, false)) return false;
+            const ClassDef* cls = db.findClass(ck);
+            const FieldDef* f = cls ? cls->field(fk) : nullptr;
+            return f && f->type && f->type->kind == TypeKind::Blob;
+        };
+        for (const script::Statement& st : script::Diff(*retail, *saved).statements) {
+            if (st.kind == script::Statement::Kind::Edit)
+                for (const script::Statement& b : st.body) CHECK(isBlob(*saved, st, b.path.field));
+            CHECK(st.kind != script::Statement::Kind::Class && st.kind != script::Statement::Kind::Collection &&
+                  st.kind != script::Statement::Kind::Delete);
+        }
+        size_t blobs = 0, asRetail = 0;
+        for (const auto& cls : retail->classes())
+            for (const Collection* c : cls->collections)
+                for (const Attribute& x : c->attributes) {
+                    if (!x.type || x.type->kind != TypeKind::Blob) continue;
+                    const PtrSlot* p = x.data.ptrAt(4);
+                    if (!p || !p->data || !ParseLzHeader(p->data->bytes)) continue;
+                    ++blobs;
+                    const Collection* d = saved->findCollection(c->classKey, c->key);
+                    const Attribute* y = d ? d->find(x.key) : nullptr;
+                    const PtrSlot* q = y ? y->data.ptrAt(4) : nullptr;
+                    CHECK(q && q->data);
+                    if (!q || !q->data) continue;
+                    const Bytes& block = q->data->bytes;
+                    CHECK(block == CompressBest(Decompress(p->data->bytes)));
+                    CHECK_EQ(load32(y->data.bytes.data(), Endian::Little), uint32_t(block.size()));
+                    asRetail += block == p->data->bytes;
+                }
+        CHECK_EQ(blobs, size_t(312));
+        CHECK_EQ(asRetail, size_t(310));
+    }
     {
         platform::HeadlessImGui imgui;
         platform::HeadlessHost host;
