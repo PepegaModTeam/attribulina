@@ -9,6 +9,7 @@
 #include "core/Hash.h"
 #include "core/Nfsms.h"
 #include "core/Script.h"
+#include "core/VaultLib.h"
 #include "core/Writer.h"
 #include "core/Version.h"
 
@@ -44,6 +45,7 @@ namespace cli
   attribcli list   <database> [<class>]
   attribcli header <database> <class> [-o <out.h>] [--types] [--no-setters]
   attribcli info   <database>
+  attribcli repair <database> [--out <dir>] [--dry-run] [--no-backup]
 
 A <database> is a game folder (with attributes.bin) or one pack file in it.
 Its game and platform come from its files (the Vers value of its vaults);
@@ -84,6 +86,14 @@ too, marked).
 header: the class's Attrib::Gen C++ header, for code that reads its
 collections the way the game's own classes do. --types adds the game's structs
 and enums its fields use, from the type schema; --no-setters leaves out Set_.
+
+repair: saves what opening the database repaired, for files the community
+Attribulator or OGVI saved (VaultLib): each vault takes its game's header back,
+a class too short for its fields its size, array pads the game's values, and
+OGVI's World event vaults go back to gc.vaults as the game's event files (the
+files it put beside attributes.bin are removed). What can't be undone is a
+warning. Only repaired packs are written; --out, --dry-run and --no-backup work
+as for apply.
 
 convert: an nfsms script (and the scripts it includes) as a mod script. Its
 setup becomes options and `if` blocks. It is tried on a copy of the database,
@@ -203,6 +213,7 @@ which decides how values read; lines that fail come out as comments.
 						if (!target_) throw Failed{ "unknown --target " + args[i] + ": it names a game and a platform, such as prostreet_pc or prostreet_ps2" };
 					}
 					if (cmd == "apply") return apply(rest);
+					if (cmd == "repair") return repair(rest);
 					if (cmd == "check") return check(rest);
 					if (cmd == "diff") return diff(rest);
 					if (cmd == "export") return exportCmd(rest);
@@ -323,7 +334,17 @@ which decides how values read; lines that fail come out as comments.
 				if (fs::is_directory(p, ec))
 				{
 					for (const FolderFile& f : FolderPacks(path))
-						if (f.skipped.empty()) db->loadPack(f.path);
+					{
+						if (!f.skipped.empty()) continue;
+						LoadedPack& pk = db->loadPack(f.path);
+						// OGVI's save of a World event vault, beside attributes.bin: saved
+						// to gc.vaults as the game's event vault file, its own file removed.
+						if (!f.saveAs.empty())
+						{
+							vaultlib::MoveToEventVaultFile(pk, f.saveAs);
+							movedFrom_.push_back(f.path);
+						}
+					}
 				}
 				else
 				{
@@ -334,8 +355,7 @@ which decides how values read; lines that fail come out as comments.
 					db->loadPack(path);
 				}
 				for (const auto& pk : db->packs())
-					for (const auto& v : pk->vaults)
-						for (const std::string& w : v->warnings) err_ << v->name << ": warning: " << w << "\n";
+					for (const std::string& w : PackWarnings(*pk)) err_ << "warning: " << w << "\n";
 				return db;
 			}
 
@@ -533,7 +553,9 @@ which decides how values read; lines that fail come out as comments.
 				}
 
 				auto db = load(a.positional[0]);
-				std::vector<std::string> removed; // World event vault files whose vault a script deleted
+				// World event vault files whose vault a script deleted, and OGVI's
+				// saves of event vaults that go to gc.vaults (vaultlib::MoveToEventVaultFile).
+				std::vector<std::string> removed = movedFrom_;
 				for (const auto& [isNfsms, index] : order)
 				{
 					if (!isNfsms)
@@ -590,6 +612,14 @@ which decides how values read; lines that fail come out as comments.
 					}
 					if (!any) err_ << "attribcli: warning: --compress: no compressed pack (gameplay.lzc) is loaded\n";
 				}
+				return saveChanged(*db, std::move(removed), a);
+			}
+
+			// Writes the database's dirty packs (with a .lzc's twin) and removes
+			// `removed`, as apply and repair save: --dry-run, --out and --no-backup.
+			int saveChanged(Database& dbRef, std::vector<std::string> removed, const Args& a)
+			{
+				Database* db = &dbRef;
 				std::vector<LoadedPack*> dirty;
 				for (const auto& pk : db->packs())
 					if (pk->dirty) dirty.push_back(pk.get());
@@ -664,6 +694,33 @@ which decides how values read; lines that fail come out as comments.
 				}
 				if (dirty.empty() && removed.empty()) out_ << "nothing changed\n";
 				return 0;
+			}
+
+			// Opens a database and saves what loading repaired: files another tool
+			// wrote wrong (VaultLib, which the community Attribulator and OGVI save
+			// with: core/VaultLib.h), each fix reported as a warning.
+			int repair(const std::vector<std::string>& in)
+			{
+				const Args a = Parse(in, { "--out" }, { "--dry-run", "--no-backup" });
+				if (a.positional.size() != 1) throw Failed{ "repair takes a database" };
+				movedFrom_.clear();
+				auto db = load(a.positional[0]);
+				size_t vaults = 0, packs = 0;
+				for (const auto& pk : db->packs())
+				{
+					size_t here = 0;
+					for (const auto& v : pk->vaults) here += v->repaired;
+					vaults += here;
+					packs += here != 0;
+				}
+				if (!vaults)
+				{
+					out_ << "nothing to repair: no vault of " << a.positional[0] << " was written wrong in a way Attribulina knows\n";
+					return 0;
+				}
+				out_ << "repaired " << vaults << " vault(s) in " << packs << " pack(s); the warnings above say what changed\n";
+				// Only what was repaired: a pack loading marked dirty.
+				return saveChanged(*db, movedFrom_, a);
 			}
 
 			bool applyOne(Database& db, const sc::Script& s, const Args& a, const std::map<std::string, std::string>& given,
@@ -931,6 +988,7 @@ which decides how values read; lines that fail come out as comments.
 			fs::path dataDir_;
 			std::optional<Target> target_; // --target
 			Detection detection_;          // of the last database loaded
+			std::vector<std::string> movedFrom_; // files of packs saved elsewhere (FolderFile::saveAs)
 			std::vector<std::shared_ptr<const ns::PropertyNames>> nfsmsNames_;
 			std::vector<std::shared_ptr<TypeSchema>> schemas_;
 			std::vector<std::shared_ptr<const ClassList>> classLists_;

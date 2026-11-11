@@ -3,6 +3,7 @@
 #include "Bytes.h"
 #include "Compression.h"
 #include "Pack.h"
+#include "VaultLib.h"
 
 #include <algorithm>
 #include <cstring>
@@ -74,7 +75,7 @@ namespace attrib
 	{
 		const std::optional<std::string> attrs = FindFileNoCase(dir, "attributes.bin");
 		if (!attrs) throw std::runtime_error("no attributes.bin in " + dir);
-		std::vector<FolderFile> out{ {*attrs, {}} };
+		std::vector<FolderFile> out{ {*attrs, {}, {}} };
 		std::vector<fs::path> files;
 		std::error_code ec;
 		for (const auto& e : fs::directory_iterator(FromUtf8(dir), ec))
@@ -92,16 +93,16 @@ namespace attrib
 				lzc.replace_extension(".lzc");
 				if (FindFileNoCase(dir, ToUtf8(lzc.filename())))
 				{
-					out.push_back({ ToUtf8(f), ToUtf8(lzc.filename()) + " holds the same vaults" });
+					out.push_back({ ToUtf8(f), ToUtf8(lzc.filename()) + " holds the same vaults", {} });
 					continue;
 				}
 			}
 			if (!LooksLikePack(ToUtf8(f)))
 			{
-				out.push_back({ ToUtf8(f), "not an attribute pack" });
+				out.push_back({ ToUtf8(f), "not an attribute pack", {} });
 				continue;
 			}
-			out.push_back({ ToUtf8(f), {} });
+			out.push_back({ ToUtf8(f), {}, {} });
 		}
 		// World's event vaults, in GLOBAL\gc.vaults (the folders under it hold
 		// other files, such as a mod's choices of gpcore.bin).
@@ -111,7 +112,25 @@ namespace attrib
 			for (const auto& e : fs::directory_iterator(FromUtf8(*gc), ec))
 				if (e.is_regular_file(ec) && Lower(ToUtf8(e.path().extension())) == ".bin") vaults.push_back(e.path());
 			std::sort(vaults.begin(), vaults.end());
-			for (const fs::path& f : vaults) out.push_back({ ToUtf8(f), LooksLikePack(ToUtf8(f)) ? std::string() : "not an attribute pack" });
+			const size_t first = out.size();
+			for (const fs::path& f : vaults) out.push_back({ ToUtf8(f), LooksLikePack(ToUtf8(f)) ? std::string() : "not an attribute pack", {} });
+			// OGVI saves every event vault as a VPAK beside attributes.bin, where
+			// the game doesn't look (VaultLib.h): that file is the newer.
+			for (size_t i = 1; i < first; ++i)
+			{
+				FolderFile& root = out[i];
+				if (!root.skipped.empty()) continue;
+				const std::string stem = Lower(ToUtf8(FromUtf8(root.path).stem()));
+				for (size_t j = first; j < out.size(); ++j)
+				{
+					FolderFile& event = out[j];
+					if (!event.skipped.empty() || Lower(ToUtf8(FromUtf8(event.path).stem())) != stem || !vaultlib::MarkedPack(root.path)) continue;
+					root.saveAs = event.path;
+					event.skipped = "OGVI saved this event vault as " + ToUtf8(FromUtf8(root.path).filename()) +
+						" beside attributes.bin, which loads in its place";
+					break;
+				}
+			}
 		}
 		return out;
 	}

@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <functional>
 #include <map>
+#include <set>
 
 using namespace attrib;
 
@@ -289,6 +290,59 @@ TEST("writer: World's final packs and its betas' round trip byte for byte, their
         CHECK_EQ(db.target().id(), std::string("world_pc"));
         CHECK(db.typeSchema() && db.typeSchema()->source.find("world_pc.txt") != std::string::npos);
     }
+}
+
+TEST("writer: World's 30 builds in pc/world-various round trip byte for byte, each event vault once") {
+    // 30 folders by build number: the 2009 beta's (_AT1), the 2010 beta's (34),
+    // 13 Vers values after it and seven builds of the final one. All take
+    // the final build's schema. Most event vaults come again in later builds
+    // unchanged; each is written once (the folder's other packs and gpcore.bin,
+    // which events inherit from, always load). commerce.bin and FE_ATTRIB.bin
+    // load after the events: each pack loaded relinks every collection's parent,
+    // and commerce.bin holds some 16000.
+    const std::string root = test::DataPath("attrib/databases/pc/world-various");
+    if (!std::filesystem::exists(root)) return;
+    std::vector<std::string> folders;
+    for (const auto& e : std::filesystem::directory_iterator(root)) folders.push_back(e.path().string());
+    std::sort(folders.begin(), folders.end());
+    CHECK_EQ(folders.size(), size_t(30));
+    std::set<size_t> seen;
+    size_t events = 0;
+    for (const std::string& dir : folders) {
+        const bool b2009 = dir.size() >= 4 && dir.compare(dir.size() - 4, 4, "_AT1") == 0;
+        Database db;
+        for (const char* s : {"carbon_pc", "undercover_pc", "world_pc"})
+            db.addTypeSchema(TypeSchema::Load(test::DataPath(std::string("data/schema/") + s + ".txt")));
+        std::vector<FolderFile> files = FolderPacks(dir);
+        std::stable_partition(files.begin(), files.end(), [](const FolderFile& f) {
+            const std::string n = std::filesystem::path(f.path).filename().string();
+            return n != "commerce.bin" && n != "FE_ATTRIB.bin" && n != "fe_attrib.bin";
+        });
+        for (const FolderFile& f : files) {
+            CHECK(f.skipped.empty());
+            const Bytes file = ReadFile(f.path);
+            const std::filesystem::path p(f.path);
+            const bool event = p.parent_path().filename() == "gc.vaults" && p.filename() != "gpcore.bin";
+            if (event && !seen.insert(std::hash<std::string_view>{}(std::string_view(reinterpret_cast<const char*>(file.data()), file.size()))).second)
+                continue;
+            LoadedPack& pk = db.loadPack(f.path);
+            for (const auto& v : pk.vaults) {
+                for (const auto& w : v->warnings) std::printf("        %s %s: %s\n", dir.c_str(), v->name.c_str(), w.c_str());
+                CHECK(v->warnings.empty());
+                CHECK(v->exactlyWritable);
+                CHECK(v->raw.strNFirst && v->raw.endC != b2009);
+                if (pk.format == PackFormat::VaultFile) {
+                    CHECK_EQ(v->raw.sign.size(), size_t(8 + 128 * v->raw.dependencies.size()));
+                    CHECK_EQ(v->dataExports.size(), size_t(1));
+                }
+            }
+            events += event;
+            CheckIdentical(WritePack(db, pk), file, f.path.c_str());
+        }
+        CHECK_EQ(db.target().id(), std::string("world_pc"));
+        CHECK(db.typeSchema() && db.typeSchema()->source.find("world_pc.txt") != std::string::npos);
+    }
+    CHECK(events > 3000);
 }
 
 TEST("writer: an edited World event vault keeps its header and VaultData, drops its stale Sign; a new collection goes before VaultData") {

@@ -524,6 +524,9 @@ namespace app
 		void setRecording(bool amod, bool nfsms);
 		// Turns the changes since the last call into statements (frame() calls it).
 		void flushRecording();
+		// Takes recordBase_ again. A database that can't be copied stops the
+		// recording, with the reason in the Log, and gives false.
+		bool copyForRecording();
 
 		// Undo (Edit menu, Ctrl+Z, Ctrl+Y or Ctrl+Shift+Z): the database after
 		// each of the last kUndoSteps actions, kept as the packs' bytes. An action

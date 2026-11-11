@@ -293,7 +293,10 @@ attribcli get GLOBAL pvehicle/street [HornType ...]   # values as script text; i
 attribcli list GLOBAL [pvehicle]                      # classes, or one class's collections as a tree
 attribcli header GLOBAL mod_racer -o mod_racer.h      # the class's Attrib::Gen header (doc/classes.md)
 attribcli info GLOBAL
+attribcli repair GLOBAL [--dry-run] [--out dir]       # saves what opening it repaired
 ```
+
+`repair` is for files the community Attribulator or OGVI saved: their library, VaultLib, writes every vault with World's header and gets some layouts wrong. Opening such a database repairs it in memory, with a warning for each fix (the editor does the same in its Log), and `repair` writes the repaired packs. For World it also moves the event vaults OGVI saved beside `attributes.bin` back into `gc.vaults`, in the game's event vault format, and removes the files it had put there. What VaultLib lost can't come back, and the warnings name it. `src/core/VaultLib.h` lists every difference.
 
 The exit code is 0 when it worked, 1 when a script or a file failed, and 2 for a mistake in the command line. Saving follows the editor's rules: a `.lzc` is written together with its `.bin` twin, and the first original of each file is kept as `.bak`.
 

@@ -23,7 +23,8 @@ namespace attrib
 
 		// Most Wanted (its own vaults and its early demos'), Pro Street, Carbon,
 		// Undercover (PC, 360, and its Wii and PS2 version) and World (its final PC
-		// build and its 2009 and 2010 betas) are edited for real so far.
+		// build, its 2009 and 2010 betas and the builds between) are edited for real
+		// so far.
 		// To add a game or platform: its type schema (scripts/gen_schema.py,
 		// data/schema/<game>_<platform>.txt with the game and platforms in its
 		// header), the hand pointer layouts its types need (TypeLayouts.cpp),
@@ -48,7 +49,8 @@ namespace attrib
 			// The Wii's and the PS2's Undercover is one game on Carbon's engine,
 			// unlike the others (Pro Street's layout with StrN first, its own types).
 			{Game::Undercover, "undercover", "Undercover", {P::PC, P::PS2, P::Xbox360, P::Wii}, {P::PC, P::PS2, P::PS3, P::Xbox360, P::Wii}},
-			// One schema for the final build and the betas (IsWorldBetaVersion).
+			// One schema for the final build, the betas and the builds between
+			// (IsWorldBetaVersion).
 			{Game::World, "world", "World", {P::PC}, {P::PC}},
 			// Nitro (2009) runs on Carbon's engine too, with many types of its own;
 			// its Wii version has AttribSys files.
@@ -80,6 +82,11 @@ namespace attrib
 		};
 
 		constexpr uint32_t kPipEventTrigger = 0x4D25C5ACu; // StringHash32("pip_event_trigger")
+		// StringHash32("input"): a class every World build's attributes.bin has and
+		// no other game's. OGVI (after the community Attribulator) saved a Carbon
+		// attributes.bin with the final build's Vers (crashdumps/crash5); without
+		// the class, World's values don't make a file World's.
+		constexpr uint32_t kWorldInput = 0x9C74903Eu;
 		constexpr uint64_t kWorldBeta2009 = 0xD5424397B2A8D273ull, kWorldBeta2010 = 0x2EDE8B2CB6712231ull;
 
 		// Vers values, read from the databases in attrib/databases. A Vers value is
@@ -121,9 +128,25 @@ namespace attrib
 			// the PS2's and the Wii's (or GameCube's) files share a value in Pro
 			// Street and Carbon.
 			{0x0E657D8D9C499917ull, Endian::Little, Game::Undercover, P::PS2},
-			{kWorldBeta2009, Endian::Little, Game::World, P::PC},
-			{kWorldBeta2010, Endian::Little, Game::World, P::PC},
-			{0x6838F8C1836A18DEull, Endian::Little, Game::World, P::PC},
+			{kWorldBeta2009, Endian::Little, Game::World, P::PC, kWorldInput},
+			{kWorldBeta2010, Endian::Little, Game::World, P::PC, kWorldInput},
+			// World's builds between the 2010 beta and the final one (pc/world-various,
+			// by the folders' build numbers): one value from each schema change.
+			{0xC39FD381B76D8AE2ull, Endian::Little, Game::World, P::PC, kWorldInput}, // 62 to 77
+			{0xD043549EBA6A5F5Cull, Endian::Little, Game::World, P::PC, kWorldInput}, // 190
+			{0x1E4F597223305838ull, Endian::Little, Game::World, P::PC, kWorldInput}, // 270
+			{0xF01ACDFC2058F05Full, Endian::Little, Game::World, P::PC, kWorldInput}, // 363, 396
+			{0x66C6A5C81816AE48ull, Endian::Little, Game::World, P::PC, kWorldInput}, // 541, 593
+			{0xAD783903AB6CA791ull, Endian::Little, Game::World, P::PC, kWorldInput}, // 541's commerce.bin
+			{0xBFD963F5E690A25Cull, Endian::Little, Game::World, P::PC, kWorldInput}, // 704
+			{0xDFBA5AE4F7318068ull, Endian::Little, Game::World, P::PC, kWorldInput}, // 749
+			{0x9C960D4D12274E05ull, Endian::Little, Game::World, P::PC, kWorldInput}, // 808, 846
+			{0xD3526CE0D2FA2312ull, Endian::Little, Game::World, P::PC, kWorldInput}, // 922
+			{0xD64B2787AD688155ull, Endian::Little, Game::World, P::PC, kWorldInput}, // 1102, 1169
+			{0x53BB61D0407FEDCAull, Endian::Little, Game::World, P::PC, kWorldInput}, // 1251
+			{0xD6337C64395D729Dull, Endian::Little, Game::World, P::PC, kWorldInput}, // 1283, 1334
+			{0xA8A63737B1C13FAAull, Endian::Little, Game::World, P::PC, kWorldInput}, // 1398 to 1412
+			{0x6838F8C1836A18DEull, Endian::Little, Game::World, P::PC, kWorldInput}, // the final build, 1548 on
 			{0x5E3BDBFFAC32D7DBull, Endian::Big, Game::Nitro, P::Wii},
 		};
 
@@ -153,8 +176,12 @@ namespace attrib
 			uint32_t boolSize = 0;          // EA::Reflection::Bool in it
 			bool proStreetTypes = false;    // FEPartData, which Carbon's table (and the Wii's Undercover) lacks
 			bool lastGenUndercoverTypes = false; // eNISAudio_en_index: the Wii's and the PS2's Undercover
+			// Attrib::Gen::ClassRefSpec_<class>: current-gen Undercover's and World's,
+			// which have Pro Street's types too.
+			bool classRefSpecTypes = false;
 			std::unordered_set<uint32_t> classes; // the classes in it
 			bool keys64 = false;            // no Vers chunk, and StringHash64 keys (early Most Wanted demos)
+			bool mostWantedLayout = false;  // Most Wanted's exports (RawVault::mostWantedLayout)
 		};
 
 		Clues ReadClues(ByteSpan data)
@@ -212,6 +239,7 @@ namespace attrib
 				{
 					continue;
 				}
+				c.mostWantedLayout |= raw.mostWantedLayout;
 				for (const ExportEntry& e : raw.exports)
 				{
 					if (e.type != ExportType::DatabaseLoadData) continue;
@@ -233,6 +261,7 @@ namespace attrib
 						if (name == "EA::Reflection::Bool") c.boolSize = r.u32(e.offset + 16 + x4 + i * 4);
 						if (name == "FEPartData") c.proStreetTypes = true;
 						if (name == "eNISAudio_en_index") c.lastGenUndercoverTypes = true;
+						if (name.rfind("Attrib::Gen::ClassRefSpec_", 0) == 0) c.classRefSpecTypes = true;
 					}
 					return c;
 				}
@@ -353,6 +382,9 @@ namespace attrib
 			std::string platformWhere, gameWhere;
 			const Platform hintedPlatform = PlatformInPath(path, &platformWhere);
 			const Game hintedGame = GameInPath(path, &gameWhere);
+			// A known Vers value whose files lack the class it needs (another
+			// tool's save): its game, for the reason.
+			Game versWithoutClass = Game::Unknown;
 			if (c.version)
 			{
 				std::vector<Target> hits;
@@ -364,7 +396,11 @@ namespace attrib
 					// attributes.bin was read.
 					if (k.classKey && c.typeTable)
 					{
-						if ((c.classes.count(k.classKey) != 0) == k.without) continue;
+						if ((c.classes.count(k.classKey) != 0) == k.without)
+						{
+							versWithoutClass = k.game;
+							continue;
+						}
 						byClass = true;
 					}
 					if (k.boolSize && c.boolSize)
@@ -437,22 +473,38 @@ namespace attrib
 			}
 			else
 			{
-				why.push_back(c.version ? "Vers " + Hex64(*c.version) + " isn't one Attribulina knows" : "the vaults have no Vers chunk");
+				if (versWithoutClass != Game::Unknown)
+					why.push_back("Vers " + Hex64(*c.version) + " is " + InfoOf(versWithoutClass).name + "'s, but attributes.bin lacks a class every " +
+						InfoOf(versWithoutClass).name + " build has, so another tool may have written it");
+				else
+					why.push_back(c.version ? "Vers " + Hex64(*c.version) + " isn't one Attribulina knows" : "the vaults have no Vers chunk");
 				if (c.keys64) why.push_back("their keys are 64-bit, as in the early Most Wanted demos");
 				why.push_back(*c.endian == Endian::Big ? "big-endian" : "little-endian");
 				if (!c.version)
 				{
 					g = Game::MostWanted; // its vaults start with DepN
 				}
-				else if (c.strNFirst)
+				// World's chunk order and EndC say nothing once World's Vers came
+				// without World's classes: a tool that writes every game as World
+				// wrote both.
+				else if (c.strNFirst && versWithoutClass != Game::World)
 				{
 					g = c.endC || hintedGame == Game::World ? Game::World : Game::Undercover;
 					why.push_back(std::string("its chunks are ordered as ") + (g == Game::World ? "World's" : "Undercover's"));
 				}
+				else if (versWithoutClass == Game::World && c.mostWantedLayout)
+				{
+					// VaultLib's World header over Most Wanted's own exports.
+					g = Game::MostWanted;
+					why.push_back("its exports are laid out as Most Wanted's");
+				}
 				else if (c.typeTable)
 				{
-					g = c.proStreetTypes ? Game::ProStreet : c.lastGenUndercoverTypes ? Game::Undercover : Game::Carbon;
+					// Class references came with current-gen Undercover; World's files
+					// take the chunk order's branch above.
+					g = c.classRefSpecTypes || c.lastGenUndercoverTypes ? Game::Undercover : c.proStreetTypes ? Game::ProStreet : Game::Carbon;
 					why.push_back(std::string("its types are ") + (g == Game::ProStreet ? "Pro Street's"
+																   : c.classRefSpecTypes ? "current-gen Undercover's (class references)"
 																   : g == Game::Undercover ? "Undercover's (the Wii's and the PS2's)"
 																   : "Carbon's"));
 				}
@@ -611,6 +663,24 @@ namespace attrib
 	bool IsWorldBetaVersion(uint64_t vers)
 	{
 		return vers == kWorldBeta2009 || vers == kWorldBeta2010;
+	}
+
+	std::optional<uint64_t> RetailVersion(const Target& t, Endian e)
+	{
+		for (const KnownVersion& k : kKnownVersions)
+			if (k.game == t.game && k.platform == t.platform && k.endian == e) return k.value;
+		return std::nullopt;
+	}
+
+	bool StrNFirstIn(const Target& t)
+	{
+		// Undercover's Wii and PS2 version is Carbon's engine, with Carbon's order.
+		return t.game == Game::World || (t.game == Game::Undercover && t.platform != P::Wii && t.platform != P::PS2);
+	}
+
+	bool EndCIn(const Target& t)
+	{
+		return t.game == Game::World;
 	}
 
 	std::string Contradiction(const Target& t, const Detection& d)

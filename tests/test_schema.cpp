@@ -4,12 +4,16 @@
 #include "Test.h"
 
 #include "app/ValueEditors.h"
+#include "core/ClassDesign.h"
 #include "core/Database.h"
+#include "core/Folder.h"
+#include "core/Game.h"
 #include "core/Hash.h"
 #include "core/Schema.h"
 #include "core/Writer.h"
 
 #include <algorithm>
+#include <filesystem>
 
 using namespace attrib;
 
@@ -34,7 +38,7 @@ TEST("schema: the Pro Street schema parses") {
     auto s = ProStreetSchema();
     CHECK(s->title == "Need for Speed: ProStreet");
     CHECK_EQ(s->structCount(), size_t(85));
-    CHECK_EQ(s->enumCount(), size_t(122));
+    CHECK_EQ(s->enumCount(), size_t(123));
     const StructDef* elr = s->findStruct("EffectLinkageRecord");
     CHECK(elr && elr->size == 32 && elr->members.size() == 4);
     CHECK(elr->members[0].st && elr->members[0].st->name == "Attrib::RefSpec");
@@ -177,4 +181,86 @@ TEST("schema: struct values decode through the schema") {
     std::printf("        %zu of %zu enum values have a name\n", named, enumValues);
     CHECK(enumValues > 1000);
     CHECK(named * 100 >= enumValues * 95);
+}
+
+TEST("schema: a field line gives a class's integer field an enum") {
+    auto s = TypeSchema::Parse("enum E 4\n  A 0\n  B 1\nend\nfield cls fld E\n", "inline");
+    CHECK(s->fieldEnum(StringHash32("cls"), StringHash32("fld")) == s->findEnum("E"));
+    CHECK(s->fieldEnum(StringHash32("cls"), StringHash32("other")) == nullptr);
+    CHECK(s->fieldEnum(StringHash32("other"), StringHash32("fld")) == nullptr);
+    bool threw = false;
+    try {
+        TypeSchema::Parse("field cls fld Nope\n", "inline");
+    } catch (const FormatError& e) {
+        threw = std::string(e.what()).find("inline:1") != std::string::npos && std::string(e.what()).find("Nope") != std::string::npos;
+    }
+    CHECK(threw);
+}
+
+TEST("schema: light_flares_cg's flare_texture is an eLightFlareTextures in every game, and every stored value names a texture") {
+    namespace fs = std::filesystem;
+    // Most Wanted's build has three textures (and the count), the later games
+    // add the cat's eye and the lamp post flare, and the Wii's Undercover the
+    // sun's six. Every game folder but Nitro's, which isn't supported; a folder
+    // of builds (pc/world-various) stands for each of them.
+    std::vector<std::pair<std::string, size_t>> folders;
+    for (const auto& platform : fs::directory_iterator(test::DataPath("attrib/databases")))
+        for (const auto& game : fs::directory_iterator(platform.path())) {
+            const std::string name = game.path().filename().string();
+            if (name.rfind("nitro", 0) == 0) continue;
+            const std::string dir = platform.path().filename().string() + "/" + name;
+            const size_t values = name.rfind("mw", 0) == 0 ? 4 : dir == "wii/undercover-vanilla" ? 12 : 6;
+            if (FindFileNoCase(game.path().string(), "attributes.bin")) folders.emplace_back(dir, values);
+            else
+                for (const auto& build : fs::directory_iterator(game.path()))
+                    if (FindFileNoCase(build.path().string(), "attributes.bin")) folders.emplace_back(dir + "/" + build.path().filename().string(), values);
+        }
+    std::sort(folders.begin(), folders.end());
+    CHECK(folders.size() >= 20);
+    std::vector<std::shared_ptr<const TypeSchema>> schemas;
+    for (const auto& e : fs::directory_iterator(test::DataPath("data/schema")))
+        if (e.path().extension() == ".txt") schemas.push_back(TypeSchema::Load(e.path().string()));
+    size_t seen = 0;
+    for (const auto& [where, values] : folders) {
+        const std::string dir = test::DataPath("attrib/databases/" + where);
+        if (!fs::exists(dir)) continue;
+        Database db;
+        db.setTarget(DetectTarget(dir).target);
+        for (const auto& s : schemas) db.addTypeSchema(s);
+        // The names first: the early Most Wanted demos' keys are StringHash64 of them.
+        db.names().loadFile(test::DataPath("data/attrib_keys.txt"));
+        // attributes.bin, which defines the classes, comes first.
+        const std::vector<FolderFile> packs = FolderPacks(dir);
+        CHECK(!packs.empty());
+        if (packs.empty()) continue;
+        db.loadPack(packs.front().path);
+        const ClassDef* cls = db.findClass(StringHash32("light_flares_cg"));
+        if (!cls) std::fprintf(stderr, "%s: no light_flares_cg in %s\n", where.c_str(), packs.front().path.c_str());
+        CHECK(cls);
+        if (!cls) continue;
+        const FieldDef* f = cls->field(StringHash32("flare_texture"));
+        CHECK(f && f->fieldEnum && f->fieldEnum->name == "eLightFlareTextures");
+        if (!f || !f->fieldEnum) continue;
+        if (f->fieldEnum->values.size() != values) std::fprintf(stderr, "%s: %zu values\n", where.c_str(), f->fieldEnum->values.size());
+        CHECK_EQ(f->fieldEnum->values.size(), values);
+        CHECK(f->type && f->type->kind == TypeKind::UInt32); // the type table's type stays
+        const FieldDef* other = cls->field(StringHash32("MinSize"));
+        CHECK(other && !other->fieldEnum);
+        for (const Collection* c : cls->collections)
+            if (const Attribute* a = c->find(f->key)) {
+                const ValueType vt = TypeOfAttribute(*a, "flare_texture");
+                CHECK(vt.kind == TypeKind::Enum && vt.en == f->fieldEnum && vt.typeName == "eLightFlareTextures");
+                const int64_t v = ReadInteger(a->data, 0, vt, c->vault->raw.endian);
+                if (!f->fieldEnum->nameOf(v)) std::fprintf(stderr, "%s: %s has flare_texture %lld\n", where.c_str(),
+                                                           db.names().format(c->key).c_str(), static_cast<long long>(v));
+                CHECK(f->fieldEnum->nameOf(v) != nullptr);
+                ++seen;
+            }
+        // A class laid out again (restored, or a design applied) keeps it.
+        ClassDef again;
+        LayOutClass(db, DesignOf(db, *cls), again);
+        const FieldDef* g = again.field(f->key);
+        CHECK(g && g->fieldEnum == f->fieldEnum);
+    }
+    CHECK(seen > 100);
 }

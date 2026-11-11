@@ -5815,3 +5815,161 @@ TEST("ui: search: a hit's menu copies a cell, its line, a column or every line, 
     for (const auto& x : probe.conflicts) std::printf("        ID conflict: %s\n", x.c_str());
     CHECK(probe.conflicts.empty());
 }
+
+TEST("ui: a folder whose attributes.bin fails to load opens nothing more, and frames go on (crashdumps/crash5)") {
+    // OGVI had saved the user's Carbon attributes.bin with a class too short for
+    // its fields. The app went on with what the failed pack had left, loaded the
+    // folder's other packs over it, and the recorder's copy of that database
+    // threw out of the frame. A pack that fails now takes back what it added
+    // (Database::loadPack), and the others aren't opened without it.
+    namespace fs = std::filesystem;
+    const fs::path from = test::DataPath("attrib/databases/pc/carbon-vanilla");
+    if (!fs::exists(from)) return;
+    const fs::path dir = fs::temp_directory_path() / "attribulina_crash5_test";
+    fs::remove_all(dir);
+    fs::create_directories(dir);
+    for (const char* f : {"fe_attrib.bin", "gameplay.bin"}) fs::copy_file(from / f, dir / f);
+    Bytes b = ReadFile((from / "attributes.bin").string());
+    // colorcurves' CollectionLoadData names a class no vault defines.
+    size_t at = std::string::npos;
+    for (size_t i = 0; i + 8 <= b.size(); i += 4)
+        if (load32(b.data() + i, Endian::Little) == 0xE7CF45FEu && load32(b.data() + i + 4, Endian::Little) == StringHash32("visuallook")) at = i;
+    CHECK(at != std::string::npos);
+    if (at == std::string::npos) return;
+    store32(b.data() + at + 4, 0x0BADC1A5u, Endian::Little);
+    WriteFile((dir / "attributes.bin").string(), b);
+
+    platform::HeadlessImGui imgui;
+    platform::HeadlessHost host;
+    app::App a(host);
+    a.setup(1.0f, "");
+    a.setUserKeysPath("");
+    a.setRecording(true, true);
+    CHECK(!a.open(dir.string()));
+    imgui.run(a, 3);
+    const Database* db = a.database();
+    CHECK(!db || (db->packs().empty() && !db->hasSchema() && db->collectionCount() == 0));
+    bool unknownClass = false, others = false;
+    for (const auto& l : a.log()) {
+        unknownClass |= l.level == app::LogLevel::Error && l.text.find("uses an unknown class") != std::string::npos;
+        others |= l.level == app::LogLevel::Error && l.text.find("weren't opened") != std::string::npos;
+    }
+    CHECK(unknownClass && others);
+    // The file as it should be opens with its folder, recording on.
+    fs::copy_file(from / "attributes.bin", dir / "attributes.bin", fs::copy_options::overwrite_existing);
+    CHECK(a.open(dir.string()));
+    imgui.run(a, 3);
+    CHECK(a.database() && a.database()->packs().size() == 3);
+    fs::remove_all(dir);
+}
+
+TEST("ui: a database VaultLib saved (Attribulator, OGVI) is repaired as it opens and saved as the game's files") {
+    // crashdumps/crash5: OGVI had saved the user's Carbon folder with World's
+    // header on every vault and visuallook's layout 8 bytes short. Made here
+    // from the retail folder the same way, it opens repaired and saves as retail.
+    namespace fs = std::filesystem;
+    const fs::path from = test::DataPath("attrib/databases/pc/carbon-vanilla");
+    if (!fs::exists(from)) return;
+    const fs::path dir = fs::temp_directory_path() / "attribulina_vaultlib_test";
+    fs::remove_all(dir);
+    fs::create_directories(dir);
+    {
+        Database db;
+        db.setTarget(Target{Game::Carbon, Platform::PC});
+        db.addTypeSchema(TypeSchema::Load(test::DataPath("data/schema/carbon_pc.txt")));
+        for (const char* f : {"attributes.bin", "fe_attrib.bin", "gameplay.bin"}) {
+            LoadedPack& p = db.loadPack((from / f).string());
+            for (auto& v : p.vaults) {
+                v->raw.version = kVaultLibVers;
+                v->raw.strNFirst = v->raw.endC = true;
+            }
+            Bytes b = WritePack(db, p);
+            if (std::string(f) == "attributes.bin")
+                for (size_t i = 0; i + 28 <= b.size(); i += 4)
+                    if (load32(b.data() + i, Endian::Little) == StringHash32("visuallook") && load32(b.data() + i + 24, Endian::Little) == 1112)
+                        store32(b.data() + i + 24, 1104, Endian::Little);
+            WriteFile((dir / f).string(), b);
+        }
+    }
+    {
+        platform::HeadlessImGui imgui;
+        platform::HeadlessHost host;
+        app::App a(host);
+        a.setup(1.0f, "");
+        a.setUserKeysPath("");
+        a.setRecording(true, false);
+        CHECK(a.openAs(dir.string(), Target{Game::Carbon, Platform::PC}));
+        imgui.run(a, 3);
+        const Database* db = a.database();
+        CHECK(db && db->packs().size() == 3);
+        if (!db) return;
+        for (const auto& p : db->packs()) CHECK(p->dirty);
+        size_t repaired = 0, grouped = 0, layout = 0;
+        for (const auto& l : a.log()) {
+            repaired += l.text.rfind("Repaired ", 0) == 0;
+            grouped += l.text.find(" vaults (") != std::string::npos && l.text.find("as VaultLib writes it") != std::string::npos;
+            layout += l.text.find("visuallook's layout size is 1104 bytes") != std::string::npos;
+        }
+        CHECK_EQ(repaired, size_t(3));
+        CHECK_EQ(grouped, size_t(1)); // gameplay.bin's vaults, in one line
+        CHECK_EQ(layout, size_t(1));
+        CHECK(a.saveAll());
+    }
+    for (const char* f : {"attributes.bin", "fe_attrib.bin", "gameplay.bin"})
+        CHECK(ReadFile((dir / f).string()) == ReadFile((from / f).string()));
+    {
+        platform::HeadlessImGui imgui;
+        platform::HeadlessHost host;
+        app::App b(host);
+        b.setup(1.0f, "");
+        b.setUserKeysPath("");
+        CHECK(DetectTarget(dir.string()).certain);
+        CHECK(b.open(dir.string()));
+        imgui.run(b, 2);
+        for (const auto& p : b.database()->packs()) {
+            CHECK(!p->dirty);
+            for (const auto& v : p->vaults) CHECK(!v->repaired && v->warnings.empty());
+        }
+    }
+    fs::remove_all(dir);
+}
+
+TEST("ui: an event vault OGVI saved beside World's attributes.bin opens in place of gc.vaults' and saves back there") {
+    // OGVI writes each of World's event vaults as a VPAK beside attributes.bin,
+    // where the game doesn't look (core/VaultLib.h).
+    namespace fs = std::filesystem;
+    const fs::path from = test::DataPath("attrib/databases/pc/world-final-ogvi");
+    if (!fs::exists(from)) return;
+    const fs::path dir = fs::temp_directory_path() / "attribulina_ogvi_events_test";
+    fs::remove_all(dir);
+    fs::create_directories(dir / "gc.vaults");
+    for (const char* f : {"attributes.bin", "1_2_1_sprint.bin", "gc.vaults/1_2_1_sprint.bin"}) fs::copy_file(from / f, dir / f);
+    {
+        platform::HeadlessImGui imgui;
+        platform::HeadlessHost host;
+        app::App a(host);
+        a.setup(1.0f, "");
+        a.setUserKeysPath("");
+        CHECK(a.open(dir.string()));
+        imgui.run(a, 2);
+        const Database* db = a.database();
+        CHECK(db && db->packs().size() == 2);
+        if (!db || db->packs().size() != 2) return;
+        const LoadedPack& event = *db->packs().back();
+        CHECK(event.format == PackFormat::VaultFile && event.dirty);
+        CHECK(fs::path(event.path).parent_path().filename() == "gc.vaults");
+        CHECK(event.vaults.front()->dataExports.size() == 1);
+        bool told = false;
+        for (const auto& l : a.log()) told |= l.text.find("OGVI saved this event vault as a pack") != std::string::npos;
+        CHECK(told);
+        CHECK(a.hasUnsavedChanges());
+        CHECK(a.saveAll());
+    }
+    // gc.vaults has the event vault file, and the VPAK beside attributes.bin is gone.
+    CHECK(!fs::exists(dir / "1_2_1_sprint.bin"));
+    const Bytes saved = ReadFile((dir / "gc.vaults" / "1_2_1_sprint.bin").string());
+    CHECK(ParseVaultFileHeader(saved).has_value());
+    const std::vector<FolderFile> files = FolderPacks(dir.string());
+    for (const FolderFile& f : files) CHECK(f.saveAs.empty());
+    fs::remove_all(dir);
+}

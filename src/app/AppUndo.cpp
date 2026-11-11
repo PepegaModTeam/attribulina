@@ -301,7 +301,7 @@ namespace app
 		{
 			if (script)
 			{
-				recordBase_ = script::CloneDatabase(*db_);
+				copyForRecording();
 				recordDirty_.clear();
 				recordStructure_ = false;
 			}

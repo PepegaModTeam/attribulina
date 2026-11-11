@@ -250,3 +250,44 @@ TEST("cli: a class made by a script saves and loads; header writes its Attrib::G
     CHECK(run.err.find("class of the game") != std::string::npos);
     fs::remove_all(tmp);
 }
+
+TEST("cli: repair saves what opening repaired in files OGVI saved (VaultLib); World's event vaults go back to gc.vaults") {
+    const fs::path tmp = fs::temp_directory_path() / "attribulina_cli_repair_test";
+    fs::remove_all(tmp);
+    fs::create_directories(tmp);
+    Cli run(tmp);
+    // Retail files have nothing to repair.
+    const std::string retail = test::DataPath("attrib/databases/pc/mw-vanilla");
+    if (fs::exists(retail)) {
+        CHECK_EQ(run({"repair", retail, "--dry-run"}), 0);
+        CHECK(run.out.find("nothing to repair") != std::string::npos);
+    }
+    for (const char* name : {"mw-ogvi", "world-final-ogvi"}) {
+        const fs::path from = test::DataPath(std::string("attrib/databases/pc/") + name);
+        if (!fs::exists(from)) continue;
+        const fs::path dir = tmp / name;
+        fs::copy(from, dir, fs::copy_options::recursive);
+        const bool world = std::string(name) == "world-final-ogvi";
+        CHECK_EQ(run({"repair", dir.string(), "--dry-run"}), 0);
+        CHECK(run.out.find("would write") != std::string::npos);
+        CHECK(!world || run.out.find("would remove") != std::string::npos);
+        CHECK_EQ(run({"repair", dir.string()}), 0);
+        std::printf("        %s: %s", name, run.out.substr(0, run.out.find('\n') + 1).c_str());
+        CHECK(run.out.find("repaired ") != std::string::npos);
+        // Saved as the game's files, nothing is left to repair, and the folder
+        // says which game it is again.
+        CHECK_EQ(run({"repair", dir.string()}), 0);
+        CHECK(run.out.find("nothing to repair") != std::string::npos);
+        CHECK(run.err.find("warning") == std::string::npos || world); // World's coop_pursuit_1 keeps its own warnings
+        if (world) {
+            // The event vaults OGVI put beside attributes.bin are in gc.vaults again
+            // as event vault files, and theirs are gone.
+            size_t root = 0;
+            for (const auto& e : fs::directory_iterator(dir))
+                root += e.path().extension() == ".bin" && e.path().stem() != "attributes" && e.path().stem() != "commerce" && e.path().stem() != "FE_ATTRIB";
+            CHECK_EQ(root, size_t(0));
+            CHECK(attrib::ParseVaultFileHeader(attrib::ReadFile((dir / "gc.vaults" / "1_2_1_sprint.bin").string())).has_value());
+        }
+    }
+    fs::remove_all(tmp);
+}

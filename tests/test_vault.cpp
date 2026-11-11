@@ -296,9 +296,13 @@ TEST("vaults: a vault made in each pack of every game folder, with a collection 
         if (platform.is_directory())
             for (const auto& f : fs::directory_iterator(platform.path()))
                 // Not Nitro (set aside), nor the -vlted re-saves: the user's edits in prostreet-vlted make two of
-                // its packs write shorter the second time, which is expected.
+                // its packs write shorter the second time, which is expected. Nor Pro Street's OGVI save, whose
+                // empty camera lists VaultLib points at the block after them (not repaired, the user's call:
+                // VaultLib.h). Nor a folder of builds (pc/world-various: some 9800 packs of the final build's
+                // format, which test_writer covers).
                 if (f.is_directory() && f.path().filename().string().rfind("nitro", 0) != 0 &&
-                    f.path().filename().string().find("-vlted") == std::string::npos)
+                    f.path().filename().string().find("-vlted") == std::string::npos && f.path().filename() != "prostreet-ogvi" &&
+                    FindFileNoCase(f.path().string(), "attributes.bin"))
                     folders.push_back(f.path());
     std::sort(folders.begin(), folders.end());
     for (const fs::path& folder : folders) {
@@ -411,4 +415,84 @@ TEST("packs: unloading one takes its collections out; what other packs inherit f
     // Loaded again, they find their parents.
     db.loadPack(WorldDir() + "/gc.vaults/gpcore.bin");
     for (Collection* c : children) CHECK(c->parent && c->parent->key == c->parentKey);
+}
+
+namespace {
+
+std::string Carbon(const char* file) { return test::DataPath(std::string("attrib/databases/pc/carbon-vanilla/") + file); }
+
+// Where two u32 values stand side by side in a file, or npos: in Carbon's
+// attributes.bin, visuallook's ClassLoadData (its key, its layout size 24
+// bytes on) and colorcurves' CollectionLoadData (its key, then its class's).
+size_t FindPair(const Bytes& b, uint32_t first, uint32_t second, size_t gap) {
+    size_t found = std::string::npos, hits = 0;
+    for (size_t i = 0; i + gap + 4 <= b.size(); i += 4)
+        if (load32(b.data() + i, Endian::Little) == first && load32(b.data() + i + gap, Endian::Little) == second) found = i, ++hits;
+    return hits == 1 ? found : std::string::npos;
+}
+
+void CarbonDatabase(Database& db) {
+    db.setTarget(Target{Game::Carbon, Platform::PC});
+    db.addTypeSchema(TypeSchema::Load(test::DataPath("data/schema/carbon_pc.txt")));
+    db.names().loadFile(test::DataPath("data/attrib_keys.txt"));
+}
+
+const uint32_t kVisualLook = StringHash32("visuallook"), kColorCurves = 0xE7CF45FE;
+
+} // namespace
+
+TEST("vaults: a pack that fails to load partway leaves the database as it was (crashdumps/crash5)") {
+    // The app had gone on with a database whose attributes.bin failed halfway:
+    // its type table, classes and first collections stayed, pointing at a vault
+    // freed with the pack, the folder's other packs loaded over them, and the
+    // recorder's copy of that database threw (Database::rollBack).
+    if (!std::filesystem::exists(Carbon("attributes.bin"))) return;
+    const Bytes retail = ReadFile(Carbon("attributes.bin"));
+    Bytes b = retail;
+    const size_t at = FindPair(b, kColorCurves, kVisualLook, 4);
+    CHECK(at != std::string::npos);
+    if (at == std::string::npos) return;
+    store32(b.data() + at + 4, 0x0BADC1A5u, Endian::Little); // a class no vault defines
+    auto fails = [](Database& db, const std::string& path, const Bytes& bytes, const char* message) {
+        try {
+            db.loadPack(path, bytes);
+        } catch (const FormatError& e) {
+            if (std::string(e.what()).find(message) == std::string::npos) std::printf("        %s\n", e.what());
+            return std::string(e.what()).find(message) != std::string::npos;
+        }
+        return false;
+    };
+
+    // The database's own pack: nothing of it stays, and a pack of collections
+    // loaded next fails as in a database with none.
+    Database db;
+    CarbonDatabase(db);
+    CHECK(fails(db, Carbon("attributes.bin"), b, "uses an unknown class"));
+    CHECK(db.packs().empty() && !db.hasSchema() && db.classes().empty() && db.collectionCount() == 0 && !db.typeSchema());
+    CHECK(fails(db, Carbon("fe_attrib.bin"), ReadFile(Carbon("fe_attrib.bin")), "no database is loaded"));
+    CHECK(db.packs().empty());
+    // The file as it is loads into it as into a new database.
+    db.loadPack(Carbon("attributes.bin"));
+    Database fresh;
+    CarbonDatabase(fresh);
+    fresh.loadPack(Carbon("attributes.bin"));
+    CHECK_EQ(db.collectionCount(), fresh.collectionCount());
+    CHECK_EQ(db.classes().size(), fresh.classes().size());
+    CHECK(db.typeSchema() && db.typeSchema()->source.find("carbon_pc.txt") != std::string::npos);
+    CHECK(WritePack(db, *db.packs().front()) == retail);
+
+    // A second pack that names the same collections and fails after some: the
+    // names are the first pack's again, and nothing points at the second.
+    const LoadedPack& first = *db.packs().front();
+    CHECK(fails(db, test::DataPath("attributes_copy.bin"), b, "uses an unknown class"));
+    CHECK_EQ(db.packs().size(), size_t(1));
+    CHECK_EQ(db.collectionCount(), fresh.collectionCount());
+    size_t elsewhere = 0;
+    for (const auto& cls : db.classes())
+        for (const Collection* c : cls->collections) {
+            elsewhere += c->vault->pack != &first;
+            elsewhere += db.findCollection(c->classKey, c->key) != c;
+        }
+    CHECK_EQ(elsewhere, size_t(0));
+    CHECK(script::CloneDatabase(db)->collectionCount() == fresh.collectionCount());
 }

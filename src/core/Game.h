@@ -134,7 +134,19 @@ namespace attrib
 
 	// One of World's betas (2009, 2010), by its Vers value: the editor reads them
 	// with the final build's schema, and NFS-VltEd has a game of its own for them
-	// (WB).
+	// (WB). The builds after the 2010 beta aren't: each has more of the types of
+	// the final build, NFS-VltEd's W.
 	bool IsWorldBetaVersion(uint64_t vers);
+
+	// The Vers value VaultLib (the community Attribulator, OGVI) writes into
+	// every vault it saves, whatever the game: World's final build's.
+	constexpr uint64_t kVaultLibVers = 0x6838F8C1836A18DEull;
+	// The Vers value a game's retail files carry on a platform in that byte order
+	// (the first of kKnownVersions), if one is known.
+	std::optional<uint64_t> RetailVersion(const Target& t, Endian e);
+	// How the game's vaults order their chunks: StrN before DepN (current-gen
+	// Undercover, World), and EndC chunks (World).
+	bool StrNFirstIn(const Target& t);
+	bool EndCIn(const Target& t);
 
 } // namespace attrib

@@ -286,6 +286,13 @@ namespace attrib
 		std::vector<std::string> warnings;
 		// False when something was read that the writer can't reproduce.
 		bool exactlyWritable = true;
+		// The reader corrected what another tool wrote wrong (VaultLib.h: VaultLib,
+		// which the community Attribulator and OGVI save with), with a warning; its
+		// pack loads dirty, so it saves corrected.
+		bool repaired = false;
+		// VaultLib wrote it: VaultBoy's string opens its bin, or VaultLib's World
+		// header is on another game's vault (vaultlib::RepairHeader).
+		bool vaultLib = false;
 
 		// Writer hints.
 		std::vector<ExportRef> exportOrder;
@@ -318,7 +325,9 @@ namespace attrib
 		Database& operator=(const Database&) = delete;
 
 		// Loads a pack. The pack that holds the DatabaseLoadData (attributes.bin)
-		// must be loaded before any pack that only holds collections.
+		// must be loaded before any pack that only holds collections. A pack that
+		// can't be read throws FormatError and leaves the database as it was: what
+		// its first vaults added (the type table, classes, collections) goes again.
 		LoadedPack& loadPack(const std::string& path);
 		LoadedPack& loadPack(const std::string& path, ByteSpan fileData);
 		// A new pack with no vaults, saved to `path` (World's event vault files
@@ -473,6 +482,15 @@ namespace attrib
 		void loadCollectionExport(Vault& vault, const ExportEntry& e, detail::BlockReader& blocks);
 		void linkParents();
 		void applyTypeSchema();
+		// What a load adds to, to take it back when the pack fails (loadPack).
+		LoadedPack& loadPackData(const std::string& path, ByteSpan fileData);
+		struct LoadMark
+		{
+			Target target;
+			bool hadSchema = false, keys64 = false;
+			size_t classes = 0, collections = 0;
+		};
+		void rollBack(const LoadMark& mark);
 
 		Target target_;
 		std::vector<std::shared_ptr<const TypeSchema>> schemaCandidates_;
@@ -497,6 +515,12 @@ namespace attrib
 		mutable std::unordered_map<uint32_t, uint64_t> to64_;
 		std::unordered_map<uint64_t, const TypeInfo*> typeBy64_;
 	};
+
+	// A pack's warnings for a log, one line each: "<vault>: <warning>", or for a
+	// warning several vaults share "<n> vaults (<a>, <b>, <c> and <m> more):
+	// <warning>" (VaultLib's header is on every vault of a gameplay pack it
+	// wrote). A vault the writer can't reproduce says so.
+	std::vector<std::string> PackWarnings(const LoadedPack& pack);
 
 	// "0x" and 16 hex digits: the name a keys64 database gives a key it has no
 	// name for (Database::keyFrom64), and back.

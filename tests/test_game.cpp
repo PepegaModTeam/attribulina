@@ -89,6 +89,22 @@ TEST("game: every database on disk says what it is, the early Most Wanted demos 
         ++checked;
     }
     CHECK(checked >= 3);
+    // World's builds between the 2010 beta and the final one, each by its Vers
+    // value (541's commerce.bin has one of its own); only the two betas are WB.
+    const std::string various = Db("pc/world-various");
+    if (std::filesystem::exists(various)) {
+        size_t builds = 0;
+        for (const auto& e : std::filesystem::directory_iterator(various)) {
+            const Detection d = DetectTarget(e.path().string());
+            if (!d.certain) std::printf("        %s: %s? (%s)\n", e.path().filename().string().c_str(), d.target.id().c_str(), d.reason.c_str());
+            CHECK_EQ(d.target.id(), std::string("world_pc"));
+            CHECK(d.certain);
+            ++builds;
+        }
+        CHECK_EQ(builds, size_t(30));
+        const Detection c = DetectTarget("commerce.bin", ReadFile(various + "/GLOBAL 541/commerce.bin"));
+        CHECK(c.certain && c.target.id() == "world_pc");
+    }
     // The early Most Wanted demos key everything with StringHash64; their
     // gameplay.bin alone (the same file in both) holds no type table.
     for (const char* demo : {"ps2/mw-early-opm-betademo", "xbox/mw-early-oxm-betademo"})
@@ -291,4 +307,26 @@ TEST("game: the target picks the type schema; another game's never applies") {
         threw = true;
     }
     CHECK(threw);
+}
+
+TEST("game: World's Vers on files without World's classes isn't World for certain (OGVI's Carbon save, crashdumps/crash5)") {
+    // OGVI, after the community Attribulator, saved a Carbon attributes.bin with
+    // the final World build's Vers; each World Vers needs World's input class.
+    const std::string file = Db("pc/carbon-vanilla/attributes.bin");
+    if (!std::filesystem::exists(file)) return;
+    Bytes b = ReadFile(file);
+    size_t vers = std::string::npos;
+    for (size_t i = 0; i + 16 <= b.size() && vers == std::string::npos; i += 4)
+        if (load32(b.data() + i, Endian::Little) == 0x56657273u) vers = i; // "Vers"
+    CHECK(vers != std::string::npos);
+    if (vers == std::string::npos) return;
+    store64(b.data() + vers + 8, 0x6838F8C1836A18DEull, Endian::Little);
+    const Detection d = DetectTarget("attributes.bin", b);
+    CHECK(!d.certain);
+    CHECK(d.reason.find("is World's, but attributes.bin lacks a class every World build has") != std::string::npos);
+    // The type table guesses, not the chunk order OGVI wrote as World's.
+    CHECK_EQ(d.target.id(), std::string("carbon_pc"));
+    // World's own still are.
+    const Detection w = DetectTarget(Db("pc/world-final"));
+    CHECK(w.certain && w.target.id() == "world_pc");
 }

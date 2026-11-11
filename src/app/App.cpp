@@ -4,6 +4,7 @@
 #include "core/Edit.h"
 #include "core/Folder.h"
 #include "core/Hash.h"
+#include "core/VaultLib.h"
 #include "core/Writer.h"
 #include "core/Version.h"
 
@@ -716,12 +717,10 @@ namespace app
 			std::string what = std::to_string(pk.vaults.size()) + " vault(s), " + std::to_string(db_->collectionCount() - before) + " collections";
 			if (pk.compression) what += std::string(", ") + LzKindName(*pk.compression) + " compressed";
 			log(LogLevel::Info, "Opened " + path + " (" + what + ")");
-			for (const auto& v : pk.vaults)
-			{
-				for (const auto& w : v->warnings) log(LogLevel::Warning, v->name + ": " + w);
-				if (!v->exactlyWritable)
-					log(LogLevel::Warning, v->name + ": saving may not reproduce everything read from this vault");
-			}
+			for (const std::string& w : PackWarnings(pk)) log(LogLevel::Warning, w);
+			// Another tool's mistakes, corrected as the pack loaded (Vault::repaired).
+			if (std::any_of(pk.vaults.begin(), pk.vaults.end(), [](const auto& v) { return v->repaired; }))
+				log(LogLevel::Warning, "Repaired " + path + " as it loaded. It counts as changed, and saving writes it corrected.");
 			checkPackTwin(pk);
 			structureChanged();
 			recordBase_.reset(); // loading isn't a change to record
@@ -783,7 +782,27 @@ namespace app
 		{
 			if (f.skipped.empty())
 			{
-				ok &= openFile(f.path);
+				const bool opened = openFile(f.path);
+				ok &= opened;
+				// OGVI's save of a World event vault, beside attributes.bin: it is
+				// saved to gc.vaults as the game's event vault file, and the file it
+				// came from goes with the next save (an entry no pack has).
+				if (opened && !f.saveAs.empty())
+					for (const auto& pk : db_->packs())
+						if (pk->path == f.path)
+						{
+							attrib::vaultlib::MoveToEventVaultFile(*pk, f.saveAs);
+							savedPacks_[f.path] = nullptr;
+							for (const auto& v : pk->vaults) log(LogLevel::Warning, v->name + ": " + v->warnings.back());
+							break;
+						}
+				// attributes.bin comes first. When it fails, loadPack takes back what
+				// it added, and the other packs need its classes.
+				if (!ok && db_ && !db_->hasSchema())
+				{
+					log(LogLevel::Error, "The other files in " + path + " weren't opened, since they need the classes the database file defines.");
+					break;
+				}
 			}
 			else if (f.skipped != "not an attribute pack")
 			{

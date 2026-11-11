@@ -227,7 +227,8 @@ TEST("nfsms: each game's words lead to the same member on every platform of it, 
          {"VinylsAttrib::VinylLayer 3", "VinylsAttrib::VinylLayer 4"}},
         // A curve's allocatedMemory is the game's to set, and a StringKey's hash
         // comes from its text (NFS-VltEd's word 1 of IntegratedKitWheelOffset).
-        {"world_pc", {"pc/world-final"}, {"Curve AllocatedMemory", "IntegratedKitWheelOffset 1"}},
+        // Build 593 is one of the builds between the betas and the final one.
+        {"world_pc", {"pc/world-final", "pc/world-various/GLOBAL 593"}, {"Curve AllocatedMemory", "IntegratedKitWheelOffset 1"}},
         // NFS-VltEd's WB: World's betas, which the final build's schema lays out. It
         // reads CameraCauseAndEffect as 27 numbers, its two curves' array pointers,
         // lengths and allocatedMemory among them, which nothing can set.
@@ -1503,6 +1504,18 @@ TEST("nfsms: World's scripts edit its packs and event vaults, and record back as
     CHECK(F32(Own(Col(*beta, "combat_abilities", "sprinter"), "abilities"), 0, 4) == 25.0f);
     const sc::ApplyReport rw = Run(*beta, "version 4.6\ngame W\n", wb);
     CHECK(Messages(rw).find("the script is for W; this database is WB") != std::string::npos);
+
+    // The builds after the 2010 beta are W, the first of them (77, the beta's
+    // types) too: each has more of the final build's types than the one before.
+    for (const char* build : {"GLOBAL 77", "GLOBAL 1410-1412"}) {
+        const std::string dir = test::DataPath(std::string("attrib/databases/pc/world-various/") + build);
+        if (!std::filesystem::exists(dir)) continue;
+        Database mid;
+        mid.setTarget(DetectTarget(dir).target);
+        mid.addTypeSchema(TypeSchema::Load(test::DataPath("data/schema/world_pc.txt")));
+        mid.loadPack(dir + "/attributes.bin");
+        CHECK_EQ(ns::GameCode(mid), std::string("W"));
+    }
 }
 
 TEST("nfsms: a line that fails is reported and the next one runs, as in NFS-VltEd") {

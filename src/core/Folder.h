@@ -14,6 +14,10 @@ namespace attrib
 	{
 		std::string path;
 		std::string skipped; // why it isn't loaded; empty: load it
+		// Where it is saved once loaded, as one of World's event vault files:
+		// OGVI's VPAK save of an event vault, in the folder above gc.vaults
+		// (vaultlib::MoveToEventVaultFile). Empty: where it is.
+		std::string saveAs;
 	};
 
 	// attributes.bin first (it defines the classes), then the other packs by
@@ -21,7 +25,10 @@ namespace attrib
 	// the game loads; the .bin holds the same vaults), and so is any .bin or
 	// .lzc that isn't an attribute pack (GLOBALB.LZC is a compressed bundle).
 	// World's event vaults follow, from the gc.vaults folder inside it (only
-	// the files directly in it). Throws when the folder has no attributes.bin.
+	// the files directly in it). A pack VaultLib wrote beside attributes.bin
+	// that has the name of one of them is OGVI's save of that event vault: it
+	// loads, with saveAs, and the gc.vaults copy is skipped. Throws when the
+	// folder has no attributes.bin.
 	std::vector<FolderFile> FolderPacks(const std::string& dir);
 
 	// The attributes.bin that defines the classes of the pack at `pack`: the one

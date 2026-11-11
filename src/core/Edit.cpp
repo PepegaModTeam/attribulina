@@ -568,6 +568,36 @@ namespace attrib
 		}
 	} // namespace
 
+	bool RebuildIndexTables(ClassDef& cls)
+	{
+		bool any = false;
+		const Endian e = cls.vault ? cls.vault->raw.endian : Endian::Little;
+		std::unordered_map<uint32_t, const Collection*> byKey;
+		for (const Collection* c : cls.collections) byKey[c->key] = c;
+		for (const FieldDef& f : cls.fields)
+		{
+			if (!f.isStatic() || f.isArray() || !f.type || f.type->name != kIndexTableType) continue;
+			if (uint64_t(f.offset) + 16 > cls.staticData.bytes.size()) continue;
+			// It holds when its entries agree with the collections' parents one of
+			// the two ways UpdateIndexTables reads it, all but one (speech's root
+			// maps to a key no collection has). VaultLib's values are what follows
+			// the ISets, mostly zeros.
+			size_t values = 0, asChildren = 0, asParent = 0;
+			for (const auto& [k, v] : ReadIndexTable(cls.staticData, f.offset, e).entries)
+			{
+				values += v.size();
+				for (uint32_t x : v)
+					if (auto it = byKey.find(x); it != byKey.end() && it->second->parentKey == k) ++asChildren;
+				if (auto it = byKey.find(k); it != byKey.end() && v.size() == 1 && v[0] == it->second->parentKey) ++asParent;
+			}
+			if (std::max(asChildren, asParent) + 1 >= values) continue;
+			WriteIndexTable(cls.staticData, f.offset, IndexTable{}, e);
+			any = true;
+		}
+		if (any) UpdateIndexTables(cls);
+		return any;
+	}
+
 	bool UpdateIndexTables(ClassDef& cls)
 	{
 		bool changed = false;

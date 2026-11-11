@@ -4,6 +4,7 @@
 #include "Game.h"
 #include "Hash.h"
 #include "TypeLayouts.h"
+#include "VaultLib.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -602,6 +603,36 @@ namespace attrib
 		return out;
 	}
 
+	std::vector<std::string> PackWarnings(const LoadedPack& pack)
+	{
+		std::vector<std::pair<std::string, std::vector<std::string>>> warned;
+		for (const auto& v : pack.vaults)
+		{
+			std::vector<std::string> own = v->warnings;
+			if (!v->exactlyWritable) own.push_back("saving may not reproduce everything read from this vault");
+			for (const std::string& w : own)
+			{
+				auto it = std::find_if(warned.begin(), warned.end(), [&](const auto& e) { return e.first == w; });
+				if (it == warned.end()) warned.push_back({ w, { v->name } });
+				else it->second.push_back(v->name);
+			}
+		}
+		std::vector<std::string> out;
+		for (const auto& [w, vaults] : warned)
+		{
+			if (vaults.size() == 1)
+			{
+				out.push_back(vaults.front() + ": " + w);
+				continue;
+			}
+			std::string names;
+			for (size_t i = 0; i < vaults.size() && i < 3; ++i) names += (i ? ", " : "") + vaults[i];
+			if (vaults.size() > 3) names += " and " + std::to_string(vaults.size() - 3) + " more";
+			out.push_back(std::to_string(vaults.size()) + " vaults (" + names + "): " + w);
+		}
+		return out;
+	}
+
 	LoadedPack& Database::loadPack(const std::string& path)
 	{
 		const Bytes data = ReadFile(path);
@@ -610,7 +641,62 @@ namespace attrib
 
 	LoadedPack& Database::loadPack(const std::string& path, ByteSpan fileData)
 	{
+		const LoadMark mark{ target_, hasSchema(), keys64_, classes_.size(), collections_.size() };
 		if (!target_.known() && packs_.empty()) target_ = DetectTarget(path, fileData).target;
+		try
+		{
+			return loadPackData(path, fileData);
+		}
+		catch (...)
+		{
+			// The vaults read before the one that failed added classes and
+			// collections whose Vault goes with the pack: they mustn't stay.
+			rollBack(mark);
+			throw;
+		}
+	}
+
+	void Database::rollBack(const LoadMark& mark)
+	{
+		std::unordered_set<const Collection*> added;
+		for (size_t i = mark.collections; i < collections_.size(); ++i) added.insert(collections_[i].get());
+		for (auto& cls : classes_)
+			cls->collections.erase(std::remove_if(cls->collections.begin(), cls->collections.end(),
+				[&](const Collection* c) { return added.count(c) != 0; }), cls->collections.end());
+		// A name the pack defined again is the last earlier pack's once more.
+		std::unordered_set<uint64_t> lost;
+		for (const Collection* c : added)
+		{
+			const uint64_t id = CollectionId(c->classKey, c->key);
+			if (auto it = collectionByKey_.find(id); it != collectionByKey_.end() && it->second == c)
+			{
+				collectionByKey_.erase(it);
+				lost.insert(id);
+			}
+		}
+		for (size_t i = 0; i < mark.collections; ++i)
+			if (const Collection* c = collections_[i].get(); lost.count(CollectionId(c->classKey, c->key)))
+				collectionByKey_[CollectionId(c->classKey, c->key)] = collections_[i].get();
+		collections_.resize(mark.collections);
+		for (size_t i = mark.classes; i < classes_.size(); ++i)
+			if (auto it = classByKey_.find(classes_[i]->key); it != classByKey_.end() && it->second == classes_[i].get())
+				classByKey_.erase(it);
+		classes_.resize(mark.classes);
+		if (!mark.hadSchema)
+		{
+			types_.clear();
+			unlistedTypes_.clear();
+			typeByHash_.clear();
+			typeBy64_.clear();
+			typeSchema_.reset();
+			numClassesDeclared_ = defaultDataSize_ = databaseWord4_ = 0;
+		}
+		keys64_ = mark.keys64;
+		target_ = mark.target;
+	}
+
+	LoadedPack& Database::loadPackData(const std::string& path, ByteSpan fileData)
+	{
 		PackFile pf = ReadPack(fileData);
 		auto pack = std::make_unique<LoadedPack>();
 		pack->path = path;
@@ -623,6 +709,7 @@ namespace attrib
 			v->name = pv.name;
 			v->pack = pack.get();
 			v->raw = ParseRawVault(pv.name, std::move(pv.bin), std::move(pv.vlt));
+			vaultlib::RepairHeader(*v, target_);
 			pack->vaults.push_back(std::move(v));
 		}
 		// Schema first: a pack may hold the db vault after others.
@@ -637,6 +724,9 @@ namespace attrib
 		for (Vault* v : order)
 			loadVault(*v);
 		linkParents();
+		// What the reader corrected is saved corrected (Vault::repaired).
+		for (const auto& v : pack->vaults)
+			pack->dirty |= v->repaired;
 		packs_.push_back(std::move(pack));
 		return *packs_.back();
 	}
@@ -787,6 +877,7 @@ namespace attrib
 				vault.exportOrder.push_back({ ExportRef::Kind::Data, nullptr, nullptr, uint32_t(di++) });
 		}
 		blocks.finish();
+		if (vault.vaultLib) vaultlib::RepairValues(vault, *this);
 	}
 
 	void Database::loadDatabaseExport(Vault& vault, const ExportEntry& e, BlockReader& blocks)
@@ -1016,7 +1107,7 @@ namespace attrib
 				used = std::max(used, LayoutOffset(f) + LayoutExtent(f, capacity));
 			}
 			if (used > LayoutBytes(cls))
-				throw FormatError("collection " + where + " has layout fields past the class's layout size");
+				vaultlib::RepairLayoutSize(vault, *col->cls, names_.format(cls.key), where, used); // VaultLib.h
 			col->layout = blocks.read(*lp, used);
 			for (const auto& f : cls.fields)
 			{

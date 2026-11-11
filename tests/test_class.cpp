@@ -63,6 +63,21 @@ const ClassFolder kFolders[] = {
     {"pc/world-final", "world_pc", "World, PC final build"},
     {"pc/world-2010-beta", "world_pc_2010_beta", "World, PC 2010 beta"},
     {"pc/world-2009-beta", "world_pc_2009_beta", "World, PC 2009 beta"},
+    // World's builds between, by the folders' build numbers: the last of each Vers
+    // value (the others have the same classes with other collection reserves).
+    {"pc/world-various/GLOBAL 77", "world_pc_77", "World, PC build 77"},
+    {"pc/world-various/GLOBAL 190", "world_pc_190", "World, PC build 190"},
+    {"pc/world-various/GLOBAL 270", "world_pc_270", "World, PC build 270"},
+    {"pc/world-various/GLOBAL 396", "world_pc_396", "World, PC build 396"},
+    {"pc/world-various/GLOBAL 593", "world_pc_593", "World, PC build 593"},
+    {"pc/world-various/GLOBAL 704", "world_pc_704", "World, PC build 704"},
+    {"pc/world-various/GLOBAL 749", "world_pc_749", "World, PC build 749"},
+    {"pc/world-various/GLOBAL 846", "world_pc_846", "World, PC build 846"},
+    {"pc/world-various/GLOBAL 922", "world_pc_922", "World, PC build 922"},
+    {"pc/world-various/GLOBAL 1169", "world_pc_1169", "World, PC build 1169"},
+    {"pc/world-various/GLOBAL 1251", "world_pc_1251", "World, PC build 1251"},
+    {"pc/world-various/GLOBAL 1334", "world_pc_1334", "World, PC build 1334"},
+    {"pc/world-various/GLOBAL 1410-1412", "world_pc_1410_1412", "World, PC builds 1410 to 1412"},
 };
 
 std::vector<std::string> SortedTxt(const std::string& dir) {

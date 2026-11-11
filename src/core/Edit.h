@@ -131,6 +131,11 @@ namespace attrib
 	// root's unexplained value in speech), the rest are added or dropped.
 	// CollectionEditor calls it; true when a table changed.
 	bool UpdateIndexTables(ClassDef& cls);
+	// The same, from nothing, for a table that names keys none of the class's
+	// collections has (VaultLib leaves the values block out, and mVals points at
+	// what follows: VaultLib.h). A table that holds keeps its order. True when
+	// one was written again.
+	bool RebuildIndexTables(ClassDef& cls);
 
 	class CollectionEditor
 	{

@@ -79,6 +79,25 @@ namespace app
 		ImGui::MarkIniSettingsDirty();
 	}
 
+	bool App::copyForRecording()
+	{
+		try
+		{
+			recordBase_ = sc::CloneDatabase(*db_);
+			return true;
+		}
+		catch (const std::exception& e)
+		{
+			// A pack that writes what doesn't read back stops the recording, not
+			// the program: the copy threw uncaught when attributes.bin had failed
+			// to load and the folder's other packs had loaded without it
+			// (crashdumps/crash5).
+			setRecording(false, false);
+			log(LogLevel::Error, std::string("Recording stopped, since the database could not be copied to compare changes with. ") + e.what());
+			return false;
+		}
+	}
+
 	void App::beginScriptRun()
 	{
 		++recordSuppress_;
@@ -89,7 +108,7 @@ namespace app
 	{
 		if (--recordSuppress_ > 0) return;
 		// What a script changed isn't recorded: the copy starts again from here.
-		if (recordBase_ && db_) recordBase_ = sc::CloneDatabase(*db_);
+		if (recordBase_ && db_) copyForRecording();
 		recordDirty_.clear();
 		recordStructure_ = false;
 	}
@@ -107,7 +126,7 @@ namespace app
 		if (!recordBase_)
 		{
 			// The state changes are measured against.
-			recordBase_ = sc::CloneDatabase(*db_);
+			copyForRecording();
 			recordDirty_.clear();
 			recordStructure_ = false;
 			return;
@@ -143,7 +162,7 @@ namespace app
 		sync.statements = out;
 		sc::ApplySettings st;
 		st.fragment = true;
-		if (!sc::Apply(*recordBase_, sync, st).ok) recordBase_ = sc::CloneDatabase(*db_);
+		if (!sc::Apply(*recordBase_, sync, st).ok) copyForRecording();
 		if (recordAmod_) addToScript(out, false);
 		if (!nfsmsLines.empty()) appendNfsms(nfsmsLines);
 	}
