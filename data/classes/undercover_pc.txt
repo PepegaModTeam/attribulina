@@ -1,7 +1,7 @@
 attribulina 1
 game undercover_pc
-title "Undercover, PC retail (as NFS-VltEd re-saved it)"
-version "0x1445379ED96333E1"
+title "Undercover, PC retail"
+version "0x8364A394EF316ABD"
 class adaptivedifficulty in vault db reserve 5 {
     static SkillUpModifire Curve = {
         xMin = 0
@@ -218,7 +218,7 @@ class audio_revlimiter in vault db reserve 175 {
     entry total_frames_long EA::Reflection::UInt32
     entry total_frames_short EA::Reflection::UInt32
 }
-class aud_moment in vault db reserve 284 {
+class aud_moment in vault db reserve 281 {
     layout CollectionName EA::Reflection::Text
     static IndexTable_CollectionName "Attrib::Query::Static_Inorder_N_to_1<Attrib::Query::Typespace<Attrib::Key,Attrib::Key,EA::Reflection::UInt32> >"
     entry VolSlot eSFXOBJ_MOMENT_MIXOUT
@@ -442,7 +442,7 @@ class cameravibration in vault db reserve 9 {
     entry DragBoostMagnitude EA::Reflection::Float
     entry DragBoostFrequency EA::Reflection::Float
 }
-class car in vault db reserve 142 {
+class car in vault db reserve 121 {
     layout pvehicle Attrib::RefSpec
     layout parts Attrib::RefSpec
     layout kits Attrib::RefSpec
@@ -544,7 +544,7 @@ class car_damage_materials in vault db reserve 5 {
     entry MaterialDefinition EA::Reflection::Text
     entry MaterialFile EA::Reflection::Text
 }
-class car_damage_objects in vault db reserve 130 {
+class car_damage_objects in vault db reserve 128 {
     entry marker_entries CCarDamageMarkerEntry[65535]
     entry part_entries CCarDamageEntry[65535]
 }
@@ -605,7 +605,7 @@ class car_part in vault db reserve 533 {
     entry economics Attrib::RefSpec[65535]
     entry audio Attrib::RefSpec[65535]
 }
-class car_parts in vault db reserve 130 {
+class car_parts in vault db reserve 127 {
     layout window_tint_swatch CCarSlotEntry
     layout window_tint_group CCarSlotEntry
     layout window_tint CCarSlotEntry
@@ -774,7 +774,7 @@ class car_parts in vault db reserve 130 {
     entry forced_induction CCarSlotEntry
     entry engine_block CCarSlotEntry
 }
-class car_tuning in vault db reserve 387 {
+class car_tuning in vault db reserve 373 {
     layout TENSOR_SCALE Attrib::Types::Vector4
     layout Toe AxlePairCurve
     layout SWAYBAR_STIFFNESS AxlePairCurve
@@ -1263,7 +1263,7 @@ class dynamicsurface in vault db reserve 2 {
     layout ColourStart EA::Reflection::UInt32
     layout ColourEnd EA::Reflection::UInt32
 }
-class ecar in vault db reserve 140 {
+class ecar in vault db reserve 137 {
     layout Camera_Hood Attrib::RefSpec
     layout CollectionName EA::Reflection::Text
     layout BodySquat CarBodyMotion
@@ -1515,7 +1515,7 @@ class force_feedback in vault db reserve 1 {
     entry FFB_WALLRUB FFBWaveRecord[65535]
     entry FFB_REARENDCOLLISION FFBWaveRecord[65535]
 }
-class frontend in vault db reserve 179 {
+class frontend in vault db reserve 163 {
     layout CollectionName EA::Reflection::Text unsearchable
     layout region EA::Reflection::UInt32 unsearchable
     layout manufacturer EA::Reflection::UInt32 unsearchable
@@ -1578,7 +1578,7 @@ class frontend in vault db reserve 179 {
     entry p_transmission_4 type_bStringHash[65535]
     entry p_suspension_4 type_bStringHash[65535]
 }
-class frontend_sfx in vault db reserve 28 {
+class frontend_sfx in vault db reserve 26 {
     layout sound_scroll_right FEMsgToSoundTrigger
     layout sound_scroll_left FEMsgToSoundTrigger
     entry sound_right_trigger_disabled FEMsgToSoundTrigger
@@ -1672,7 +1672,7 @@ class fuelcell_emitter in vault db reserve 26 {
     entry zSpinZ EA::Reflection::Int8
     entry Colour2 Attrib::Types::Vector4
 }
-class gameplay in vault db reserve 9539 {
+class gameplay in vault db reserve 8631 {
     layout CollectionName EA::Reflection::Text
     layout message_id EA::Reflection::UInt32
     entry GoalAddPrevBest EA::Reflection::Float
@@ -2051,7 +2051,6 @@ class gameplay in vault db reserve 9539 {
     entry CarType EA::Reflection::Text
     entry RivalBestTime EA::Reflection::Float
     entry AIAccelMin EA::Reflection::Int32
-    entry ChallengeCategory Game::ChallengeCategory
     entry UpgradeTier EA::Reflection::Int32
     entry ZoneDistance1 EA::Reflection::Float
     entry IntroNIS2 EA::Reflection::Text
@@ -2093,10 +2092,10 @@ class heat in vault db reserve 1 {
     entry search EA::Reflection::Float[65535]
     entry engage EA::Reflection::Float[65535]
 }
-class highway_pattern in vault db reserve 72 {
+class highway_pattern in vault db reserve 50 {
     entry CarsInPattern HighwayPatternCarData[65535]
 }
-class highway_pattern_sequence in vault db reserve 43 {
+class highway_pattern_sequence in vault db reserve 32 {
     layout CollectionName EA::Reflection::Text
     entry sequence Attrib::Gen::ClassRefSpec_highway_pattern[65535]
     entry difficulty EA::Reflection::Int32
@@ -2180,7 +2179,7 @@ class music in vault db reserve 11 {
     layout HalId Attrib::StringKey
     layout PathEvent PathEventEnum
 }
-class nis in vault db reserve 238 {
+class nis in vault db reserve 236 {
     layout SelectionSet EA::Reflection::Text
     entry PlayerUnderAIControl NIS::ePlayerUnderAIControl
     entry ICE_Context ICEContextIDs
@@ -2352,7 +2351,7 @@ class postfx in vault db reserve 1 {
     entry FacePixelationScale EA::Reflection::Float
     entry StreakRestTimeVariance EA::Reflection::Float
 }
-class presetride in vault db reserve 645 {
+class presetride in vault db reserve 543 {
     layout PresetName EA::Reflection::Text
     layout CollectionName EA::Reflection::Text
     layout RideHeight EA::Reflection::Float
@@ -2372,7 +2371,6 @@ class presetride in vault db reserve 645 {
     entry isCopCar EA::Reflection::Bool
     entry RandomPaints PresetRideRandomPaint[65535]
     entry PresetCarFilter ePresetCarFilter
-    entry isDLC EA::Reflection::Bool
     entry CarType Attrib::RefSpec
     entry isCollectorsEdition EA::Reflection::Bool
 }
@@ -2475,7 +2473,7 @@ class pursuit_threat_select in vault db reserve 26 {
 class pursuit_threat_select_xp in vault db reserve 1 {
     entry xps_lookup Attrib::Gen::ClassRefSpec_pursuit_threat_select[65535]
 }
-class pvehicle in vault db reserve 290 {
+class pvehicle in vault db reserve 272 {
     layout MODEL Attrib::StringKey
     layout frontend Attrib::RefSpec
     layout DefaultPresetRide EA::Reflection::Text
@@ -2510,7 +2508,6 @@ class pvehicle in vault db reserve 290 {
     entry TrafficEngine Attrib::RefSpec
     entry Trailer Attrib::RefSpec
     entry Audio Attrib::RefSpec[4]
-    entry car Attrib::RefSpec
     entry BEHAVIOR_MECHANIC_ENGINE Attrib::StringKey
     entry HornType EA::Reflection::UInt8[65535]
     entry BEHAVIOR_MECHANIC_DRAW Attrib::StringKey
