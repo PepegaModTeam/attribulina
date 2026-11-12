@@ -20,19 +20,19 @@ This tool is tested against these games (in game chronological order):
 - Need for Speed Most Wanted - PC, PS2, GameCube, Xbox 360
 - Need for Speed Carbon Demo - PS2 (OPM)
 - Need for Speed Carbon Beta - PS3 (Alpha 56)
+- Need for Speed Carbon - PS3
 - Need for Speed Carbon - PC, GameCube, Wii, Xbox 360 (XBLA demo)
 - Need for Speed ProStreet - PC, PS2, Wii, Xbox 360
 - Need for Speed Undercover (Last Gen) - Wii
 - Need for Speed Undercover - PC, Xbox 360
 - Need for Speed World 2009 Beta - PC
 - Need for Speed World 2010 Beta - PC
-- Need for Speed Nitro - Wii (incomplete support)
+- Need for Speed Nitro - Wii (partial support)
 - Need for Speed World - PC
 
 These games/platforms should be implicitly supported (currently untested, may be misidentified by the tool):
 
 - Need for Speed Most Wanted - Xbox
-- Need for Speed Carbon - PS3
 - Need for Speed ProStreet - PS3
 - Need for Speed Undercover (Last Gen) - PS2
 - Need for Speed Undercover - PS3
