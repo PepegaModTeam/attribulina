@@ -1,0 +1,2645 @@
+attribulina 1
+game nitro_wii
+title "Nitro, Wii retail"
+version "0x5E3BDBFFAC32D7DB"
+class acceltrans in vault db reserve 106 {
+    layout AccelFromIdle_RESUME_T EA::Reflection::UInt32
+    layout AccelFromIdle_PEAK_VOL EA::Reflection::Float
+    layout AccelFromIdle_PEAK_T EA::Reflection::UInt32
+    layout AccelFromIdle_PEAK_RPM EA::Reflection::UInt32
+    entry AccelFromIdle_INTERUPT_T EA::Reflection::UInt32
+}
+class adaptivepidvalues in vault db reserve 11 {
+    layout MinValueForTermToTuneCoefficient EA::Reflection::Float
+    layout MinPCoefficient EA::Reflection::Float
+    layout MinICoefficient EA::Reflection::Float
+    layout MinDCoefficient EA::Reflection::Float
+    layout MaxPCoefficient EA::Reflection::Float
+    layout MaxICoefficient EA::Reflection::Float
+    layout MaxDCoefficient EA::Reflection::Float
+    layout AdaptationGainP EA::Reflection::Float
+    layout AdaptationGainI EA::Reflection::Float
+    layout AdaptationGainD EA::Reflection::Float
+}
+class aidraft in vault db reserve 1 {
+    layout NOSTarget EA::Reflection::Float
+    layout MinimumSpeed EA::Reflection::Float
+    layout 0x8364A267 EA::Reflection::Float
+    layout 0x1D87F707 EA::Reflection::Float
+    layout 0x073121F2 EA::Reflection::Float
+}
+class aiprofile in vault db reserve 145 {
+    layout TrafficAvoidanceSkill EA::Reflection::Float
+    layout StartUpBoostSkill EA::Reflection::Float
+    layout SpeedSkill EA::Reflection::Float
+    layout SimultaneousBoosts EA::Reflection::Int32
+    layout SideRamSkill EA::Reflection::Float
+    layout SideRamDelay EA::Reflection::Float
+    layout ShortcutSkill EA::Reflection::Float
+    layout PickUpUsageDelay EA::Reflection::Float
+    layout PickUpGatherSkill EA::Reflection::Float
+    layout OvertakeBlockSkill EA::Reflection::Float
+    layout OvertakeBlockIntervals EA::Reflection::Float
+    layout OvertakeBlockDuration EA::Reflection::Float
+    layout NosRamSkill EA::Reflection::Float
+    layout MinimumCapacityToBoost EA::Reflection::Float
+    layout GearChangingSkill EA::Reflection::Float
+    layout FinalBoostDistance EA::Reflection::Float
+    layout EngineBlowSkill EA::Reflection::Float
+    layout EndOfRaceBoostDistance EA::Reflection::Float
+    layout DriftSkill EA::Reflection::Float
+    layout DraftSkill EA::Reflection::Float
+    layout 0x82D75FA3 EA::Reflection::Float
+    layout DCBMaxSkillBonus EA::Reflection::Float
+    layout DCBMaxDistance EA::Reflection::Float
+    layout BoostSkill EA::Reflection::Float
+    layout AIBoostBonusForDrifting EA::Reflection::Float
+    entry AIProfile GRace::AIRacerProfile
+    entry 0x5FE01C60 EA::Reflection::Float
+    entry 0x68A3D5E3 EA::Reflection::Float
+    entry 0x9A9AA552 EA::Reflection::Float
+    entry 0xA1146E42 EA::Reflection::Float
+    entry 0xA5AE7986 EA::Reflection::Float
+    entry 0xB24A86B0 EA::Reflection::Float
+    entry DCBDistanceLimiter DCBAIRacerDistanceLimiter[65535]
+}
+class airacerpackage in vault db reserve 11 {
+    layout AIRacers Attrib::RefSpec[7]
+}
+class aivehicle in vault db reserve 21 {
+    layout PlayerCollisionsDefault Attrib::RefSpec
+    layout TopSpeedMultiplier EA::Reflection::Float
+    layout 0x24AA54DB EA::Reflection::Float
+    layout MAXIMUM_AI_SPEED EA::Reflection::Float
+    layout 0x4A62FFFF EA::Reflection::Float
+    layout AccelerationMultiplier EA::Reflection::Float
+    entry PlayerCollisions AICollisionReactionRecord[10]
+    entry RepPointsForDestroying EA::Reflection::Int32[10]
+    entry CostToStateForDestroying EA::Reflection::Int32
+}
+class audioimpact in vault db reserve 198 {
+    layout Volumes StitchCollisionVol
+    entry DESCRIPTION Attrib::StringKey[3]
+    entry StreamSweetner CollisionStream[2]
+    entry STITCH_LEVEL_0 STICH_COLLISION_TYPE[8]
+    entry STITCH_LEVEL_2 STICH_COLLISION_TYPE[8]
+    entry STITCH_LEVEL_1 STICH_COLLISION_TYPE[8]
+    entry STITCH_LEVEL_3 STICH_COLLISION_TYPE[16]
+}
+class audioscrape in vault db reserve 14 {
+    entry DESCRIPTION Attrib::StringKey[2]
+    entry CSIS_EFFECT Attrib::StringKey
+    entry AemsId EA::Reflection::Int16
+}
+class audiosystem in vault db reserve 15 {
+    entry AEMS_WindNoiseBank Attrib::StringKey
+    entry 0x06C12AA5 EA::Reflection::Bool
+    entry AEMS_Dubai_Bank Attrib::StringKey
+    entry HW_Voices nfs::Audio::AttribHwVoice[65535]
+    entry FESpeech Attrib::RefSpec
+    entry PrintCarAttachment EA::Reflection::Bool
+    entry 0x19D16A04 Attrib::StringKey
+    entry AEMS_Singapore_Drag_Bank Attrib::StringKey
+    entry 0x224CA2B9 Attrib::StringKey
+    entry AEMS_FECommonBank Attrib::StringKey
+    entry AEMS_Madrid_Drag_Bank Attrib::StringKey
+    entry 0x254FDDB0 Attrib::StringKey
+    entry 0x25CA00C9 Attrib::StringKey
+    entry 0x264AFE4E EA::Reflection::Bool
+    entry AEMS_animatedobject_DubaiChild_Bank Attrib::StringKey[65535]
+    entry PrintInteractiveMusicState EA::Reflection::Bool
+    entry 0x39F6BA2B Attrib::StringKey
+    entry PrintCarAttachmentInfo EA::Reflection::Bool
+    entry EvtSys Attrib::StringKey[15]
+    entry PrintVoiceStatistics EA::Reflection::Bool
+    entry PrintEngineInfo EA::Reflection::Bool
+    entry AEMS_FEBank Attrib::StringKey
+    entry 0x4C057186 Attrib::StringKey
+    entry AEMS_Cairo_Drag_Bank Attrib::StringKey
+    entry InGameSpeech Attrib::RefSpec
+    entry 0x4FB0909F EA::Reflection::Float
+    entry AEMS_Rio_Drag_Bank Attrib::StringKey
+    entry AEMS_animatedobject_MadridChild_Bank Attrib::StringKey[65535]
+    entry PrintRoadNoiseInfo EA::Reflection::Bool
+    entry PrintPickupInfo EA::Reflection::Bool
+    entry PrintTrannyInfo EA::Reflection::Bool
+    entry AEMS_Dubai_Drag_Bank Attrib::StringKey
+    entry AEMS_Singapore_Bank Attrib::StringKey
+    entry 0x658E9FE9 Attrib::StringKey
+    entry AEMS_animatedobject_CairoParent_Bank Attrib::StringKey[65535]
+    entry AEMS_Rio_Bank Attrib::StringKey
+    entry PrintWorldObjectInfo EA::Reflection::Bool
+    entry AEMS_RoadNoiseBank Attrib::StringKey
+    entry EnableDefaultSwVoice EA::Reflection::Bool
+    entry 0x75AA8385 Attrib::StringKey
+    entry 0x7AB079C8 EA::Reflection::Float
+    entry 0x7B76A1FB EA::Reflection::Bool
+    entry 0x7BFCA850 Attrib::StringKey
+    entry 0x7E8558B4 EA::Reflection::Bool
+    entry PrintSplicerSfxInfo EA::Reflection::Bool
+    entry 0x8195E2DC Attrib::StringKey
+    entry DisplayWooshTrigger EA::Reflection::Bool
+    entry PrintReverbInfo EA::Reflection::Bool
+    entry Splicer_Banks Attrib::StringKey[3]
+    entry AEMS_animatedobject_RioChild_Bank Attrib::StringKey[65535]
+    entry 0x93C67FC4 EA::Reflection::Bool
+    entry AEMS_Madrid_Bank Attrib::StringKey
+    entry AEMS_animatedobject_SingaporeParent_Bank Attrib::StringKey[65535]
+    entry 0xAF7C96B7 EA::Reflection::Bool
+    entry AEMS_SkidsBank Attrib::StringKey
+    entry DefaultHwVoice nfs::Audio::eAemsHwVoiceType
+    entry AEMS_animatedobject_SingaporeChild_Bank Attrib::StringKey[65535]
+    entry 0xBCE8A8A3 nfs::Audio::AttribSwVoice[65535]
+    entry AEMS_EnvBank Attrib::StringKey
+    entry AEMS_TrafficBank Attrib::StringKey
+    entry 0xC346F215 Attrib::StringKey
+    entry PrintReverbZone EA::Reflection::Bool
+    entry 0xCA31B368 Attrib::StringKey[65535]
+    entry 0xCA67EBA0 EA::Reflection::Bool
+    entry 0xCE5B38AD Attrib::StringKey
+    entry AEMS_PickupsCommonBank Attrib::StringKey
+    entry PrintImposeYourWorldInfo EA::Reflection::Bool
+    entry 0xDBD5D129 Attrib::StringKey
+    entry AEMS_PickupsStream Attrib::StringKey
+    entry VoicePool nfs::Audio::PooledVoice[65535]
+    entry DefaultSwVoice nfs::Audio::eAemsSwVoiceType
+    entry 0xE3E25C10 Attrib::StringKey
+    entry JitterParams nfs::Audio::JittererParams[65535]
+    entry AEMS_animatedobject_CairoChild_Bank Attrib::StringKey[65535]
+    entry AEMS_NOSBank Attrib::StringKey
+    entry AEMS_animatedobject_RioParent_Bank Attrib::StringKey[65535]
+    entry AEMS_Cairo_Bank Attrib::StringKey
+    entry AEMS_SparkBanks Attrib::StringKey[2]
+    entry DisplayTunnelTags EA::Reflection::Bool
+    entry AEMS_MiscBank Attrib::StringKey
+    entry 0xF723D3C3 EA::Reflection::Float
+    entry 0xF90AB262 Attrib::StringKey
+    entry 0xFA181A98 Attrib::StringKey
+    entry EnableDefaultHwVoice EA::Reflection::Bool
+}
+class audio_impose_your_world in vault db reserve 1 {
+    entry 0x0AA662A2 EA::Reflection::Float
+    entry 0x26AFF6D3 EA::Reflection::Float
+}
+class audio_lod in vault db reserve 8 {
+    entry 0x1561A909 EA::Reflection::Float
+    entry CopCarSfx nfs::Audio::CopCarSfx
+    entry 0x28A040AB EA::Reflection::Float
+    entry 0x3B74CBE4 EA::Reflection::Float
+    entry 0x3F4FE1C0 EA::Reflection::Float
+    entry 0x414E9886 EA::Reflection::Float
+    entry MaxPickups EA::Reflection::Int8
+    entry PlayerCarSfx nfs::Audio::PlayerCarSfx
+    entry MaxTrafficCars EA::Reflection::Int8
+    entry 0x5D19FBE7 EA::Reflection::Float
+    entry AiCarSfx nfs::Audio::AiCarSfx
+    entry 0x8326DB1F EA::Reflection::Int8
+    entry 0x8A0D3C48 nfs::Audio::StatesLimit
+    entry MultiplayerCarSfx nfs::Audio::MultiplayerCarSfx
+    entry 0x9FDE6CBB EA::Reflection::Int8
+    entry TrafficCarSfx nfs::Audio::TrafficCarSfx
+    entry 0xCEA9475E EA::Reflection::Float
+    entry 0xCEEC63C2 EA::Reflection::Int8
+    entry 0xD172B649 nfs::Audio::StatesLimit
+    entry TruckSfx nfs::Audio::TruckSfx
+    entry 0xE448E86B nfs::Audio::StatesLimit
+    entry MaxCollisions EA::Reflection::Int8
+    entry 0xF430F1B1 EA::Reflection::Float
+}
+class audio_pickup in vault db reserve 169 {
+    entry Disable EA::Reflection::Bool
+    entry 0x1885072F EA::Reflection::Float
+    entry 0x29CA5148 EA::Reflection::Float
+    entry 0x43ECD8E5 EA::Reflection::Float
+    entry 0x55AF08C7 EA::Reflection::Bool
+    entry 0x5AD03580 EA::Reflection::Bool
+    entry Volume EA::Reflection::Float
+    entry EventType nfs::Audio::eAudioPickupEventType
+    entry DebugName EA::Reflection::Text
+    entry Category nfs::Audio::eAudioPickupCategory
+    entry AEMS_Id EA::Reflection::Int16
+    entry 0xBAB8EE82 EA::Reflection::Bool
+    entry 0xBE328C09 EA::Reflection::Float
+    entry 0xD074BB23 EA::Reflection::Float
+}
+class audio_revlimiter in vault db reserve 1 {
+    layout throttle_cut_ratio EA::Reflection::Float
+    layout rpm_drop_ratio_short EA::Reflection::Float
+    layout rpm_drop_ratio_long EA::Reflection::Float
+    entry verylongcycle_probability EA::Reflection::Float
+    entry load_for_long EA::Reflection::Float
+    entry verylongcycle_length EA::Reflection::UInt32
+    entry load_cut_ratio EA::Reflection::Float
+    entry cutoff_frames_short EA::Reflection::UInt32
+    entry cutoff_frames_long EA::Reflection::UInt32
+    entry random_range_variation EA::Reflection::Float
+    entry rpm_ratio_limit EA::Reflection::Float
+    entry load_for_short EA::Reflection::Float
+    entry total_frames_long EA::Reflection::UInt32
+    entry total_frames_short EA::Reflection::UInt32
+}
+class audio_worldanim in vault db reserve 1 {
+    entry Plane EA::Reflection::Text[65535]
+    entry CableCar EA::Reflection::Text[65535]
+    entry Monorail EA::Reflection::Text[65535]
+    entry Metro EA::Reflection::Text[65535]
+    entry CargoCrane EA::Reflection::Text[65535]
+}
+class aud_moment_strm in vault db reserve 63 {
+    layout VolSlot eVOL_MOMENT
+    layout CanInterupt EA::Reflection::Bool
+    layout strmpriority EA::Reflection::Int8
+    entry IsPositioned EA::Reflection::Bool
+    entry 0xEF59EC8E eSFXAudio_en_index
+}
+class aud_stitch_loop in vault db reserve 2 {
+    entry stitch STICH_COLLISION_TYPE
+    entry overlap EA::Reflection::Int32
+}
+class brakes in vault db reserve 124 {
+    layout BRAKES AxlePair
+    layout BRAKE_LOCK AxlePair
+    layout EBRAKE EA::Reflection::Float
+}
+class camera in vault db reserve 53 {
+    layout CollectionName EA::Reflection::Text
+    layout VerticalDamping CameraSpeedReactionRecord
+    layout HorizontalDamping CameraSpeedReactionRecord
+    layout DirectionLock CameraSpeedReactionRecord
+    layout DirectionDuration CameraSpeedReactionRecord
+    layout TiltDuration EA::Reflection::Float
+    layout Snap EA::Reflection::Bool
+    layout PositionDuration EA::Reflection::Float
+    layout PitchDuration EA::Reflection::Float
+    layout LookAhead EA::Reflection::Bool
+    layout LatOffset EA::Reflection::Float
+    layout IsSelectable EA::Reflection::Bool
+    layout FovDuration EA::Reflection::Float
+    layout HorizonLock EA::Reflection::Int8
+    entry Braking Attrib::RefSpec
+    entry Tilt CameraReactionRecord[65535]
+    entry EndOfRace Attrib::RefSpec
+    entry DodgeCars Attrib::RefSpec
+    entry 0x3371BC31 EA::Reflection::Float
+    entry Draft Attrib::RefSpec
+    entry 0x5F275B34 EA::Reflection::Float
+    entry LatAngle EA::Reflection::Float
+    entry Pitch CameraReactionRecord[65535]
+    entry Nos Attrib::RefSpec
+    entry Fov CameraReactionRecord[65535]
+    entry 0x95979114 EA::Reflection::Float
+    entry Vibration Attrib::RefSpec
+    entry 0x9F298D55 EA::Reflection::Float
+    entry Position CameraReactionRecord[65535]
+    entry GearChange Attrib::RefSpec
+    entry 0xA32D4C7D EA::Reflection::Float
+    entry 0xB80102FB EA::Reflection::Float
+    entry 0xB98D88F3 EA::Reflection::Int32
+    entry Height CameraReactionRecord[65535]
+    entry 0xBFE5A1D7 EA::Reflection::Float
+    entry 0xC70B8CC7 EA::Reflection::Float
+    entry 0xC82D3D77 EA::Reflection::Float
+    entry Jumping Attrib::RefSpec
+    entry Staging Attrib::RefSpec
+    entry 0xD8B0D86A EA::Reflection::Float
+    entry 0xDBA4352A EA::Reflection::Float
+    entry DoubleNos Attrib::RefSpec
+    entry Powerslide Attrib::RefSpec
+    entry Impact Attrib::RefSpec
+    entry Totaled Attrib::RefSpec
+}
+class camerabraking in vault db reserve 2 {
+    layout CollectionName EA::Reflection::Text
+    layout SpeedThreshold EA::Reflection::Float
+    layout LookDown EA::Reflection::Float
+    layout EyeUp EA::Reflection::Float
+    layout Enable EA::Reflection::Bool
+    layout AccelThreshold EA::Reflection::Float
+}
+class cameracorner in vault db reserve 1 {
+    entry InputAngleMin EA::Reflection::Float
+    entry NavDistTable EA::Reflection::Float[4]
+    entry NavDistSpeedMin EA::Reflection::Float
+    entry AngleMax EA::Reflection::Float
+    entry AngleP EA::Reflection::Float
+    entry AngleDeltaMax EA::Reflection::Float
+    entry SpeedMax EA::Reflection::Float
+    entry NavDistSpeedMax EA::Reflection::Float
+    entry SpeedMin EA::Reflection::Float
+    entry InputAngleMax EA::Reflection::Float
+}
+class cameradodge in vault db reserve 2 {
+    layout CollectionName EA::Reflection::Text
+    layout Enable EA::Reflection::Bool
+    layout CarsVelDiffMin EA::Reflection::Float
+    layout CarsVelDiffMax EA::Reflection::Float
+    layout CarsGapMin EA::Reflection::Float
+    layout CarsGapMax EA::Reflection::Float
+    layout CarsGapFullEffect EA::Reflection::Float
+}
+class cameradraft in vault db reserve 2 {
+    layout CollectionName EA::Reflection::Text
+    layout TimeOut EA::Reflection::Float
+    layout TimeIn EA::Reflection::Float
+    layout PullBack EA::Reflection::Float
+    layout FovWidening EA::Reflection::Float
+    layout Enable EA::Reflection::Bool
+    entry HeightOffset EA::Reflection::Float
+}
+class cameraendofrace in vault db reserve 2 {
+    layout CollectionName EA::Reflection::Text
+    layout 0x7C14C48F EA::Reflection::Float
+    layout Enable EA::Reflection::Bool
+    entry 0x3520B731 Attrib::Types::Vector4[65535]
+    entry TimeIn EA::Reflection::Float
+    entry Position EA::Reflection::Float
+    entry 0xC55AC332 Attrib::Types::Vector4[65535]
+    entry KeyPosition Attrib::Types::Vector4[65535]
+}
+class cameragearchange in vault db reserve 2 {
+    layout PositionMove Curve
+    layout CollectionName EA::Reflection::Text
+    layout SpeedAttenuation EA::Reflection::Float
+    layout Enable EA::Reflection::Bool
+    entry TimeIn EA::Reflection::Float
+    entry PullBack EA::Reflection::Float
+    entry TimeOut EA::Reflection::Float
+    entry Height EA::Reflection::Float
+}
+class cameraimpact in vault db reserve 2 {
+    layout PositionMove Curve
+    layout HeightMove Curve
+    layout CollectionName EA::Reflection::Text
+    layout SpeedThreshold EA::Reflection::Float
+    layout Enable EA::Reflection::Bool
+    layout AccelThreshold EA::Reflection::Float
+}
+class camerajumping in vault db reserve 1 {
+    entry Enable EA::Reflection::Bool
+    entry TimeIn EA::Reflection::Float
+    entry TimeOut EA::Reflection::Float
+    entry Height EA::Reflection::Float
+    entry 0xD244492B EA::Reflection::Float
+    entry 0xD80B8AA3 EA::Reflection::Float
+}
+class cameranos in vault db reserve 88 {
+    layout CollectionName EA::Reflection::Text
+    layout TimeOut EA::Reflection::Float
+    layout TimeIn EA::Reflection::Float
+    layout SpeedThreshold EA::Reflection::Float
+    layout PullBack EA::Reflection::Float
+    layout Height EA::Reflection::Float
+    layout FovWidening EA::Reflection::Float
+    layout Enable EA::Reflection::Bool
+}
+class camerapowerslide in vault db reserve 1 {
+    layout TimeOut EA::Reflection::Float
+    layout TimeIn EA::Reflection::Float
+    layout TiltMax EA::Reflection::Float
+    layout SteeringMin EA::Reflection::Float
+    layout SteeringMax EA::Reflection::Float
+    layout SpeedMin EA::Reflection::Float
+    layout SpeedMax EA::Reflection::Float
+    layout FovMinSpeed EA::Reflection::Float
+    layout FovMaxSpeed EA::Reflection::Float
+    layout Enable EA::Reflection::Bool
+    entry FovDelta Attrib::Types::Matrix
+    entry FovDeltaMax EA::Reflection::Float
+}
+class cameraracestart in vault db reserve 1 {
+    layout CollectionName EA::Reflection::Text
+    layout Tilt EA::Reflection::Float
+    layout Position EA::Reflection::Float
+    layout Pitch EA::Reflection::Float
+    layout LatOffset EA::Reflection::Float
+    layout Height EA::Reflection::Float
+    layout Fov EA::Reflection::Float
+    layout Enable EA::Reflection::Bool
+    entry LatAngle EA::Reflection::Float
+}
+class camerashake in vault db reserve 11 {
+    layout MaxTime EA::Reflection::Float
+    layout MaxSpeed EA::Reflection::Float
+    layout Frequency EA::Reflection::Float
+    layout Duration EA::Reflection::Float
+    layout AmplitudeZ EA::Reflection::Float
+    layout AmplitudeY EA::Reflection::Float
+    layout AmplitudeX EA::Reflection::Float
+    entry DoSmoothing EA::Reflection::Bool
+    entry 0xD0A7CBC9 EA::Reflection::Float
+    entry MaxCollisionForce EA::Reflection::Float
+    entry 0xF808F43D EA::Reflection::Float
+    entry MinCollisionForce EA::Reflection::Float
+    entry 0xFD12C90E EA::Reflection::Float
+}
+class camerastaging in vault db reserve 43 {
+    layout CollectionName EA::Reflection::Text
+    layout Tilt EA::Reflection::Float
+    layout PosOffset EA::Reflection::Float
+    layout Pitch EA::Reflection::Float
+    layout LatOffset EA::Reflection::Float
+    layout HeightOffset EA::Reflection::Float
+    layout FovWidening EA::Reflection::Float
+    layout Enable EA::Reflection::Bool
+    layout CarOffset EA::Reflection::Float
+    entry 0x3492EFB1 EA::Reflection::Float
+    entry TimeIn EA::Reflection::Float
+    entry LatAngle EA::Reflection::Float
+    entry TimeOut EA::Reflection::Float
+}
+class cameratotaled in vault db reserve 2 {
+    layout CollectionName EA::Reflection::Text
+    layout 0x7C14C48F EA::Reflection::Float
+    layout Enable EA::Reflection::Bool
+    entry Distance EA::Reflection::Float
+    entry TimeIn EA::Reflection::Float
+    entry TimeOut EA::Reflection::Float
+    entry Height EA::Reflection::Float
+    entry InitialRotation EA::Reflection::Float
+}
+class cameratrackcarshake in vault db reserve 1 {
+    layout Vertical Curve
+    layout Horizontal Curve
+    layout CollectionName EA::Reflection::Text
+    layout Frequency EA::Reflection::Float[2]
+    layout Amplitude EA::Reflection::Float[2]
+    layout Enable EA::Reflection::Bool
+}
+class cameravibration in vault db reserve 2 {
+    layout TerrainGraphMagnitude Curve
+    layout TerrainGraphFrequency Curve
+    layout SpeedGraphMagnitude Curve
+    layout SpeedGraphFrequency Curve
+    layout BuffetingGraphMagnitude Curve
+    layout BuffetingGraphFrequency Curve
+    layout CollectionName EA::Reflection::Text
+    layout DamageMagnitude EA::Reflection::Float[2]
+    layout Scale EA::Reflection::Float
+    layout OverRevMagnitude EA::Reflection::Float
+    layout OverRevFrequency EA::Reflection::Float
+    layout NitrousMagnitude EA::Reflection::Float
+    layout NitrousFrequency EA::Reflection::Float
+    layout Enable EA::Reflection::Bool
+    layout DragRaceScale EA::Reflection::Float
+    layout BrakeMagnitude EA::Reflection::Float
+    layout BrakeFrequency EA::Reflection::Float
+    layout AccelerationMagnitude EA::Reflection::Float
+    layout AccelerationFrequency EA::Reflection::Float
+    entry DragBoostMagnitude EA::Reflection::Float
+    entry DragBoostFrequency EA::Reflection::Float
+}
+class carreset in vault db reserve 1 {
+    layout 0x8C66FFA0 EA::Reflection::Float
+    layout 0x30036EE4 EA::Reflection::Float
+    layout 0xC9E4836E EA::Reflection::Float
+    layout 0xF815E72B EA::Reflection::Float
+    layout 0x8BA8EE93 EA::Reflection::Float
+    layout 0x39C71837 EA::Reflection::Float
+    layout 0x167D6F23 EA::Reflection::Float
+    layout 0x24E75A0E EA::Reflection::Float
+    layout 0xF12B7158 EA::Reflection::Float
+    layout 0x0415937A EA::Reflection::Float
+    layout 0x6D231597 EA::Reflection::Float
+    layout 0xA21E0FA6 EA::Reflection::Float
+    layout 0xFF6F8763 EA::Reflection::Float
+    entry 0x100C074C EA::Reflection::Float
+    entry 0xBF87628F EA::Reflection::Float
+}
+class chassis in vault db reserve 124 {
+    layout TRAVEL AxlePair
+    layout TRACK_WIDTH AxlePair
+    layout SWAYBAR_STIFFNESS AxlePair
+    layout SPRING_STIFFNESS AxlePair
+    layout SPRING_PROGRESSION AxlePair
+    layout SHOCK_VALVING AxlePair
+    layout SHOCK_STIFFNESS AxlePair
+    layout SHOCK_EXT_STIFFNESS AxlePair
+    layout SHOCK_DIGRESSION AxlePair
+    layout RIDE_HEIGHT AxlePair
+    layout WHEEL_BASE EA::Reflection::Float
+    layout SQUAT_SPEED EA::Reflection::Float
+    layout SHOCK_BLOWOUT EA::Reflection::Float
+    layout ROLL_SPEED EA::Reflection::Float
+    layout ROLL_CENTER EA::Reflection::Float
+    layout RENDER_MOTION EA::Reflection::Float
+    layout FRONT_WEIGHT_BIAS EA::Reflection::Float
+    layout FRONT_AXLE EA::Reflection::Float
+    layout 0x47AB0085 EA::Reflection::Float
+    layout 0xDAC981EB EA::Reflection::Float
+    layout 0xAB2D6E4C EA::Reflection::Float
+    layout DIVE_SPEED EA::Reflection::Float
+    layout 0xF6EC125C EA::Reflection::Float
+    layout AERO_COEFFICIENT EA::Reflection::Float
+    layout AERO_CG EA::Reflection::Float
+}
+class collisionreactions in vault db reserve 40 {
+    layout REARSIDE_REACTION CollisionReactionRecord
+    layout REAR_REACTION CollisionReactionRecord
+    layout FRONTSIDE_REACTION CollisionReactionRecord
+    layout FRONT_REACTION CollisionReactionRecord
+}
+class color_palette in vault db reserve 172 {
+    entry 0x4BF0D1CA EA::Reflection::UInt32[20]
+    entry 0x5200D04A EA::Reflection::UInt32[20]
+    entry Colors EA::Reflection::UInt32[20]
+}
+class controller in vault db reserve 74 {
+    layout CollectionName EA::Reflection::Text
+    layout ASSIST_TRACK_DIR_PERC_CTRL EA::Reflection::Float[3]
+    layout ASSIST_TRACK_CENTER_DIR_PERC_CTRL EA::Reflection::Float[3]
+    layout ASSIST_TRACK_CENTER_DIR_APM_CTRL EA::Reflection::Float[3]
+    layout 0x971BE4DC EA::Reflection::Float
+    layout Pauseable EA::Reflection::Bool
+    entry FRONTENDACTION_CANCEL ControllerDataRecord[15]
+    entry ICE_ACTION_LEFTSTICK_UP ControllerDataRecord[15]
+    entry ICE_ACTION_RIGHT_PRESS ControllerDataRecord[15]
+    entry FRONTENDACTION_BUTTON2 ControllerDataRecord[15]
+    entry GAMEACTION_GAS ControllerDataRecord[15]
+    entry FRONTENDACTION_RDOWN ControllerDataRecord[65535]
+    entry REACTION_APPLY_TO_NEXT ControllerDataRecord
+    entry GAMEACTION_SHIFTUP ControllerDataRecord[4]
+    entry ICE_ACTION_NORTH ControllerDataRecord[15]
+    entry ICE_ACTION_RIGHTSTICK_DOWN ControllerDataRecord[15]
+    entry ICE_ACTION_L2 ControllerDataRecord[15]
+    entry LowSensitivitySteeringParameters SteeringSensitivityParameter
+    entry DEBUGACTION_LOOK_DOWN ControllerDataRecord[15]
+    entry GAMEACTION_CLUTCH ControllerDataRecord[3]
+    entry ICE_ACTION_L1 ControllerDataRecord[15]
+    entry GAMEACTION_OVERSTEER ControllerDataRecord[15]
+    entry GAMEACTION_DEBUGHUMAN3 ControllerDataRecord[15]
+    entry GAMEACTION_SHIFTREVERSE ControllerDataRecord[3]
+    entry ICE_ACTION_SELECT ControllerDataRecord[15]
+    entry REACTION_MOVE_DOWN ControllerDataRecord
+    entry GAMEACTION_HANDBRAKE ControllerDataRecord[15]
+    entry DEBUGACTION_SIMSTEP ControllerDataRecord[15]
+    entry DEBUGACTION_TOGGLEAI ControllerDataRecord[15]
+    entry ICE_ACTION_WEST ControllerDataRecord[15]
+    entry DEBUGACTION_TOGGLECARCOLOUR ControllerDataRecord[15]
+    entry GAMEACTION_OVERSTEERLEFT ControllerDataRecord[15]
+    entry REACTION_SELECTNEXT ControllerDataRecord
+    entry ControllerHudType eControllerHudType
+    entry FRONTENDACTION_RUP ControllerDataRecord[15]
+    entry DEBUGACTION_TURBO ControllerDataRecord[15]
+    entry CAMERAACTION_ANALOG_LOOK_BACK ControllerDataRecord[15]
+    entry REACTION_LOOKRIGHT ControllerDataRecord[65535]
+    entry CAMERAACTION_ANALOG_LOOK_FORWARD ControllerDataRecord[15]
+    entry CAMERAACTION_CHANGE ControllerDataRecord[15]
+    entry DEBUGACTION_MOVE_FORWARD ControllerDataRecord[15]
+    entry ICE_ACTION_RIGHTSTICK_RIGHT ControllerDataRecord[15]
+    entry GAMEACTION_SHIFTNEUTRAL ControllerDataRecord[3]
+    entry ControllerTypeMask eControllerTypeMask
+    entry GAMEACTION_SHADER_LIGHTMAP ControllerDataRecord[15]
+    entry FRONTENDACTION_RLEFT ControllerDataRecord[15]
+    entry GAMEACTION_STEERLEFT ControllerDataRecord[15]
+    entry GAMEACTION_DEBUGHUMAN2 ControllerDataRecord[15]
+    entry REACTION_MOVE_FORWARD ControllerDataRecord[65535]
+    entry ICE_ACTION_L1_PRESS ControllerDataRecord[15]
+    entry DEBUGACTION_MOVE_D_LEFT ControllerDataRecord[15]
+    entry CAMERAACTION_ANALOG_LOOK_RIGHT ControllerDataRecord[15]
+    entry ICE_ACTION_R3_RELEASE ControllerDataRecord[15]
+    entry FRONTENDACTION_BUTTON3 ControllerDataRecord[15]
+    entry GAMEACTION_CREWDEFENSIVE ControllerDataRecord[15]
+    entry DEBUGACTION_LOOK_D_RIGHT ControllerDataRecord[15]
+    entry ICE_ACTION_SOUTH ControllerDataRecord[15]
+    entry ICE_ACTION_START ControllerDataRecord[15]
+    entry GAMEACTION_SHIFTDOWN ControllerDataRecord[4]
+    entry ICE_ACTION_DOWN_PRESS ControllerDataRecord[15]
+    entry GAMEACTION_COPAITOHUMAN ControllerDataRecord
+    entry REACTION_MOVE_BACK ControllerDataRecord[65535]
+    entry HighSensitivitySteeringParameters SteeringSensitivityParameter
+    entry 0x536F2DE7 EA::Reflection::Float
+    entry ICE_ACTION_LEFT_PRESS ControllerDataRecord[15]
+    entry GAMEACTION_TMP2 ControllerDataRecord[15]
+    entry FRONTENDACTION_BUTTON1 ControllerDataRecord[15]
+    entry HUDACTION_NEXTSONG ControllerDataRecord[65535]
+    entry GAMEACTION_SHIFTFIFTH ControllerDataRecord[3]
+    entry HUDACTION_VOIPACTIVATION ControllerDataRecord
+    entry DEBUGACTION_LOOK_RIGHT ControllerDataRecord[15]
+    entry DEBUGACTION_MOVE_DOWN ControllerDataRecord[15]
+    entry GAMEACTION_SHIFTSIXTH ControllerDataRecord[3]
+    entry DEBUGACTION_MOVE_RIGHT ControllerDataRecord[15]
+    entry REACTION_PREVIOUSLANE ControllerDataRecord
+    entry ICE_ACTION_UP ControllerDataRecord[15]
+    entry DEBUGACTION_MOVE_UP ControllerDataRecord[15]
+    entry ICE_ACTION_LEFTSTICK_DOWN ControllerDataRecord[15]
+    entry REACTION_PICK ControllerDataRecord
+    entry HUDACTION_911CALL ControllerDataRecord[65535]
+    entry FRONTENDACTION_START ControllerDataRecord[15]
+    entry GAMEACTION_DEBUGHUMAN4 ControllerDataRecord[15]
+    entry ICE_ACTION_LEFT ControllerDataRecord[15]
+    entry FRONTENDACTION_BUTTON0 ControllerDataRecord[15]
+    entry GAMEACTION_SHADER_INTENSITY ControllerDataRecord[15]
+    entry HUDACTION_PAD_RIGHT ControllerDataRecord[65535]
+    entry DEBUGACTION_MOVE_D_FORWARD ControllerDataRecord[15]
+    entry DEBUGACTION_TOGGLESIMSTEP ControllerDataRecord[15]
+    entry GAMEACTION_TURNLEFT ControllerDataRecord[15]
+    entry GAMEACTION_SHIFTSECOND ControllerDataRecord[3]
+    entry DEBUGACTION_SUPER_TURBO ControllerDataRecord[15]
+    entry GAMEACTION_TURNLEFT_DIGITAL ControllerDataRecord[15]
+    entry CAMERAACTION_PULLBACK ControllerDataRecord[15]
+    entry HUDACTION_SKIPNIS ControllerDataRecord[65535]
+    entry GAMEACTION_BRAKE ControllerDataRecord[15]
+    entry ICE_ACTION_RIGHT ControllerDataRecord[15]
+    entry GAMEACTION_CREWDEFAULT ControllerDataRecord[15]
+    entry REACTION_EDIT_NODE ControllerDataRecord
+    entry ICE_ACTION_R1 ControllerDataRecord[15]
+    entry DEBUGACTION_LOOK_D_DOWN ControllerDataRecord[15]
+    entry REACTION_LOOKDOWN ControllerDataRecord[65535]
+    entry DEBUGACTION_LOOK_LEFT ControllerDataRecord[15]
+    entry DEBUGACTION_LOOK_D_UP ControllerDataRecord[15]
+    entry FRONTENDACTION_RTRIGGER ControllerDataRecord[15]
+    entry CAMERAACTION_LOOKBACK ControllerDataRecord[15]
+    entry DEBUGACTION_MOVE_D_BACK ControllerDataRecord[15]
+    entry 0x94F5044A EA::Reflection::Float
+    entry GAMEACTION_RELEASEPICKUP ControllerDataRecord[15]
+    entry GAMEACTION_OVERSTEERRIGHT ControllerDataRecord[15]
+    entry FRONTENDACTION_LEFT ControllerDataRecord[15]
+    entry GAMEACTION_PRESSPICKUP ControllerDataRecord[15]
+    entry GAMEACTION_CREWSPEED ControllerDataRecord[15]
+    entry DoubleTabThreshold EA::Reflection::Float
+    entry DEBUGACTION_MOVE_LEFT ControllerDataRecord[15]
+    entry GAMEACTION_GAMEBREAKER ControllerDataRecord[15]
+    entry ICE_ACTION_R3 ControllerDataRecord[15]
+    entry ICE_ACTION_EAST_PRESS ControllerDataRecord[15]
+    entry CAMERAACTION_ANALOG_LOOK_LEFT ControllerDataRecord[15]
+    entry MediumSensitivitySteeringParameters SteeringSensitivityParameter
+    entry FRONTENDACTION_BUTTON5 ControllerDataRecord[65535]
+    entry DEBUGACTION_MOVE_D_RIGHT ControllerDataRecord[15]
+    entry ICE_ACTION_DOWN ControllerDataRecord[15]
+    entry GAMEACTION_TURNRIGHT_DIGITAL ControllerDataRecord[15]
+    entry ICE_ACTION_R2 ControllerDataRecord[15]
+    entry HUDACTION_VOIPDEACTIVATION ControllerDataRecord
+    entry REACTION_MOVE_LEFT ControllerDataRecord[65535]
+    entry FRONTENDACTION_RIGHT ControllerDataRecord[15]
+    entry 0xA99E2BBB EA::Reflection::Float
+    entry REACTION_ACTIVATE_EDIT ControllerDataRecord
+    entry GAMEACTION_NOS ControllerDataRecord[6]
+    entry CAMERAACTION_DEBUG ControllerDataRecord[15]
+    entry ICE_ACTION_LEFTSTICK_RIGHT ControllerDataRecord[15]
+    entry GAMEACTION_TMP1 ControllerDataRecord[15]
+    entry ICE_ACTION_RIGHTSTICK_UP ControllerDataRecord[15]
+    entry ICE_ACTION_SOUTH_PRESS ControllerDataRecord[15]
+    entry GAMEACTION_STEERRIGHT ControllerDataRecord[15]
+    entry GAMEACTION_RESET ControllerDataRecord[65535]
+    entry DEBUGACTION_MOVE_BACK ControllerDataRecord[15]
+    entry GAMEACTION_JUMP ControllerDataRecord[15]
+    entry ICE_ACTION_L3_PRESS ControllerDataRecord[15]
+    entry GAMEACTION_TMP3 ControllerDataRecord[15]
+    entry CAMERAACTION_ENABLE_ICE ControllerDataRecord[1]
+    entry HUDACTION_ENGAGE_EVENT ControllerDataRecord[65535]
+    entry REACTION_MOVE_UP ControllerDataRecord
+    entry DEBUGACTION_DROPCAR ControllerDataRecord[15]
+    entry GAMEACTION_SHIFTTHIRD ControllerDataRecord[3]
+    entry DEBUGACTION_LOOK_UP ControllerDataRecord[15]
+    entry REACTION_LOOKLEFT ControllerDataRecord[65535]
+    entry FRONTENDACTION_ACCEPT ControllerDataRecord[15]
+    entry GAMEACTION_POWERSLIDE_MODE_TOGGLE ControllerDataRecord[15]
+    entry FRONTENDACTION_UP ControllerDataRecord[15]
+    entry REACTION_AUTOFIT ControllerDataRecord
+    entry GAMEACTION_SHIFTFOURTH ControllerDataRecord[3]
+    entry ICE_ACTION_R1_PRESS ControllerDataRecord[15]
+    entry ICE_ACTION_R2_PRESS ControllerDataRecord[15]
+    entry REACTION_LOOKUP ControllerDataRecord[65535]
+    entry ICE_ACTION_RIGHTSTICK_LEFT ControllerDataRecord[15]
+    entry GAMEACTION_SHIFTFIRST ControllerDataRecord[3]
+    entry ICE_ACTION_EAST ControllerDataRecord[15]
+    entry 0xCF19136D EA::Reflection::Float
+    entry REACTION_MOVE_RIGHT ControllerDataRecord[65535]
+    entry SteeringModifierAllowed EA::Reflection::Bool
+    entry 0xD22CDC0B EA::Reflection::Float
+    entry ICE_ACTION_UP_PRESS ControllerDataRecord[15]
+    entry 0xD83161C0 Attrib::Types::Matrix
+    entry REACTION_TURBO ControllerDataRecord
+    entry HUDACTION_PAUSEREQUEST ControllerDataRecord[15]
+    entry GAMEACTION_BACK ControllerDataRecord[15]
+    entry GAMEACTION_FORWARD ControllerDataRecord[15]
+    entry FRONTENDACTION_RRIGHT ControllerDataRecord[15]
+    entry HUDACTION_PAD_LEFT ControllerDataRecord[65535]
+    entry GAMEACTION_SIREN ControllerDataRecord[2]
+    entry VOIPACTION_PUSHTOTALK ControllerDataRecord[65535]
+    entry GAMEACTION_TMP4 ControllerDataRecord[15]
+    entry GAMEACTION_DEBUGHUMAN1 ControllerDataRecord[15]
+    entry ICE_ACTION_L2_PRESS ControllerDataRecord[15]
+    entry FRONTENDACTION_LTRIGGER ControllerDataRecord[15]
+    entry REACTION_NEXTLANE ControllerDataRecord
+    entry DEBUGACTION_TOGGLEDEMOCAMERAS ControllerDataRecord[15]
+    entry FRONTENDACTION_DOWN ControllerDataRecord[15]
+    entry FRONTENDACTION_BUTTON4 ControllerDataRecord[15]
+    entry DEBUGACTION_LOOK_D_LEFT ControllerDataRecord[15]
+    entry GAMEACTION_CREWAGGRESSIVE ControllerDataRecord[15]
+    entry ICE_ACTION_LEFTSTICK_LEFT ControllerDataRecord[15]
+    entry ICE_ACTION_WEST_PRESS ControllerDataRecord[15]
+    entry ICE_ACTION_NORTH_PRESS ControllerDataRecord[15]
+    entry FRONTENDACTION_CANCEL_ALT ControllerDataRecord[15]
+    entry GAMEACTION_TURNRIGHT ControllerDataRecord[15]
+    entry SteeringModifier Attrib::Types::Matrix
+}
+class copsiren in vault db reserve 1 {
+    entry 0x7555AD86 EA::Reflection::Float
+    entry DistanceToTarget EA::Reflection::Float
+}
+class copspeech in vault db reserve 1 {
+    entry ForcedPitch EA::Reflection::Int16
+    entry DistanceToPlayer EA::Reflection::Float
+    entry 0xBA1F2BCE EA::Reflection::Float
+    entry 0xCFFA4B03 EA::Reflection::Float
+    entry OnScreenTime EA::Reflection::Float
+}
+class damagespecs in vault db reserve 14 {
+    layout DZ_TOP DamageScaleRecord
+    layout DZ_RREAR DamageScaleRecord
+    layout DZ_RIGHT DamageScaleRecord
+    layout DZ_RFRONT DamageScaleRecord
+    layout DZ_REAR DamageScaleRecord
+    layout DZ_LREAR DamageScaleRecord
+    layout DZ_LFRONT DamageScaleRecord
+    layout DZ_LEFT DamageScaleRecord
+    layout DZ_FRONT DamageScaleRecord
+    layout DZ_BOTTOM DamageScaleRecord
+    layout SUPPRESS_DIST EA::Reflection::Float
+    layout SHOCK_TIME EA::Reflection::Float
+    layout SHOCK_FORCE EA::Reflection::Float
+    layout HP_THRESHOLD EA::Reflection::Float
+    layout HIT_POINTS EA::Reflection::Float
+    layout FORCE EA::Reflection::Float
+}
+class debug in vault db reserve 1 {
+    entry PrintDamage EA::Reflection::Bool
+    entry PrintStyle EA::Reflection::Bool
+    entry PrintCarType EA::Reflection::Bool
+    entry PrintSpeedLimit EA::Reflection::Bool
+    entry PrintHeat EA::Reflection::Bool
+    entry 0xCB4B494E EA::Reflection::Bool
+    entry 0xD6DDCC09 EA::Reflection::Bool
+    entry 0xD726EAF2 EA::Reflection::Bool
+    entry 0xDFA4D44B EA::Reflection::Bool
+}
+class drafting in vault db reserve 2 {
+    layout 0xAB72D121 EA::Reflection::Float
+    layout 0xAE73AAEA EA::Reflection::Float
+    layout 0xB2576F9E EA::Reflection::Float
+    layout 0x558AED9B EA::Reflection::Float
+    layout 0x72745A27 EA::Reflection::Float
+    layout minSpeed EA::Reflection::Float
+    layout minDist EA::Reflection::Float
+    layout maxDist EA::Reflection::Float
+    layout 0x609D449E EA::Reflection::Float
+    layout 0x86D72499 EA::Reflection::Float
+    layout 0x218A3B41 EA::Reflection::Float
+    layout 0xF69A551F EA::Reflection::Float
+}
+class dynamicsurface in vault db reserve 2 {
+    layout RadiusCurve Attrib::Types::Vector4
+    layout ColourCurve Attrib::Types::Vector4
+    layout simsurface Attrib::RefSpec
+    layout Texture type_bStringHash
+    layout RadiusStart EA::Reflection::Float
+    layout RadiusEnd EA::Reflection::Float
+    layout MinLife EA::Reflection::Float
+    layout MaxLife EA::Reflection::Float
+    layout ColourStart EA::Reflection::UInt32
+    layout ColourEnd EA::Reflection::UInt32
+}
+class ecar in vault db reserve 140 {
+    layout 0x1974194D Attrib::Types::Matrix
+    layout 0xD836718F Attrib::Types::Matrix
+    layout TireOffsets Attrib::Types::Vector4[4]
+    layout DraftLineEffects Attrib::StringKey[4]
+    layout MissShiftEffect Attrib::RefSpec
+    layout EngineBlownEffect Attrib::RefSpec
+    layout DeathEffect Attrib::RefSpec
+    layout 0x41DC88F0 Attrib::RefSpec
+    layout DamageEffect Attrib::RefSpec
+    layout CollectionName EA::Reflection::Text
+    layout DraftEffectLineRandomness Attrib::Types::Vector3[4]
+    layout DraftEffectLinePositions Attrib::Types::Vector3[4]
+    layout TireSkidWidthKitScale Attrib::Types::Vector2[7]
+    layout TireSkidWidth EA::Reflection::Float[4]
+    layout SlipFX EA::Reflection::Float[2]
+    layout SkidFX EA::Reflection::Float[2]
+    layout FXAngularDeviation EA::Reflection::Float[2]
+    layout BodySquat CarBodyMotion
+    layout BodyRoll CarBodyMotion
+    layout BodyDive CarBodyMotion
+    layout WheelWell EA::Reflection::Float
+    layout StockPresetSkin type_bStringHash
+    layout ShiftSpeed EA::Reflection::Float
+    layout ShiftAngle EA::Reflection::Float
+    layout 0xDEC04C45 EA::Reflection::Float
+    layout 0xEE28A578 EA::Reflection::Float
+    layout 0x7732A0ED EA::Reflection::Float
+    layout RideHeight EA::Reflection::Float
+    layout ReflectionOffset EA::Reflection::Float
+    layout ExtraRearTireOffset EA::Reflection::Float
+    layout ExtraPitch EA::Reflection::Float
+    layout EngineVibrationMin EA::Reflection::Float
+    layout EngineVibrationMax EA::Reflection::Float
+    layout EngineVibrationFreq EA::Reflection::Float
+    layout EngineRevSpeed EA::Reflection::Float
+    layout EngineRevAngle EA::Reflection::Float
+    layout EngineRev EA::Reflection::Float
+    layout 0xEDFE3660 EA::Reflection::Float
+    layout 0xD4D3DF01 EA::Reflection::Float
+    layout CamberRear EA::Reflection::Float
+    layout CamberFront EA::Reflection::Float
+    layout BlowOffTimer EA::Reflection::Float
+    layout 0x02AD077D EA::Reflection::Float
+    layout 0xCA9B4376 EA::Reflection::Float
+    layout 0x03658CCC EA::Reflection::Float
+    layout 0x9DC3C4AD EA::Reflection::Float
+    layout 0xB5FB6B11 EA::Reflection::Float
+    layout 0xF6E7595B EA::Reflection::Float
+    layout 0x83422D14 EA::Reflection::Float
+    layout 0x73D84863 EA::Reflection::Float
+    layout 0xAB177494 EA::Reflection::Float
+    layout 0x4AC477DF EA::Reflection::Float
+    layout 0x627DB444 EA::Reflection::Float
+    layout 0xF86E271D EA::Reflection::Float
+    layout 0x501615A7 EA::Reflection::Float
+    layout 0x15AB3B77 EA::Reflection::Float
+    layout 0xD130426B EA::Reflection::Float
+    layout 0x69DDE284 EA::Reflection::Float
+    layout 0xFD1F0733 EA::Reflection::Float
+    layout 0x8AFE086F EA::Reflection::Float
+    layout KitWheelOffsetRear EA::Reflection::UInt8[6]
+    layout KitWheelOffsetFront EA::Reflection::UInt8[6]
+    layout WheelSpokeCount EA::Reflection::Int8
+    entry RoadNoise EA::Reflection::Float
+    entry LIGHT_COPRED Attrib::RefSpec
+    entry LIGHT_COPWHITE Attrib::RefSpec
+    entry 0x37A263B9 Attrib::RefSpec
+    entry WheelHopScale EA::Reflection::Float
+    entry NOSEffect Attrib::RefSpec
+    entry 0x73483976 Attrib::RefSpec
+    entry SteerSpeed EA::Reflection::Float
+    entry Camera_Close Attrib::RefSpec
+    entry LIGHT_COPBLUE Attrib::RefSpec
+    entry FECompressions EA::Reflection::Float[2]
+    entry MaxTireSteer EA::Reflection::Float
+    entry 0xCA7C6A3C Attrib::RefSpec
+    entry IsSkinned EA::Reflection::Bool
+    entry FrontCamber EA::Reflection::Float
+}
+class effects in vault db reserve 341 {
+    layout AudioFX_DEFAULT Attrib::RefSpec
+    layout CollectionName EA::Reflection::Text
+    entry InheritVelocity EA::Reflection::Float
+    entry FogEnable EA::Reflection::Bool
+    entry AudioQuadratic Attrib::Types::Vector4
+    entry VisualCullDist EA::Reflection::Float
+    entry carhitworld_threshold EA::Reflection::Float
+    entry ConstantBm Attrib::Types::Vector4
+    entry InScatterMulitply EA::Reflection::Float
+    entry AudioFX_SIDE Attrib::RefSpec
+    entry AudioFX_FRONT Attrib::RefSpec
+    entry BrMultiply EA::Reflection::Float
+    entry AudioFX_TOP Attrib::RefSpec
+    entry AudioFX_REAR Attrib::RefSpec
+    entry carhitcar_threshold EA::Reflection::Float
+    entry AudioCullDist EA::Reflection::Float
+    entry ConstantBr Attrib::Types::Vector4
+    entry EmitterQuadratic Attrib::Types::Vector4
+    entry emittergroup Attrib::RefSpec
+    entry BmMultiply EA::Reflection::Float
+    entry FogG EA::Reflection::Float
+    entry AudioFX_BOTTOM Attrib::RefSpec
+}
+class emitterdata in vault db reserve 491 {
+    layout VolumeExtent Attrib::Types::Vector4 unsearchable
+    layout VolumeCenter Attrib::Types::Vector4 unsearchable
+    layout VelocityStart Attrib::Types::Vector4 unsearchable
+    layout VelocityDelta Attrib::Types::Vector4 unsearchable
+    layout SizeIntensity Attrib::Types::Vector4
+    layout Size Attrib::Types::Vector4 unsearchable
+    layout KeyPositions Attrib::Types::Vector4 unsearchable
+    layout AccelStart Attrib::Types::Vector4 unsearchable
+    layout AccelDelta Attrib::Types::Vector4 unsearchable
+    layout CollectionName EA::Reflection::Text
+    layout TextureAnimation ParticleAnimationInfo unsearchable
+    layout Texture ParticleTextureRecord
+    layout VelocityStretch EA::Reflection::Float unsearchable
+    layout StartDelayRandomVariance EA::Reflection::Bool
+    layout StartDelay EA::Reflection::Float unsearchable
+    layout SpreadAsDisc EA::Reflection::Int32 unsearchable
+    layout SpreadAngle EA::Reflection::Float unsearchable
+    layout SpeedVariance EA::Reflection::Float unsearchable
+    layout Speed EA::Reflection::Float unsearchable
+    layout SizeVariance EA::Reflection::Float
+    layout RotationVariance EA::Reflection::Float unsearchable
+    layout RotationalVelocity EA::Reflection::Float
+    layout RenderLinked EA::Reflection::Bool
+    layout RandomRotationDirection EA::Reflection::Int32 unsearchable
+    layout OnCycleVariance EA::Reflection::Float unsearchable
+    layout OnCycle EA::Reflection::Float unsearchable
+    layout OffCycleVariance EA::Reflection::Float unsearchable
+    layout OffCycle EA::Reflection::Float unsearchable
+    layout NumParticlesVariance EA::Reflection::Float unsearchable
+    layout NumParticles EA::Reflection::Float unsearchable
+    layout MotionLive EA::Reflection::Int32 unsearchable
+    layout MotionInheritVariance EA::Reflection::Float unsearchable
+    layout MotionInherit EA::Reflection::Float unsearchable
+    layout LifeVariance EA::Reflection::Float unsearchable
+    layout Life EA::Reflection::Float unsearchable
+    layout IsTrailFX EA::Reflection::Bool
+    layout IsOneShot EA::Reflection::Bool unsearchable
+    layout InitialAngleRange EA::Reflection::Float unsearchable
+    layout Gravity EA::Reflection::Float unsearchable
+    layout FarClip EA::Reflection::Float unsearchable
+    layout EliminateUnnecessaryRandomness EA::Reflection::Bool
+    layout Drag EA::Reflection::Float unsearchable
+    layout ColorVariance EA::Reflection::Float
+    layout Color4 EA::Reflection::UInt32 unsearchable
+    layout Color3 EA::Reflection::UInt32 unsearchable
+    layout Color2 EA::Reflection::UInt32 unsearchable
+    layout Color1 EA::Reflection::UInt32 unsearchable
+    layout BounceDampen EA::Reflection::Float
+    layout Blur EA::Reflection::Bool
+    layout AxisConstraint EffectParticleConstraint unsearchable
+    layout 0x7922FBBD EA::Reflection::Bool
+    entry GeometryEmission EmittedGeometryRecord
+    entry 0x3D6FCFD0 EA::Reflection::Bool
+    entry Bounce EA::Reflection::Bool
+    entry 0xA7789B40 EA::Reflection::Bool
+    entry 0xF44E5B22 EA::Reflection::Bool
+}
+class emittergroup in vault db reserve 358 {
+    layout Emitters Attrib::RefSpec[6]
+    layout CollectionName EA::Reflection::Text
+    layout FarClip EA::Reflection::Float
+    entry IntensityRanges Attrib::Types::Vector2[5]
+    entry 0x74A953DE EA::Reflection::Float
+    entry 0x8005B36B EA::Reflection::Bool
+}
+class emitteruv in vault db reserve 29 {
+    layout StartV EA::Reflection::Float
+    layout StartU EA::Reflection::Float
+    layout EndV EA::Reflection::Float
+    layout EndU EA::Reflection::Float
+}
+class engine in vault db reserve 121 {
+    layout TORQUE EA::Reflection::Float[9]
+    layout SPEED_LIMITER EA::Reflection::Float[2]
+    layout ENGINE_BRAKING EA::Reflection::Float[3]
+    layout 0x10077CDC EA::Reflection::Bool
+    layout RED_LINE EA::Reflection::Float
+    layout MAX_RPM EA::Reflection::Float
+    layout IDLE EA::Reflection::Float
+    layout FLYWHEEL_MASS EA::Reflection::Float
+    entry 0x129D4334 EA::Reflection::Float
+    entry 0x753F7C3C EA::Reflection::Float
+    entry 0x78616164 EA::Reflection::Float
+    entry 0x83A03834 EA::Reflection::Float
+    entry 0x8D14E638 EA::Reflection::Float
+    entry 0x8F008EB1 EA::Reflection::Float
+    entry 0x97A6219B EA::Reflection::Float
+    entry 0xAB65E7A2 EA::Reflection::Float
+    entry 0xC7B1E14D EA::Reflection::Float
+    entry 0xF346ED3E EA::Reflection::Float
+}
+class engineaudio in vault db reserve 98 {
+    layout acceltrans Attrib::RefSpec
+    layout CollectionName EA::Reflection::Text
+    layout Vol_Sputters EA::Reflection::Int32
+    layout Vol_ShiftSweets EA::Reflection::Int32
+    layout Tranny EA::Reflection::Bool
+    layout Player_car_occlusion_ratio EA::Reflection::Float
+    layout MinRPM EA::Reflection::Float
+    layout MaxRPM EA::Reflection::Float
+    layout Exhaust_Harmonic_Peak_Q EA::Reflection::Float
+    layout Exhaust_Harmonic EA::Reflection::Float
+    layout CarID EA::Reflection::UInt32
+    layout AccelDeltaRPMThreshold EA::Reflection::Float
+    layout Master_Vol EA::Reflection::UInt16
+    entry PhysicsRPM_Map Attrib::Types::Matrix
+    entry Engine_tmx_filename Attrib::StringKey
+    entry ginsu_max_shuffle EA::Reflection::Float
+    entry RevLimFXVol EA::Reflection::UInt32
+    entry 0x2FE7DCAF Attrib::StringKey
+    entry TrannyBank Attrib::StringKey
+    entry 0x3FA1418C EA::Reflection::Int32
+    entry Exhaust_tmx_filename_AI Attrib::StringKey
+    entry ginsu_min_shuffle EA::Reflection::Float
+    entry 0x74175D55 EA::Reflection::Int32
+    entry 0x8514ECF6 EA::Reflection::Int16
+    entry RevLimiter Attrib::RefSpec
+    entry 0x9BFB19E9 EA::Reflection::Int32
+    entry Engine_Volume_Player EA::Reflection::UInt16
+    entry Exhaust_tmx_filename_multiplayer Attrib::StringKey
+    entry Exhaust_Volume_Player EA::Reflection::UInt16
+    entry Exhaust_tmx_filename Attrib::StringKey
+    entry 0xD07E488D EA::Reflection::UInt16
+    entry 0xE087E436 EA::Reflection::Float
+    entry 0xE5BAF6C3 EA::Reflection::Int32
+    entry SweetBank Attrib::StringKey[10]
+    entry 0xF101B1F3 EA::Reflection::Int32
+    entry WhineVol EA::Reflection::UInt32
+    entry Exhaust_Harmonic_Gain EA::Reflection::Float
+    entry 0xFEB3708D EA::Reflection::Bool
+}
+class explosion in vault db reserve 1 {
+    layout BaseMaterial Attrib::RefSpec
+    layout triggerThreshold EA::Reflection::Float
+    layout forceMultiplier EA::Reflection::Float
+    layout fallOffUnit EA::Reflection::Float
+    layout explosionForceLimit EA::Reflection::Float
+    layout damageMultiplier EA::Reflection::Float
+}
+class fecameras in vault db reserve 291 {
+    layout quad Attrib::RefSpec
+    layout cam_angle_start Attrib::RefSpec
+    layout cam_angle Attrib::RefSpec unsearchable
+    layout tire_angle EA::Reflection::Float
+    layout quad_width EA::Reflection::Float
+    layout quad_rotation EA::Reflection::Float
+    layout quad_orbit EA::Reflection::Float
+    layout 0xD88B6F94 EA::Reflection::Float
+    layout 0x77665356 EA::Reflection::Float
+    layout 0xBDD901A1 EA::Reflection::Float
+    layout quad_height EA::Reflection::Float
+    layout 0xBFD0E0EC EA::Reflection::Float
+    layout cam_user_rotate EA::Reflection::Bool unsearchable
+    layout cam_roll_angle EA::Reflection::Float unsearchable
+    layout cam_periods EA::Reflection::Int32 unsearchable
+    layout 0xCC2552FD EA::Reflection::Int32 unsearchable
+    layout cam_orbit_vertical EA::Reflection::Float unsearchable
+    layout cam_orbit_radius_zoom EA::Reflection::Float unsearchable
+    layout cam_orbit_radius EA::Reflection::Float unsearchable
+    layout 0xBC3C6437 EA::Reflection::Float unsearchable
+    layout 0xB90170C1 EA::Reflection::Float unsearchable
+    layout cam_lookat_z EA::Reflection::Float unsearchable
+    layout cam_lookat_y EA::Reflection::Float unsearchable
+    layout cam_lookat_x EA::Reflection::Float unsearchable
+    layout cam_fov EA::Reflection::Float unsearchable
+    layout cam_damping EA::Reflection::Float unsearchable
+    layout cam_blur EA::Reflection::Float
+    layout cam_anim_speed EA::Reflection::Float unsearchable
+    entry paint_delay EA::Reflection::Float
+    entry cam_delay EA::Reflection::Float
+    entry cam_auto_rotate_speed EA::Reflection::Float
+    entry dof_focal EA::Reflection::Float
+    entry cam_car_rotate_speed EA::Reflection::Float
+    entry dof_depth EA::Reflection::Float
+}
+class fecooling in vault db reserve 1 {
+    entry NewPaint EA::Reflection::Float
+    entry NewDecal EA::Reflection::Float
+    entry NewRim EA::Reflection::Float
+    entry NewWindowTint EA::Reflection::Float
+    entry NewVinyl EA::Reflection::Float
+    entry NewHood EA::Reflection::Float
+    entry NewRimPaint EA::Reflection::Float
+    entry NewNumbers EA::Reflection::Float
+    entry NewBodyKit EA::Reflection::Float
+    entry NewSpoiler EA::Reflection::Float
+    entry NewRoofScoop EA::Reflection::Float
+}
+class fecust_colormatrice in vault db reserve 1 {
+    entry Colors Attrib::RefSpec[50]
+}
+class fecust_colormatrice_color in vault db reserve 5 {
+    entry Saturations Attrib::RefSpec[10]
+}
+class fecust_colormatrice_color_saturation in vault db reserve 14 {
+    entry Colors EA::Reflection::UInt32[20]
+}
+class fecust_presetcolor in vault db reserve 1 {
+    entry Colors EA::Reflection::UInt32[25]
+}
+class frontend in vault db reserve 403 {
+    layout default_car Attrib::RefSpec unsearchable
+    layout cam_angle Attrib::RefSpec unsearchable
+    layout manufacturer EA::Reflection::Text unsearchable
+    layout CollectionName EA::Reflection::Text unsearchable
+    layout vinyl_transform_right_angle EA::Reflection::Float
+    layout vinyl_transform_rear_angle EA::Reflection::Float
+    layout vinyl_transform_left_angle EA::Reflection::Float
+    layout vinyl_transform_front_angle EA::Reflection::Float
+    layout vinyl_hold_time EA::Reflection::Float
+    layout Speed EA::Reflection::Int32
+    layout region EA::Reflection::UInt32 unsearchable
+    layout IsCustomizable EA::Reflection::Bool
+    layout Handling EA::Reflection::Int32
+    layout Endurance EA::Reflection::Int32
+    layout Drifting EA::Reflection::Int32
+    layout default_preset_car type_bStringHash
+    layout Cost EA::Reflection::Int32
+    layout cam_user_rotate EA::Reflection::Bool unsearchable
+    layout cam_roll_angle EA::Reflection::Float unsearchable
+    layout cam_periods EA::Reflection::Int32 unsearchable
+    layout cam_orbit_vertical EA::Reflection::Float unsearchable
+    layout cam_orbit_radius EA::Reflection::Float unsearchable
+    layout cam_orbit_horizontal EA::Reflection::Float unsearchable
+    layout cam_lookat_z EA::Reflection::Float unsearchable
+    layout cam_lookat_y EA::Reflection::Float unsearchable
+    layout cam_lookat_x EA::Reflection::Float unsearchable
+    layout cam_fov EA::Reflection::Float unsearchable
+    layout cam_damping EA::Reflection::Float unsearchable
+    layout cam_blur EA::Reflection::Float
+    layout cam_anim_speed EA::Reflection::Float unsearchable
+    layout Acceleration EA::Reflection::Int32
+    layout UnlockedAt EA::Reflection::UInt8
+    entry nbStickers EA::Reflection::Int16
+    entry p_tires_2 type_bStringHash[65535]
+    entry goldCup GrandPrixInformation
+    entry nbBrushGradients EA::Reflection::Int16
+    entry p_induction_1 type_bStringHash[65535]
+    entry feCarPartInfo FECarPartInfo[65535]
+    entry 0x14C47705 EA::Reflection::Int16
+    entry p_tires_4 type_bStringHash[65535]
+    entry p_transmission_1 type_bStringHash[65535]
+    entry fast_increment EA::Reflection::Int16
+    entry NameId EA::Reflection::Int8[65535]
+    entry nbPatterns EA::Reflection::Int16
+    entry p_suspension_1 type_bStringHash[65535]
+    entry feCarPartName eUnlockableEntity
+    entry 0x3E2C989D EA::Reflection::Int16
+    entry bronzeCup GrandPrixInformation
+    entry SoundMapping FEMsgToSoundTrigger[65535]
+    entry 0x46E8332E EA::Reflection::Int32
+    entry p_induction_2 type_bStringHash[65535]
+    entry default_car_demo_muscle Attrib::RefSpec
+    entry license_plate_chars EA::Reflection::Text
+    entry p_engine_3 type_bStringHash[65535]
+    entry p_engine_1 type_bStringHash[65535]
+    entry silverCup GrandPrixInformation
+    entry default_car_tuner Attrib::RefSpec
+    entry p_brakes_2 type_bStringHash[65535]
+    entry p_transmission_2 type_bStringHash[65535]
+    entry fePerfSliderTextures FEPerfSliderTextures[65535]
+    entry default_car_muscle Attrib::RefSpec
+    entry p_nitrous_1 type_bStringHash[65535]
+    entry p_engine_4 type_bStringHash[65535]
+    entry slow_increment EA::Reflection::Int16
+    entry p_nitrous_4 type_bStringHash[65535]
+    entry p_brakes_3 type_bStringHash[65535]
+    entry p_tires_3 type_bStringHash[65535]
+    entry default_car_exotic Attrib::RefSpec
+    entry PresetCar type_bStringHash
+    entry 0x97EEA79E Attrib::Gen::ClassRefSpec_rewardpackages
+    entry default_car_demo_tuner Attrib::RefSpec
+    entry 0x9F5D6185 EA::Reflection::Int16
+    entry p_transmission_3 type_bStringHash[65535]
+    entry p_nitrous_3 type_bStringHash[65535]
+    entry feDefaultUnlockable FEDefaultUnlockable[1024]
+    entry PresetCarPVehicle Attrib::RefSpec
+    entry PresetCarFilter ePresetCarFilter
+    entry p_brakes_4 type_bStringHash[65535]
+    entry WarningLevel EA::Reflection::UInt32[65535]
+    entry CarPartName eUnlockableEntity
+    entry p_induction_4 type_bStringHash[65535]
+    entry 0xC2FC6BE1 EA::Reflection::Int16
+    entry p_nitrous_2 type_bStringHash[65535]
+    entry rideheight_min EA::Reflection::Float
+    entry default_car_demo_exotic Attrib::RefSpec
+    entry p_engine_2 type_bStringHash[65535]
+    entry rideheight_max EA::Reflection::Float
+    entry 0xDF96683A EA::Reflection::Bool
+    entry p_suspension_3 type_bStringHash[65535]
+    entry 0xE48C5AE4 EA::Reflection::Int32
+    entry p_brakes_1 type_bStringHash[65535]
+    entry p_suspension_2 type_bStringHash[65535]
+    entry p_induction_3 type_bStringHash[65535]
+    entry nbBrushes EA::Reflection::Int16
+    entry p_tires_1 type_bStringHash[65535]
+    entry p_transmission_4 type_bStringHash[65535]
+    entry 0xF8C5291F EA::Reflection::Int16
+    entry RapSheetRanks EA::Reflection::Float[65535]
+    entry p_suspension_4 type_bStringHash[65535]
+}
+class frontend_sfx in vault db reserve 4 {
+    entry string_randomizer_space_odds EA::Reflection::Int16
+    entry string_randomizer_frame_length EA::Reflection::Float
+    entry MovieVolumes MovieVolume[70]
+    entry SoundMapping FEMsgToSoundTrigger[200]
+    entry AEMSSoundMapping FEMsgToAEMSId[65535]
+    entry string_randomizer_finish_odds EA::Reflection::Int16
+    entry string_randomizer_directional_finish EA::Reflection::Bool
+    entry string_randomizer_total_frames EA::Reflection::Int16
+    entry string_randomizer_string EA::Reflection::Text
+    entry fe_sound FESoundMapping[65535]
+    entry string_randomizer_random_frames EA::Reflection::Int16
+}
+class gamemode in vault db reserve 7 {
+    entry 0x07AB5BD7 EA::Reflection::Float
+    entry ScoreBase EA::Reflection::Float
+    entry 0x763B6DF0 EA::Reflection::Float
+    entry TeamColors Attrib::Types::Colour[4]
+    entry ScoringInterval EA::Reflection::Float
+    entry 0x87B26124 EA::Reflection::Float[65535]
+    entry 0xB635666B EA::Reflection::Float
+    entry 0xC09F5E1C EA::Reflection::Float
+}
+class gameplay in vault db reserve 3840 {
+    layout CollectionName EA::Reflection::Text
+    layout TimeLimit EA::Reflection::Float
+    layout message_id EA::Reflection::UInt32
+    entry TargetBronze EA::Reflection::Float
+    entry ActivationTrigger GCollectionKey
+    entry hitpoints EA::Reflection::Int32
+    entry Path GCollectionKey[65535]
+    entry TemplateBinding EA::Reflection::UInt8
+    entry PostRaceScreenTexture EA::Reflection::Text
+    entry SelectionSet EA::Reflection::Text
+    entry MiniMapItem GCollectionKey
+    entry 0x05EE7FC1 EA::Reflection::Float
+    entry MidNISCameraTrack EA::Reflection::Int32
+    entry curvetags GCollectionKey[65535]
+    entry TunnelTags GCollectionKey[65535]
+    entry CarClass GRace::RaceCarClass
+    entry 0x091BA530 EA::Reflection::Bool
+    entry TutorialRace EA::Reflection::Bool
+    entry InitialSpeed EA::Reflection::Float
+    entry size EA::Reflection::Float
+    entry 0x0C6CBB12 EA::Reflection::Float
+    entry FilterModePassAll EA::Reflection::Bool
+    entry InternalRaceIndex EA::Reflection::Float[512]
+    entry OutroNISMarker GCollectionKey
+    entry SharedCheckpoints EA::Reflection::Bool
+    entry ScriptedCopsInRace EA::Reflection::Bool
+    entry NumLaps EA::Reflection::Int32
+    entry EventIconType EA::Reflection::Text
+    entry CatchUp EA::Reflection::Bool
+    entry RoadList EA::Reflection::Text[65535]
+    entry ShortcutMaxChance EA::Reflection::Float
+    entry ScaleOpenWorldHeat EA::Reflection::Float
+    entry MaxCops EA::Reflection::Int32
+    entry IsLooping EA::Reflection::Bool
+    entry OpenWorldSpeedTrap EA::Reflection::Bool
+    entry CountdownNIS EA::Reflection::Text
+    entry Cops GCollectionKey[65535]
+    entry DelayTime EA::Reflection::Float
+    entry ReleaseTrigger GCollectionKey
+    entry RespawnMarker GCollectionKey
+    entry 0x22E7D1F4 EA::Reflection::Float
+    entry ResetTriggers GCollectionKey[65535]
+    entry transitionlist GCollectionKey[65535]
+    entry OvertimePenaltyPerSec EA::Reflection::Int32
+    entry TargetActivity GCollectionKey
+    entry RequiredXP EA::Reflection::Int32
+    entry 0x29A9D7C6 EA::Reflection::Bool
+    entry TrackPosition Attrib::Types::Vector2
+    entry CheckpointsVisible EA::Reflection::Bool
+    entry ResetTime EA::Reflection::Float
+    entry 0x2F1681BB EA::Reflection::Text
+    entry BotherOnly1stRacer EA::Reflection::Bool
+    entry 0x32E38E59 EA::Reflection::Float
+    entry 0x3455FAB5 EA::Reflection::Int32
+    entry Checkpoint GCollectionKey[65535]
+    entry curve_tags GCollectionKey
+    entry NextBinNumber EA::Reflection::Int32
+    entry IntroCameraTrack EA::Reflection::Int32
+    entry 0x388E3E8C GCollectionKey[65535]
+    entry CopsInRace EA::Reflection::Bool
+    entry FlareSpacing EA::Reflection::Float
+    entry Radius EA::Reflection::Float
+    entry InitialPlayerSpeed EA::Reflection::Float
+    entry 0x3CE10900 EA::Reflection::Int32
+    entry Name EA::Reflection::Text
+    entry DoCountdown EA::Reflection::Bool
+    entry OutrunDistance EA::Reflection::Int32
+    entry Template EA::Reflection::Bool
+    entry 0x3EFBF073 EA::Reflection::Int32
+    entry AIType EA::Reflection::Int32
+    entry IconModelFloatHeight EA::Reflection::Float
+    entry layoutpos Attrib::Types::Vector2
+    entry SectionTargetScore EA::Reflection::Int32
+    entry NoPostRaceScreen EA::Reflection::Bool
+    entry PresetRide EA::Reflection::Text
+    entry 0x418A01EB EA::Reflection::Text
+    entry CatchUpIntegral EA::Reflection::Float
+    entry UseWorldHeat EA::Reflection::Bool
+    entry IndicationType EA::Reflection::Text
+    entry CheatTime EA::Reflection::Float
+    entry pvehicle EA::Reflection::Text
+    entry parentstate GCollectionKey
+    entry NISShell EA::Reflection::Bool
+    entry Tier3Enabled EA::Reflection::Bool
+    entry CopsSpawner GCollectionKey
+    entry Player4CarType EA::Reflection::Text
+    entry ScriptedCars GCollectionKey[65535]
+    entry ShortcutMinChance EA::Reflection::Float
+    entry CatchUpDerivative EA::Reflection::Float
+    entry TargetSilver EA::Reflection::Float
+    entry IntimidationNIS1 EA::Reflection::Text
+    entry MaxScore EA::Reflection::Int32
+    entry CameraModelMarker GCollectionKey
+    entry 0x5325C5E2 EA::Reflection::Float
+    entry RoundLength EA::Reflection::Int32
+    entry 0x545686EA EA::Reflection::Bool
+    entry IntroMessageID EA::Reflection::Int32
+    entry OutroNIS EA::Reflection::Text
+    entry Tier2Enabled EA::Reflection::Bool
+    entry RaceOverNISWin EA::Reflection::Text
+    entry FilterBlocks Attrib::Blob[65535]
+    entry Width EA::Reflection::Float
+    entry Opponents GCollectionKey[65535]
+    entry AIProfile GRace::AIRacerProfile
+    entry QuickRaceNIS EA::Reflection::Text
+    entry ScriptedCarToTrigger GCollectionKey
+    entry Rotation EA::Reflection::Float
+    entry WalkBackDistance EA::Reflection::Int32
+    entry NumRounds EA::Reflection::Int32
+    entry ForceTrafficDensity EA::Reflection::Int32
+    entry InitialCarTier2 EA::Reflection::Text
+    entry RankPlayersByPoints EA::Reflection::Bool
+    entry ParticleEffect EA::Reflection::Text
+    entry SpeedTrapTrigger GCollectionKey
+    entry MasterCheckpoint GCollectionKey
+    entry PostRaceDelay EA::Reflection::Float
+    entry FinishCamera EA::Reflection::Text
+    entry TrafficPattern EA::Reflection::Text
+    entry HeatLevel EA::Reflection::Int32
+    entry PostRaceActivity GCollectionKey
+    entry AITrigger GCollectionKey[65535]
+    entry TrackNumber EA::Reflection::Int32
+    entry Player3CarType EA::Reflection::Text
+    entry IconModelSpinRate EA::Reflection::Float
+    entry IsLoopingRace EA::Reflection::Bool
+    entry Directional EA::Reflection::Bool
+    entry ResetsPlayer EA::Reflection::Bool
+    entry BinIndex EA::Reflection::Int32
+    entry Dimensions Attrib::Types::Vector3
+    entry PickUps GCollectionKey[65535]
+    entry OutroCameraTrack EA::Reflection::Int32
+    entry scriptname EA::Reflection::Text
+    entry TargetGold EA::Reflection::Float
+    entry SpeedLimit EA::Reflection::Float
+    entry RequiredRaces EA::Reflection::Int32
+    entry WorldModelHeight EA::Reflection::Float
+    entry 0x74F6630B EA::Reflection::Float
+    entry 0x7614C657 GAIPowerslideTypeSkill
+    entry PickupNIS EA::Reflection::Text
+    entry IntroNISPosOffset Attrib::Types::Vector3
+    entry TrafficSpawners GCollectionKey[65535]
+    entry 0x79727F42 EA::Reflection::Float
+    entry TrafficCharacter GCollectionKey
+    entry InPursuit EA::Reflection::Bool
+    entry AutoReset EA::Reflection::Bool
+    entry RaceActivity GCollectionKey
+    entry Shortcuts GCollectionKey[65535]
+    entry RaceLength EA::Reflection::Float
+    entry checkpoint_in GCollectionKey
+    entry AudioObjects GCollectionKey[65535]
+    entry CatchUpSkill EA::Reflection::Text
+    entry Player2CarType EA::Reflection::Text
+    entry SpeedTrapList GCollectionKey[65535]
+    entry 0x82DB6E06 GCollectionKey
+    entry DefaultCamera EA::Reflection::Text
+    entry StartTime EA::Reflection::Float
+    entry Corners GCollectionKey[65535]
+    entry AvailableInQuickRace EA::Reflection::Bool
+    entry handler_owner GCollectionKey
+    entry InitialCarTier3 EA::Reflection::Text
+    entry IntroNISRotOffset EA::Reflection::Float
+    entry AutoStart EA::Reflection::Bool
+    entry DifficultyLevel EA::Reflection::Int32
+    entry FlasherType EA::Reflection::Text
+    entry TrackRecord EA::Reflection::Float
+    entry CopsActLikeFreeRoam EA::Reflection::Bool
+    entry Trigger GCollectionKey
+    entry Player1CarType EA::Reflection::Text
+    entry WaitForLoadedMessage EA::Reflection::Bool
+    entry CopFormationType FormationType
+    entry SpeedCameras GCollectionKey[65535]
+    entry DamageLimit EA::Reflection::Int32
+    entry RoundDuration EA::Reflection::Float
+    entry BaseOpenWorldHeat EA::Reflection::Float
+    entry TargetMarker GCollectionKey
+    entry 0x9018B568 EA::Reflection::Int32
+    entry AnimModelName EA::Reflection::Text
+    entry NumRacesRequired EA::Reflection::Int32
+    entry Children GCollectionKey[1000]
+    entry stateref GCollectionKey
+    entry Timer EA::Reflection::Int32
+    entry gameplayvault EA::Reflection::Text
+    entry CopHitPointsOverride EA::Reflection::Float
+    entry DisableSelectionSet EA::Reflection::Text[65535]
+    entry UsePresetRide EA::Reflection::Bool
+    entry ForcePreload EA::Reflection::Bool
+    entry Weight EA::Reflection::Float
+    entry Tier1Enabled EA::Reflection::Bool
+    entry bytecode Attrib::Blob
+    entry CopsStickAround EA::Reflection::Bool
+    entry CannedPath GCollectionKey[65535]
+    entry TrafficMarker GCollectionKey
+    entry TOD EA::Reflection::Float
+    entry RankPlayersByDistance EA::Reflection::Bool
+    entry CatchUpOverride EA::Reflection::Bool
+    entry Position Attrib::Types::Vector3
+    entry RaceList GCollectionKey[65535]
+    entry templateref GCollectionKey
+    entry AllowInvisibleSpawn EA::Reflection::Bool
+    entry PersistentCar EA::Reflection::Bool
+    entry CatchUpSpread EA::Reflection::Text
+    entry ForcePostRaceActivity EA::Reflection::Bool
+    entry SectionIndex EA::Reflection::Int32
+    entry NeverInQuickRace EA::Reflection::Bool
+    entry sender GCollectionKey
+    entry ExcludedCharacters GCollectionKey[65535]
+    entry CountdownCameraTrack EA::Reflection::Int32
+    entry IconModelName EA::Reflection::Text
+    entry EventID EA::Reflection::Text
+    entry WorldRaces GCollectionKey[65535]
+    entry FreeRoamOnly EA::Reflection::Bool
+    entry TokenValue EA::Reflection::Int32
+    entry CashReward EA::Reflection::Float
+    entry 0xAB0A70B5 EA::Reflection::Bool
+    entry 0xAB821648 EA::Reflection::Int32
+    entry CopsSpawners GCollectionKey[65535]
+    entry woosh_markers GCollectionKey[65535]
+    entry CompleteString EA::Reflection::Text
+    entry PresetSkin EA::Reflection::Text
+    entry racefinish GCollectionKey
+    entry 0xB0FD51E5 EA::Reflection::Bool
+    entry FireOnExit EA::Reflection::Bool
+    entry AvailableQR EA::Reflection::Bool
+    entry IconModelBounceRate EA::Reflection::Float
+    entry 0xB6083CD0 EA::Reflection::Int32
+    entry NumRacers EA::Reflection::Int32
+    entry Drafts GCollectionKey[65535]
+    entry OutroMovie EA::Reflection::Text
+    entry RollingStart EA::Reflection::Bool
+    entry RacingSkillLevel EA::Reflection::Int32
+    entry Height EA::Reflection::Float
+    entry Height_Offset EA::Reflection::Float
+    entry DisplayIndex EA::Reflection::Int32
+    entry RacerName EA::Reflection::Text
+    entry DebugActivity EA::Reflection::Bool
+    entry Camera GCollectionKey
+    entry PlayerCarType EA::Reflection::Text
+    entry OutroMessageID EA::Reflection::Int32
+    entry ThreshholdSpeed EA::Reflection::Float
+    entry ScoringBandSelectionSet EA::Reflection::Text
+    entry QuickRaceUnlocked EA::Reflection::Bool
+    entry distance EA::Reflection::Float
+    entry 0xC5869CBC GAIPowerslideTypeSkill
+    entry TrafficLevel EA::Reflection::Int32
+    entry RoadblockSpawners GCollectionKey[65535]
+    entry checkpoint_out GCollectionKey
+    entry StringName EA::Reflection::Text
+    entry RacerHP EA::Reflection::Int32
+    entry SpeedTrapCamera EA::Reflection::Text
+    entry IconModelScale EA::Reflection::Bool
+    entry OneShot EA::Reflection::Bool
+    entry TutorialTag EA::Reflection::Text
+    entry subType EA::Reflection::Text
+    entry RaceOverNISLose EA::Reflection::Text
+    entry SpawnDistanceMin EA::Reflection::Int32
+    entry InitialCarTier1 EA::Reflection::Text
+    entry WorldModelSize Attrib::Types::Vector3
+    entry SpawnDistanceMax EA::Reflection::Int32
+    entry ForcePath EA::Reflection::Bool
+    entry AutoSpawnTriggerType EA::Reflection::Text
+    entry IconModelBounceAmp EA::Reflection::Float
+    entry CopSpawnType EA::Reflection::Text
+    entry Cheats EA::Reflection::Int32
+    entry ForceBoost EA::Reflection::Float
+    entry 0xD8487A40 EA::Reflection::Text
+    entry CashValue EA::Reflection::Float
+    entry CopDensity EA::Reflection::Int32
+    entry RestartActivity GCollectionKey
+    entry TrafficSpawnerTrigger GCollectionKey[65535]
+    entry IYWDistanceOffset EA::Reflection::Float
+    entry SpawnPoint GCollectionKey
+    entry SecondSkill EA::Reflection::Text
+    entry IntroNIS EA::Reflection::Text
+    entry StartPercent EA::Reflection::Float
+    entry Barriers IndexedBarrierName[65535]
+    entry ForceHeatLevel EA::Reflection::Int32
+    entry racestart GCollectionKey
+    entry Persistent EA::Reflection::Bool
+    entry HeatPenalty EA::Reflection::Float
+    entry actionscript GCollectionKey
+    entry RaceOverAsOutro EA::Reflection::Bool
+    entry SpeedTrap GCollectionKey
+    entry 0xE6CB4BE0 EA::Reflection::Bool
+    entry cartype EA::Reflection::Text
+    entry MaxOpenWorldHeat EA::Reflection::Float
+    entry 0xEB52A9BA EA::Reflection::Text
+    entry NumCarsPerRow EA::Reflection::Int32
+    entry CarBehavior EA::Reflection::Text
+    entry ShortcutType GRace::ShortcutType
+    entry Lighting GRace::RaceLigthingMode
+    entry engagetrigger GCollectionKey
+    entry CopSpawnPoints GCollectionKey[65535]
+    entry AnimTriggers GCollectionKey[65535]
+    entry 0xF2C4269A EA::Reflection::Int32
+    entry EnableSelectionSet EA::Reflection::Text[65535]
+    entry IntroMovie EA::Reflection::Text
+    entry MaxHeatLevel EA::Reflection::Float
+    entry 0xF670E46B EA::Reflection::Bool
+    entry ThreatDuration EA::Reflection::Int32
+    entry CarType EA::Reflection::Text
+    entry RivalBestTime EA::Reflection::Float
+    entry PlayerCarPerformance EA::Reflection::Float
+    entry ForceStartPosition GCollectionKey
+    entry WorldModelName EA::Reflection::Text
+    entry FirstSkill EA::Reflection::Text
+    entry GrandPrixNextEvent EA::Reflection::Text
+    entry RandomSpawnTriggers GCollectionKey[65535]
+    entry CornerMarker GRace::CornerMarker
+    entry 0xFE675956 EA::Reflection::Float
+    entry MidNIS EA::Reflection::Text
+    entry aiaction EA::Reflection::Text
+    entry Triggers GCollectionKey[65535]
+}
+class geoheatlevels in vault db reserve 1 {
+    entry NumPatrolCars EA::Reflection::Int32[10]
+    entry HeatIncPerPursuit EA::Reflection::Int32
+    entry HeatDecPerTurn EA::Reflection::Int32
+}
+class heatlevels in vault db reserve 8 {
+    layout 0xE292BD6D EA::Reflection::Float
+    layout 0x0E17666D EA::Reflection::Float
+    layout NumCops EA::Reflection::Int32
+}
+class hud in vault db reserve 2 {
+    layout 0xC7048872 EA::Reflection::Float
+    layout 0xA6DA13E1 EA::Reflection::Float
+}
+class imposeyourworld in vault db reserve 1 {
+    entry 0x03C68E50 EA::Reflection::Float
+    entry 0x0F232B6D EA::Reflection::Float
+    entry 0x20BCFC28 Attrib::Types::Vector2
+    entry MaxSpeed EA::Reflection::Float
+    entry GlowWidth EA::Reflection::Float
+    entry 0xA9656C8C EA::Reflection::Float
+    entry 0xD8D6484E EA::Reflection::Float
+    entry 0xF174E59E EA::Reflection::Float
+    entry 0xF70ACC82 EA::Reflection::Float
+}
+class induction in vault db reserve 68 {
+    layout VACUUM EA::Reflection::Float
+    layout SPOOL_TIME_UP EA::Reflection::Float
+    layout SPOOL_TIME_DOWN EA::Reflection::Float
+    layout SPOOL EA::Reflection::Float
+    layout PSI EA::Reflection::Float
+    layout LOW_BOOST EA::Reflection::Float
+    layout HIGH_BOOST EA::Reflection::Float
+}
+class interactive_music_settings in vault db reserve 4 {
+    layout 0x4251A7AD EA::Reflection::Float
+    layout 0xFBCE2A6E EA::Reflection::Float
+    layout 0x066DBE83 EA::Reflection::Float
+    layout 0xD92CAFF8 EA::Reflection::Float
+    entry 0x17DE2989 EA::Reflection::Float
+    entry 0x2730B5F6 EA::Reflection::Float
+    entry 0x2D28B984 EA::Reflection::Float
+    entry 0x77B0157B EA::Reflection::Bool
+    entry 0x81771C02 EA::Reflection::Float
+    entry 0xCF1F7878 EA::Reflection::Float
+    entry 0xD5508544 EA::Reflection::Float
+    entry Music_Tracks MusicTrack[30]
+    entry 0xE74A1599 EA::Reflection::Float
+}
+class light_flares_cg in vault db reserve 46 {
+    layout colour Attrib::Types::Vector4
+    layout ZBias EA::Reflection::Float
+    layout Power EA::Reflection::Float
+    layout MinSize EA::Reflection::Float
+    layout MinScale EA::Reflection::Float
+    layout MaxSize EA::Reflection::Float
+    layout Maxscale EA::Reflection::Float
+    layout flare_texture EA::Reflection::UInt32
+}
+class linemeshstyle in vault db reserve 23 {
+    layout ColourEdge Attrib::Types::Vector4
+    layout ColourCenter Attrib::Types::Vector4
+    layout SubLayer Attrib::RefSpec[3]
+    layout Offset Attrib::Types::Vector2
+    layout Sharpness EA::Reflection::Float
+    layout PercentWidth EA::Reflection::Float
+    layout AdditiveBlend EA::Reflection::Bool
+}
+class music in vault db reserve 43 {
+    layout SongName Attrib::StringKey
+    layout Artist Attrib::StringKey
+    layout Album Attrib::StringKey
+    layout PathEvent PathEventEnum
+    layout DefPlay eSongPlayability
+    layout CarClass GRace::RaceCarClass
+}
+class nis in vault db reserve 81 {
+    layout CollectionName EA::Reflection::Text
+    layout MutePlayerCar EA::Reflection::Bool
+    layout MuteAICars EA::Reflection::Bool
+    entry ScenePosOffsetY EA::Reflection::Float
+    entry ScenePosOffsetZ EA::Reflection::Float
+    entry VolSlot eVOL_NISSTREAMS
+    entry FadeToBlackDelay EA::Reflection::Float
+    entry 0x3AF2E68E EA::Reflection::Float
+    entry FadeToBlackDuration EA::Reflection::Float
+    entry RaceCar Attrib::RefSpec[30]
+    entry AudioStreamFileName Attrib::StringKey
+    entry SceneRotationOffset EA::Reflection::Float
+    entry Volume EA::Reflection::Float
+    entry CopCar Attrib::RefSpec[65535]
+    entry PresetSkins type_bStringHash[8]
+    entry 0xA7B0E142 EA::Reflection::Float
+    entry ScenePosOffsetX EA::Reflection::Float
+    entry FadeToBlack EA::Reflection::Bool
+    entry 0xFCB8E5FA EA::Reflection::Bool
+}
+class nis_trigger_race_end in vault db reserve 5 {
+    layout scene_name EA::Reflection::Text
+    layout win EA::Reflection::Bool
+    entry platform NIS::ePLATFORM_CLASS
+}
+class nis_trigger_race_start in vault db reserve 25 {
+    layout scene_name EA::Reflection::Text
+    layout platform NIS::ePLATFORM_CLASS
+    layout scene_camera EA::Reflection::Int8
+    layout linked_countdown_camera EA::Reflection::Int8
+    entry max_num_cars NIS::eCAR_COUNT_CATEGORY
+    entry race_type GRace::Type[65535]
+}
+class nos in vault db reserve 82 {
+    layout 0xABFA8375 EA::Reflection::Float
+    layout 0x3E474129 EA::Reflection::Float
+    layout 0x5AE5AF35 EA::Reflection::Float
+    layout TORQUE_BOOST EA::Reflection::Float
+    layout RECHARGE_MIN_SPEED EA::Reflection::Float
+    layout RECHARGE_MIN EA::Reflection::Float
+    layout RECHARGE_MAX_SPEED EA::Reflection::Float
+    layout 0x32ABE65D EA::Reflection::Float
+    layout RECHARGE_MAX EA::Reflection::Float
+    layout NOS_DISENGAGE EA::Reflection::Float
+    layout 0xCE0F6D65 EA::Reflection::Float
+    layout NOS_CAPACITY EA::Reflection::Float
+    layout FLOW_RATE EA::Reflection::Float
+    entry 0x5CE5C62D EA::Reflection::Float
+    entry 0xE574DC18 EA::Reflection::Float[8]
+}
+class nosfx in vault db reserve 1 {
+    layout MarkHeight Attrib::Types::Matrix
+    layout FadeOut Attrib::Types::Matrix
+    layout ZOffset EA::Reflection::Float
+    layout TintColor EA::Reflection::UInt32
+    layout 0x812D9812 EA::Reflection::Float unsearchable
+    layout 0x5D7B081A EA::Reflection::Float unsearchable
+    layout RandomOffsetZ EA::Reflection::Float unsearchable
+    layout 0x342D48A5 EA::Reflection::Float unsearchable
+    layout 0xF5040098 EA::Reflection::Float unsearchable
+    layout MarkWidthRandom EA::Reflection::Float unsearchable
+    layout MarkWidth EA::Reflection::Float
+    layout 0x3D848DAC EA::Reflection::Float unsearchable
+    layout 0xE5AA72B1 EA::Reflection::Float
+    layout MarkAlpha EA::Reflection::Float
+    layout FadeOutColor EA::Reflection::UInt32
+    layout Duration EA::Reflection::Float
+    layout 0x3F5DEAB2 EA::Reflection::UInt32
+}
+class parameter_maps in vault db reserve 2 {
+    entry 0x054EAFBF EA::Reflection::Float
+    entry ReverbLayers ParamaterMapReverbTag[65535]
+    entry 0x7F3F6513 EA::Reflection::Int16
+    entry 0xABA6FBEE EA::Reflection::Float
+    entry 0xC1A8A93D EA::Reflection::Int16
+    entry Layers ParamaterMapGenericTag[65535]
+    entry ReverbLevel EA::Reflection::Float
+}
+class partoptions in vault db reserve 4 {
+    entry transmission JunkmanMod[8]
+    entry brakes JunkmanMod[8]
+    entry chassis JunkmanMod[8]
+    entry nos JunkmanMod[8]
+    entry tires JunkmanMod[8]
+    entry induction JunkmanMod[8]
+    entry engine JunkmanMod[8]
+}
+class pickups in vault db reserve 21 {
+    layout Projectile Attrib::RefSpec
+    layout 0xDF5117CC EA::Reflection::Float
+    layout 0x62C517B7 EA::Reflection::Float
+    layout 0x4F23D447 EA::Reflection::Float
+    layout 0x6A9DBC9B EA::Reflection::Float
+    layout 0xCD6C21DF EA::Reflection::Float
+    layout 0x0715768F EA::Reflection::Float
+    layout 0xF421789D EA::Reflection::Float
+    layout 0x73E4923D EA::Reflection::Float
+    layout 0xA4E33754 EA::Reflection::Float
+    layout SpinoutType GRace::PickupSpinoutType
+    layout 0x8FF15F4F EA::Reflection::Float
+    layout 0x967F01AA EA::Reflection::Float
+    layout 0xD1711F14 EA::Reflection::Float
+    layout 0xD1A50C2B EA::Reflection::Float
+    layout 0x4F0C515B EA::Reflection::Int32
+    layout SpinoutEnabled EA::Reflection::Bool
+    layout 0xA8F951C5 EA::Reflection::Float
+    layout ShellDuration EA::Reflection::Float
+    layout 0xACAC69F1 EA::Reflection::Float
+    layout 0xC2AABC1D EA::Reflection::Float
+    layout 0xEA8D4CD8 EA::Reflection::Float
+    layout RepairPercentage EA::Reflection::Float
+    layout 0x29E0BD0A EA::Reflection::Float
+    layout OilSplatColor EA::Reflection::UInt32 unsearchable
+    layout EMPDuration EA::Reflection::Float
+    layout 0x2BF0D9FF EA::Reflection::Float
+    layout 0xD19C00DA EA::Reflection::Float
+    layout 0x6B48567F EA::Reflection::Float
+    layout 0xD078F370 EA::Reflection::Float
+    entry 0x1A740ED9 EA::Reflection::Float
+    entry OilSlickScale EA::Reflection::Float
+    entry 0x1F0E945D EA::Reflection::Float
+    entry EMPSpeed EA::Reflection::Float
+    entry SmokeVisionRadius EA::Reflection::Float
+    entry 0x46F8344A EA::Reflection::Bool
+    entry SkidDuration EA::Reflection::Float
+    entry 0x71483CD4 EA::Reflection::Float
+    entry SmokeVisionHitTime EA::Reflection::Float
+    entry 0x8F1EEBC2 EA::Reflection::Bool
+    entry 0x90D2D453 EA::Reflection::Float
+    entry 0x9EE7783E EA::Reflection::Float
+    entry 0xA74D8B06 EA::Reflection::Float
+    entry 0xBEA63D39 EA::Reflection::Float
+    entry 0xCB452B61 EA::Reflection::Float
+    entry RumbleDuration EA::Reflection::Float
+    entry 0xDE7BB381 EA::Reflection::Bool
+    entry 0xE69AE1EC EA::Reflection::Float
+    entry 0xEFC55FCF EA::Reflection::Float
+    entry Damage EA::Reflection::Float
+    entry 0xF3D34223 EA::Reflection::Float
+}
+class pickups_factor in vault db reserve 16 {
+    layout PickupsProbability PickupProbability[8]
+}
+class powerslide in vault db reserve 58 {
+    layout DriftSplineLockMedInputRange EA::Reflection::Float[2]
+    layout DriftSplineLockHardInputRange EA::Reflection::Float[2]
+    layout DriftSplineLockEasyInputRange EA::Reflection::Float[2]
+    layout DriftChainBoostAwardRateMult EA::Reflection::Float[5]
+    layout DriftBoostNosDischargeMult EA::Reflection::Float[4]
+    layout DriftBoostAwardRate EA::Reflection::Float[4]
+    layout DriftBoostAccel EA::Reflection::Float[4]
+    layout 0xB7C41BDE EA::Reflection::Float
+    layout 0x943C52D2 EA::Reflection::Float
+    layout 0x704B2406 EA::Reflection::Float
+    layout 0x7EE4B103 EA::Reflection::Float
+    layout 0x15D7E516 EA::Reflection::Float
+    layout 0xAE9B2533 EA::Reflection::Float
+    layout 0xF1CC0546 EA::Reflection::Float
+    layout 0x999F23D7 EA::Reflection::Float
+    layout 0x1FB7F0E7 EA::Reflection::Float
+    layout 0xD72D2E35 EA::Reflection::Float
+    layout 0x5319F174 EA::Reflection::Float
+    layout 0xD587BC42 EA::Reflection::Float
+    layout 0x87FF42E3 EA::Reflection::Float
+    layout 0xCA668345 EA::Reflection::Float
+    layout DriftMinSpeed EA::Reflection::Float
+    layout DriftMinSlipAngle EA::Reflection::Float
+    layout DriftMaxSpeed EA::Reflection::Float
+    layout DriftMaxSlipAngle EA::Reflection::Float
+    layout 0xCECCAC12 EA::Reflection::Float
+    layout 0xA66D7349 EA::Reflection::Float
+    layout 0x1FAEFB28 EA::Reflection::Float
+    layout 0x8A93FA11 EA::Reflection::Float
+    layout 0xC7C155C3 EA::Reflection::Float
+    layout 0x6FB74E1A EA::Reflection::Float
+    layout 0x4BEEB501 EA::Reflection::Float
+    layout 0x9BF3483D EA::Reflection::Float
+    layout 0xBD98FC1F EA::Reflection::Float
+    layout 0x1ABFD017 EA::Reflection::Float
+    layout 0x082E744F EA::Reflection::Float
+    layout 0x356BCD4E EA::Reflection::Float
+    layout 0x1B841C2E EA::Reflection::Float
+    layout 0x6CEB3BFB EA::Reflection::Float
+    layout 0x5F2F0DD9 EA::Reflection::Float
+    layout 0xC69FC9AA EA::Reflection::Float
+    layout 0x8956F35C EA::Reflection::Float
+    layout 0x0571AE79 EA::Reflection::Float
+    layout 0xBA32459C EA::Reflection::Float
+    layout 0x468CADE0 EA::Reflection::Float
+    layout 0xCC2EE581 EA::Reflection::Float
+    layout 0xCBD9263A EA::Reflection::Float
+    layout 0x3FD91907 EA::Reflection::Float
+    layout 0xF5099A0A EA::Reflection::Float
+    layout 0x2CA2F233 EA::Reflection::Float
+    layout 0xB543AE3A EA::Reflection::Float
+    layout DriftDecel EA::Reflection::Float
+    layout 0x0CEEC46C EA::Reflection::Float
+    layout 0x5485F5A4 EA::Reflection::Float
+    layout 0x81DF334F EA::Reflection::Float
+    layout 0x75D68CBA EA::Reflection::Float
+    layout 0xDE6D0CC2 EA::Reflection::Float
+    layout 0x8B0BE0DE EA::Reflection::Float
+    layout 0x94815E2A EA::Reflection::Float
+    layout 0x188BC89D EA::Reflection::Float
+    layout 0x755AE599 EA::Reflection::Float
+    layout 0xEDBC7529 EA::Reflection::Float
+    layout 0x9674E22D EA::Reflection::Float
+    layout 0xD18B4E4E EA::Reflection::Float
+    layout 0xD082F731 EA::Reflection::Float
+    layout 0x66312CFF EA::Reflection::Float
+    layout 0x7C123026 EA::Reflection::Float
+    layout 0xFBBD17ED EA::Reflection::Float
+    layout 0x3E09E3A0 EA::Reflection::Float
+    layout 0xC7EA97A2 EA::Reflection::Float
+    layout 0x2381746F EA::Reflection::Float
+    layout 0x784BE1A9 EA::Reflection::Float
+    layout 0xAF39BDE8 EA::Reflection::Float
+    layout 0x851B3191 EA::Reflection::Float
+    layout 0x1ADAA1DE EA::Reflection::Float
+    layout 0xAD5875EB EA::Reflection::Float
+    layout 0x53EE4FE3 EA::Reflection::Float
+    layout 0x9E7DA06F EA::Reflection::Float
+    layout 0xF439DAE0 EA::Reflection::Float
+    entry 0x0E13104B EA::Reflection::Float
+    entry 0x11BC1A6B Attrib::Types::Matrix
+    entry 0x1750AC91 EA::Reflection::Float
+    entry 0x18784538 EA::Reflection::Float
+    entry 0x3C37A5D0 EA::Reflection::Float
+    entry 0x41D729CA Attrib::Types::Matrix
+    entry 0x4B4C819A EA::Reflection::Float
+    entry 0x5D224EA4 EA::Reflection::Float
+    entry 0x6F5E2AF8 EA::Reflection::Float
+    entry 0x93A836D2 EA::Reflection::Float
+    entry 0xB1496DED EA::Reflection::Float
+    entry 0xD138189C EA::Reflection::Float
+    entry 0xD44849AC EA::Reflection::Float
+    entry 0xF2629C30 Attrib::Types::Matrix
+    entry 0xF43F12D4 EA::Reflection::Float
+    entry 0xFFCA15DF EA::Reflection::Float
+}
+class presetridepackage in vault db reserve 35 {
+    entry PresetRidesAndName GPresetRidesAndName[40]
+}
+class projectile in vault db reserve 5 {
+    layout 0xE3CED652 EA::Reflection::Float
+    layout 0xF5E9A0F0 EA::Reflection::Float
+    layout MASS EA::Reflection::Float
+    layout LaunchingSpeed EA::Reflection::Float
+    layout 0xD02EE1DE EA::Reflection::Float
+    layout 0x6D6D8022 EA::Reflection::Float
+    layout K EA::Reflection::Float
+    layout 0xA437B96D EA::Reflection::Float
+    layout 0xDE163371 EA::Reflection::Float
+    layout ActiveSpeed EA::Reflection::Float
+    layout 0x48007C63 EA::Reflection::Float
+    layout 0xA1D080ED EA::Reflection::Float
+    entry 0x17854F3D EA::Reflection::Float
+    entry rigidbodyspecs Attrib::RefSpec
+    entry ActiveHeight EA::Reflection::Float
+}
+class pursuitescalation in vault db reserve 1 {
+    entry 0x0C47092E EA::Reflection::Float
+    entry HeatPenaltySmackable EA::Reflection::Float
+    entry 0x21012A39 EA::Reflection::Float
+    entry 0x21804306 EA::Reflection::Float
+    entry racetable Attrib::RefSpec[10]
+    entry HeatPenaltyTimer EA::Reflection::Float
+    entry 0x854855D0 EA::Reflection::Float
+    entry 0x8905B5BC EA::Reflection::Float
+    entry threattable Attrib::RefSpec[10]
+    entry decreasingrate EA::Reflection::Float[10]
+    entry heattable Attrib::RefSpec[5]
+    entry supportracetable Attrib::RefSpec[10]
+    entry supporttable Attrib::RefSpec[10]
+    entry 0xF9887538 EA::Reflection::Float
+}
+class pursuitlevels in vault db reserve 15 {
+    layout cops CopCountRecord[3]
+    layout TimeToHideInZone EA::Reflection::Float
+    layout TimePerHeatLevel EA::Reflection::Float
+    layout TimeBetweenHeliActive EA::Reflection::Float
+    layout TimeBetweenFirstFourSpawn EA::Reflection::Float
+    layout TimeBetweenCopSpawn EA::Reflection::Float
+    layout StaggerFormationTime EA::Reflection::Float
+    layout SpeedReactionTime EA::Reflection::Float
+    layout SirenWailPeriod EA::Reflection::Float
+    layout SirenScreamPeriod EA::Reflection::Float
+    layout 0xF2ADB331 EA::Reflection::Bool
+    layout SirenMaxYelpTime EA::Reflection::Float
+    layout SirenMaxScreamTime EA::Reflection::Float
+    layout SirenLights EA::Reflection::Bool
+    layout SirenInitVariation EA::Reflection::Float
+    layout SirenInitMinPeriod EA::Reflection::Float
+    layout SearchModeRoadblockRadius EA::Reflection::Float
+    layout SearchModeRoadblockChance EA::Reflection::Float
+    layout SearchModeHwyMPH EA::Reflection::Float
+    layout SearchModeHeliSpawnChance EA::Reflection::Float
+    layout SearchModeCityMPH EA::Reflection::Float
+    layout RollingBlockTightness EA::Reflection::Float
+    layout RollingBlockDuration EA::Reflection::Float
+    layout roadblockspikechance EA::Reflection::Float
+    layout roadblockprobability EA::Reflection::Float
+    layout roadblockhelichance EA::Reflection::Float
+    layout RepPointsPerMinute EA::Reflection::Int32
+    layout rearLOSdistance EA::Reflection::Float
+    layout NumPatrolCars EA::Reflection::Int32
+    layout NumCopsToTriggerBackup EA::Reflection::Int32
+    layout MinHeat EA::Reflection::Float
+    layout MilestoneCompleteHeatAdjust EA::Reflection::Float
+    layout MaxCopsCollapsing EA::Reflection::Int32
+    layout HiddenZoneTimeMultiplier EA::Reflection::Float
+    layout 0x25AA3051 EA::Reflection::Float
+    layout heliLOSdistance EA::Reflection::Float
+    layout HeliFuelTime EA::Reflection::Float
+    layout HeatDelay EA::Reflection::Float
+    layout FullEngagementRadius EA::Reflection::Float
+    layout FullEngagementCopCount EA::Reflection::Int32
+    layout frontLOSdistance EA::Reflection::Float
+    layout EventWinHeatAdjust EA::Reflection::Float
+    layout evadetimeout EA::Reflection::Float
+    layout EvadeSuccessHeatAdjust EA::Reflection::Float
+    layout DestroyCopBonusTime EA::Reflection::Float
+    layout CollapseSpeed EA::Reflection::Float
+    layout CollapseOuterRadius EA::Reflection::Float
+    layout CollapseInnerRadius EA::Reflection::Int32
+    layout CollapseAggression EA::Reflection::Float
+    layout BustSpeed EA::Reflection::Float
+    layout BoxinTightness EA::Reflection::Float
+    layout BoxinDuration EA::Reflection::Float
+    layout BackupCallTimer EA::Reflection::Float
+    layout SirenSoundState EA::Reflection::Int8
+    layout NumCiviHitsFor911 EA::Reflection::Int8
+    entry TimeInactiveFor911 EA::Reflection::Float
+    entry Lifetime911 EA::Reflection::Float
+    entry 0x2138B89E EA::Reflection::Float
+    entry CopFormations CopFormationRecord[10]
+    entry ScaleEscalationPerBucket EA::Reflection::Float[15]
+    entry MeterDeadZoneBustedDistance EA::Reflection::Float
+    entry formations EA::Reflection::UInt32[20]
+    entry CTSFor911 EA::Reflection::Int32
+    entry DamageMultiplier EA::Reflection::Float
+    entry MeterDeadZoneEvadeDist EA::Reflection::Float
+}
+class pursuitsupport in vault db reserve 15 {
+    layout MinimumSupportDelay EA::Reflection::Float
+    entry AirSupportOptions AirSupport[5]
+    entry HeavySupportOptions HeavySupport[5]
+    entry LeaderSupportOptions LeaderSupport[5]
+}
+class pvehicle in vault db reserve 198 {
+    layout 0xD8C8D90E Attrib::Types::Matrix
+    layout 0xBB95AB38 Attrib::Types::Matrix
+    layout 0xAB0353C9 Attrib::Types::Matrix
+    layout 0x7ED5D0E6 Attrib::Types::Matrix
+    layout 0x2E8A6793 Attrib::Types::Matrix
+    layout 0xDEA656FF Attrib::Types::Matrix
+    layout 0xFE1B99F4 Attrib::Types::Matrix
+    layout TENSOR_SCALE Attrib::Types::Vector4
+    layout OnScrapeWorld EffectLinkageRecord[10]
+    layout OnScrapeObject EffectLinkageRecord[10]
+    layout OnScrapeGround EffectLinkageRecord[10]
+    layout OnHitWorld EffectLinkageRecord[10]
+    layout OnHitObject EffectLinkageRecord[10]
+    layout OnHitGround EffectLinkageRecord[10]
+    layout OnBottomScrape EffectLinkageRecord[10]
+    layout OnBottomOut EffectLinkageRecord[10]
+    layout transmission Attrib::RefSpec[3]
+    layout tires Attrib::RefSpec[3]
+    layout powerslide Attrib::RefSpec[3]
+    layout pidvalues Attrib::RefSpec[3]
+    layout nos Attrib::RefSpec[3]
+    layout induction Attrib::RefSpec[3]
+    layout engine Attrib::RefSpec[3]
+    layout chassis Attrib::RefSpec[3]
+    layout brakes Attrib::RefSpec[3]
+    layout BEHAVIOR_ORDER Attrib::StringKey[8]
+    layout Trailer Attrib::RefSpec
+    layout SkidInfo Attrib::RefSpec
+    layout rigidbodyspecs Attrib::RefSpec
+    layout OnTireBlow Attrib::RefSpec
+    layout MODEL Attrib::StringKey
+    layout frontend Attrib::RefSpec
+    layout EventSequencer Attrib::StringKey
+    layout drafting Attrib::RefSpec
+    layout damagespecs Attrib::RefSpec
+    layout CLASS Attrib::StringKey
+    layout CarType Attrib::RefSpec
+    layout BEHAVIOR_MECHANIC_SUSPENSION Attrib::StringKey
+    layout BEHAVIOR_MECHANIC_RIGIDBODY Attrib::StringKey
+    layout BEHAVIOR_MECHANIC_RESET Attrib::StringKey
+    layout BEHAVIOR_MECHANIC_INPUT Attrib::StringKey
+    layout BEHAVIOR_MECHANIC_ENGINE Attrib::StringKey
+    layout BEHAVIOR_MECHANIC_EFFECTS Attrib::StringKey
+    layout BEHAVIOR_MECHANIC_DRAW Attrib::StringKey
+    layout BEHAVIOR_MECHANIC_DAMAGE Attrib::StringKey
+    layout BEHAVIOR_MECHANIC_AUDIO Attrib::StringKey
+    layout aivehicle Attrib::RefSpec
+    layout DefaultPresetRide EA::Reflection::Text
+    layout CollectionName EA::Reflection::Text
+    layout TractionModeAI_WallCollisionDumbDrift EA::Reflection::Float[6]
+    layout TractionModeAI_WallCollisionAssist EA::Reflection::Float[6]
+    layout TractionModeAI_Spinout EA::Reflection::Float[6]
+    layout TractionModeAI_Powersliding EA::Reflection::Float[6]
+    layout TractionModeAI_PowerslideInit EA::Reflection::Float[6]
+    layout TractionModeAI_Normal EA::Reflection::Float[6]
+    layout TractionModeAI_Busted EA::Reflection::Float[6]
+    layout TractionMode_WallCollisionDumbDrift EA::Reflection::Float[6]
+    layout TractionMode_WallCollisionAssist EA::Reflection::Float[6]
+    layout TractionMode_Spinout EA::Reflection::Float[6]
+    layout TractionMode_Powersliding EA::Reflection::Float[6]
+    layout TractionMode_PowerslideInit EA::Reflection::Float[6]
+    layout TractionMode_Normal EA::Reflection::Float[6]
+    layout TractionMode_Busted EA::Reflection::Float[6]
+    layout HandlingRating EA::Reflection::Float[2]
+    layout 0x676E000F Attrib::Types::Vector3
+    layout 0xEBB5997F Attrib::Types::Vector3
+    layout 0x47D6E14E Attrib::Types::Vector3
+    layout WooshType eDRIVE_BY_TYPE
+    layout 0xCCE561EC EA::Reflection::Float
+    layout 0xB71A4CF1 EA::Reflection::Float
+    layout 0x6D09404E EA::Reflection::Float
+    layout 0x6E7C73ED EA::Reflection::Float
+    layout 0x0E8AC170 EA::Reflection::Float
+    layout 0x5798655B EA::Reflection::Float
+    layout 0xACE23BA7 EA::Reflection::Float
+    layout 0x4074EAB7 EA::Reflection::Float
+    layout 0x46C35EEF EA::Reflection::Float
+    layout 0x381CBF7D EA::Reflection::Float
+    layout 0xCCAACF58 EA::Reflection::Float
+    layout 0x1C7E20AF EA::Reflection::Float
+    layout 0xB73D9749 EA::Reflection::Float
+    layout 0x01C057E1 EA::Reflection::Float
+    layout 0x4579A20D EA::Reflection::Float
+    layout 0x56D69126 EA::Reflection::Float
+    layout 0x9F564B0C EA::Reflection::Float
+    layout 0x7CE0A343 EA::Reflection::Float
+    layout 0xB71E4800 EA::Reflection::Float
+    layout 0x21873941 EA::Reflection::Float
+    layout TunedByProduction EA::Reflection::Bool
+    layout TruckSndFX EA::Reflection::Bool
+    layout transmission_upgrades EA::Reflection::Int32
+    layout transmission_options EA::Reflection::Int32
+    layout transmission_current EA::Reflection::Int32
+    layout 0x42F6C4B4 EA::Reflection::Bool
+    layout tires_upgrades EA::Reflection::Int32
+    layout tires_options EA::Reflection::Int32
+    layout tires_current EA::Reflection::Int32
+    layout 0xADA4783C EA::Reflection::Float
+    layout 0xAF3AC313 EA::Reflection::Float
+    layout 0x60F8E04E EA::Reflection::Float
+    layout 0x9164BC02 EA::Reflection::Float
+    layout 0x2CD6DA61 EA::Reflection::Float
+    layout 0xDDDBD749 EA::Reflection::Float
+    layout 0x21B44A8F EA::Reflection::Float
+    layout 0x0B94468C EA::Reflection::Float
+    layout 0x600418F4 EA::Reflection::Float
+    layout 0xAF493D14 EA::Reflection::Float
+    layout 0xE8019C75 EA::Reflection::Float
+    layout 0xF1F998DD EA::Reflection::Float
+    layout 0x574F36FA EA::Reflection::Float
+    layout 0x0AEE0E56 EA::Reflection::Float
+    layout 0x7D0EC673 EA::Reflection::Float
+    layout 0x84B3974F EA::Reflection::Float
+    layout RandomOpponent EA::Reflection::Bool
+    layout 0x5ACFAD02 EA::Reflection::Float
+    layout 0x4A66286A EA::Reflection::Float
+    layout 0x134628A7 EA::Reflection::Float
+    layout RamAttack EA::Reflection::Float
+    layout 0x1AD87BF6 EA::Reflection::Float
+    layout 0xA6D49C9D EA::Reflection::Float
+    layout RacingTier GRace::Tier
+    layout RacingClass GRace::RaceCarClass
+    layout PlayerUsable EA::Reflection::Bool
+    layout 0x17FEAC28 EA::Reflection::Float
+    layout nos_upgrades EA::Reflection::Int32
+    layout nos_options EA::Reflection::Int32
+    layout nos_current EA::Reflection::Int32
+    layout 0x58CE385E EA::Reflection::Float
+    layout 0x47073708 EA::Reflection::Float
+    layout 0x01A4E1CF EA::Reflection::Float
+    layout MaxCollisionForce EA::Reflection::Float
+    layout MASS EA::Reflection::Float
+    layout 0xC7909C6B EA::Reflection::Float
+    layout 0xD2DA9647 EA::Reflection::Float
+    layout 0x80A1C463 EA::Reflection::Float
+    layout 0x4CD7BB55 EA::Reflection::Float
+    layout 0x8B96C01E EA::Reflection::Float
+    layout 0xEA17779C EA::Reflection::Float
+    layout 0xF8DC83E5 EA::Reflection::Float
+    layout 0x64758F45 EA::Reflection::Float
+    layout 0x8ABE8918 EA::Reflection::Float
+    layout 0x22CAF877 EA::Reflection::Float
+    layout 0xB10AE161 EA::Reflection::Float
+    layout IsCopCar EA::Reflection::Bool
+    layout induction_upgrades EA::Reflection::Int32
+    layout induction_options EA::Reflection::Int32
+    layout induction_current EA::Reflection::Int32
+    layout 0x3194D626 EA::Reflection::Float
+    layout 0x15239588 EA::Reflection::Float
+    layout 0xDBD7600C EA::Reflection::Float
+    layout engine_upgrades EA::Reflection::Int32
+    layout engine_options EA::Reflection::Int32
+    layout engine_current EA::Reflection::Int32
+    layout EnableCarDamage EA::Reflection::Bool
+    layout 0x1BCCFB91 EA::Reflection::Float
+    layout 0x03B25A43 EA::Reflection::Float
+    layout 0x0C1BB06A EA::Reflection::Float
+    layout 0x5B16E1A9 EA::Reflection::Float
+    layout DraftingFactor EA::Reflection::Float
+    layout 0xDEB61587 EA::Reflection::Float
+    layout 0x30B07BC7 EA::Reflection::Float
+    layout 0xEC106025 EA::Reflection::Float
+    layout 0xF676D19B EA::Reflection::Float
+    layout 0x3041AF90 EA::Reflection::Float
+    layout 0x0C88886E EA::Reflection::Float
+    layout 0x98F26D12 EA::Reflection::Float
+    layout 0x7F558178 EA::Reflection::Float
+    layout 0xB38F0E98 EA::Reflection::Float
+    layout 0x0F5D9CAB EA::Reflection::Float
+    layout 0xC5D6B642 EA::Reflection::Float
+    layout 0xAE948847 EA::Reflection::Float
+    layout CustomizationTier GRace::Tier
+    layout CrewCommentable EA::Reflection::Bool
+    layout chassis_upgrades EA::Reflection::Int32
+    layout chassis_options EA::Reflection::Int32
+    layout chassis_current EA::Reflection::Int32
+    layout 0x413B48EE EA::Reflection::Float
+    layout 0x30DDD070 EA::Reflection::Float
+    layout 0xBB8CBE42 EA::Reflection::Float
+    layout 0x00C8B3BE EA::Reflection::Float
+    layout 0xAD3CA64D EA::Reflection::Float
+    layout BreakerType EAIBreakerType
+    layout brakes_upgrades EA::Reflection::Int32
+    layout brakes_options EA::Reflection::Int32
+    layout brakes_current EA::Reflection::Int32
+    layout 0x2DAA977C EA::Reflection::Float
+    layout 0xB843D3AE EA::Reflection::Float
+    layout 0xDBE2A2B6 EA::Reflection::Float
+    layout 0xB692626E EA::Reflection::Float
+    layout AIRamAgressivityMultiplier EA::Reflection::Float
+    layout TrafficEngType EA::Reflection::UInt8
+    layout HornType EA::Reflection::UInt8
+    entry 0x28DF3680 Attrib::RefSpec
+    entry 0x4590DE5C eSpeechActor
+    entry 0x4593A9A4 EA::Reflection::Float
+    entry WallCollisionTimer EA::Reflection::Float
+    entry 0x5B899D24 EA::Reflection::Float
+    entry RacingClassesWeCanDraft GRace::RaceCarClass[65535]
+    entry 0x79DF93A4 Attrib::Types::Vector3
+    entry 0x7B07F0E6 EA::Reflection::Float
+    entry 0x95AC8EAF Attrib::RefSpec
+    entry 0xAC7207A5 Attrib::RefSpec
+    entry 0xB7B3B995 EA::Reflection::Float
+    entry 0xB96AA18E EA::Reflection::Float
+    entry 0xBF509E6E Attrib::RefSpec
+    entry 0xD951FF89 Attrib::Types::Vector3
+    entry AIEngineAudio Attrib::RefSpec
+    entry 0xF2F6A108 EA::Reflection::Float
+    entry PlayerEngineAudio Attrib::RefSpec
+}
+class rewardpackages in vault db reserve 142 {
+    entry stickersOrBrushToUnlock EA::Reflection::Text[100]
+    entry starsRequirement EA::Reflection::Int32
+    entry 0x6606004F EA::Reflection::Text
+    entry vehiclesToUnlockInCarLot EA::Reflection::Text[30]
+    entry 0x82CE8948 EA::Reflection::Text
+    entry howToUnlock EA::Reflection::Text
+    entry carPartsToUnlock FEUnlockableCarPart[65535]
+    entry cupRequirement EA::Reflection::Text
+    entry vehiclesToAddToCarStable EA::Reflection::Text[30]
+}
+class rigidbodyspecs in vault db reserve 39 {
+    layout 0xD6CDF928 Attrib::Types::Vector4
+    layout WALL_ELASTICITY Attrib::Types::Vector4
+    layout 0x0B3B642D Attrib::Types::Vector4
+    layout TRAFFIC_ELASTICITY Attrib::Types::Vector4
+    layout OBJ_MOMENT_SCALE_COPS Attrib::Types::Vector4
+    layout OBJ_MOMENT_SCALE Attrib::Types::Vector4
+    layout OBJ_ELASTICITY Attrib::Types::Vector4
+    layout GROUND_MOMENT_SCALE Attrib::Types::Vector4
+    layout GROUND_ELASTICITY Attrib::Types::Vector4
+    layout DRAG_ANGULAR Attrib::Types::Vector4
+    layout DRAG Attrib::Types::Vector4
+    layout COLLISION_BOX_PAD Attrib::Types::Vector4
+    layout CG Attrib::Types::Vector4
+    layout DEFAULT_COL_BOX Attrib::StringKey
+    layout BASE_MATERIAL Attrib::StringKey
+    layout WALL_FRICTION EA::Reflection::Float[2]
+    layout TRAFFIC_FRICTION EA::Reflection::Float[2]
+    layout OBJ_FRICTION EA::Reflection::Float[2]
+    layout GROUND_FRICTION EA::Reflection::Float[2]
+    layout SLEEP_VELOCITY EA::Reflection::Float
+    layout NO_WORLD_COLLISIONS EA::Reflection::Bool
+    layout NO_OBJ_COLLISIONS EA::Reflection::Bool
+    layout NO_GROUND_COLLISIONS EA::Reflection::Bool
+    layout NATURAL_ANGULAR_DAMPING EA::Reflection::Float
+    layout INSTANCE_COLLISIONS_3D EA::Reflection::Bool
+    layout IMMOBILE_OBJECT_COLLISIONS EA::Reflection::Bool
+    layout GRAVITY EA::Reflection::Float
+    entry 0x064CED4C CollisionReactionRecord
+    entry 0x27D4A9C4 CollisionReactionRecord
+    entry 0x9819EA69 CollisionReactionRecord
+    entry 0xA66800DD CollisionReactionRecord
+    entry 0xCF456EA9 CollisionReactionRecord
+    entry 0xE3A619AE CollisionReactionRecord
+    entry 0xEAE1B409 CollisionReactionRecord
+    entry 0xF2C480BD CollisionReactionRecord
+}
+class shiftpattern in vault db reserve 56 {
+    layout BankName Attrib::StringKey
+    layout Up_Vol_Shift EA::Reflection::UInt32
+    layout Up_Shift_Sound_Delay EA::Reflection::Float
+    layout Up_Engaging_Attack_Vol EA::Reflection::Float
+    layout Up_Engaging_Attack_T EA::Reflection::UInt32
+    layout LFO_Vol_Freq EA::Reflection::UInt32
+    layout LFO_Vol_Decay_Time EA::Reflection::UInt32
+    layout LFO_Vol_Amp EA::Reflection::UInt32
+    layout LFO_RPM_Freq EA::Reflection::UInt32
+    layout LFO_RPM_Decay_Time EA::Reflection::UInt32
+    layout LFO_RPM_Amp EA::Reflection::UInt32
+    layout Down_Vol_Shift EA::Reflection::UInt32
+    layout Down_Shift_Sound_Delay EA::Reflection::Float
+    layout Down_Reattach_Scale EA::Reflection::Float
+    layout Down_Engaging_Rise_T EA::Reflection::UInt32
+    layout Down_Engaging_Rise_RPM EA::Reflection::UInt32
+    layout Down_Engaging_Fall_T EA::Reflection::UInt32
+    layout Down_Engaging_Fall_RPM EA::Reflection::UInt32
+    layout Down_Disengage_Fall_T EA::Reflection::UInt32
+    layout Down_Disengage_Fall_RPM EA::Reflection::UInt32
+    layout Up_Engage stShiftPair
+    entry Up_Engage_Curve Attrib::Types::Matrix
+    entry Up_DisengageFall_Curve Attrib::Types::Matrix[2]
+    entry Up_DisengageFall stShiftPair[2]
+}
+class simsurface in vault db reserve 99 {
+    layout TireSlipEffects TireEffectRecord[3]
+    layout TireSlideEffectsDark TireEffectRecord[3]
+    layout TireSlideEffects TireEffectRecord[3]
+    layout TireDriveEffects TireEffectRecord[3]
+    layout TireBurnEffect TireEffectRecord[3]
+    layout CollectionName EA::Reflection::Text
+    layout RenderNoise RoadNoiseRecord[4]
+    layout ASSIST_TRACK_DIR_PERC EA::Reflection::Float[2]
+    layout ASSIST_TRACK_CENTER_DIR_PERC EA::Reflection::Float[2]
+    layout ASSIST_TRACK_CENTER_DIR_APM EA::Reflection::Float[2]
+    layout WORLD_FRICTION EA::Reflection::Float
+    layout STICK EA::Reflection::Float
+    layout 0x3498EAC0 EA::Reflection::Float
+    layout ROLLING_RESISTANCE EA::Reflection::Float
+    layout 0xED3B95C0 EA::Reflection::Float
+    layout 0x48EF4989 EA::Reflection::Float
+    layout LATERAL_GRIP EA::Reflection::Float
+    layout JUMP_ASSIST EA::Reflection::Float
+    layout HEAT_TIME EA::Reflection::Float
+    layout 0x530FC782 EA::Reflection::Float
+    layout HEAT_AMOUNT EA::Reflection::Float
+    layout GROUND_FRICTION EA::Reflection::Float
+    layout DRIVE_GRIP EA::Reflection::Float
+    layout RSNMCHUNK_FERESNAMES EA::Reflection::UInt32
+    layout WheelEffectFrequency EA::Reflection::UInt16
+    layout WheelEffectIntensity EA::Reflection::UInt8
+    entry FFB_SKID FFBWaveRecord[4]
+    entry Aud_Roadnoise_LOOP FXROADNOISE_LOOP
+    entry WheelSurfaceEffect SurfaceEffectType
+    entry DEBUG_COLOUR Attrib::Types::Vector4
+    entry FFB_SLIP FFBWaveRecord[4]
+    entry MATERIAL_STRENGTH EA::Reflection::Float
+    entry 0xA42AC1AD EA::Reflection::Bool[2]
+    entry Aud_RoadNoise_TransON FXROADNOISE_TRANSITION
+    entry FFB_ROLL FFBWaveRecord[4]
+    entry Aud_RoadNoise_TransOFF FXROADNOISE_TRANSITION
+    entry CAMERA_NOISE EA::Reflection::Float[2]
+}
+class skidaudio in vault db reserve 8 {
+    layout Long_Rear EA::Reflection::Float
+    layout Long_Front EA::Reflection::Float
+    layout Lat_Rear EA::Reflection::Float
+    layout Lat_Front EA::Reflection::Float
+    layout Drift_Long_Rear EA::Reflection::Float
+    layout Drift_Long_Front EA::Reflection::Float
+    layout Drift_Lat_Rear EA::Reflection::Float
+    layout Drift_Lat_Front EA::Reflection::Float
+    entry 0x2C1C1038 Attrib::StringKey
+    entry 0x55EEA28C EA::Reflection::Float
+    entry 0x5C542C98 Attrib::StringKey
+    entry 0x9E3B52B3 EA::Reflection::Float
+    entry 0xA012009D Attrib::Types::Matrix
+    entry 0xAE837F9D EA::Reflection::Int32
+    entry 0xE2293E6D Attrib::StringKey
+}
+class smackable in vault db reserve 450 {
+    layout EventSequencer Attrib::StringKey
+    layout CollectionName EA::Reflection::Text
+    layout NO_CAR_EFFECT EA::Reflection::Bool
+    layout MASS EA::Reflection::Float
+    layout IsWooshable EA::Reflection::Bool
+    layout DETACH_FORCE EA::Reflection::Float
+    layout COST_TO_STATE EA::Reflection::UInt32
+    entry OnHitObject EffectLinkageRecord[10]
+    entry ExplosionEffect EA::Reflection::Float
+    entry DROPOUT EA::Reflection::Float[2]
+    entry start_sequencer EA::Reflection::Bool
+    entry RESPAWN_TIME EA::Reflection::Float
+    entry 0x6BC7D946 EA::Reflection::Bool
+    entry AI_AVOIDABLE EA::Reflection::Bool
+    entry OnScrapeWorld EffectLinkageRecord[10]
+    entry no_trigger EA::Reflection::Bool
+    entry rigidbodyspecs Attrib::RefSpec
+    entry WooshType eDRIVE_BY_TYPE
+    entry Persists EA::Reflection::Bool
+    entry AUTO_SIMPLIFY EA::Reflection::Float
+    entry ALLOW_OFF_WORLD EA::Reflection::Bool
+    entry KILL_OFF_SCREEN EA::Reflection::Float
+    entry IsCanyonRail EA::Reflection::Bool
+    entry OnDetached EffectLinkageRecord[10]
+    entry CAN_SIMPLIFY EA::Reflection::Int32
+    entry OnHitGround EffectLinkageRecord[10]
+    entry BEHAVIORS Attrib::StringKey[8]
+    entry OnScrapeObject EffectLinkageRecord[10]
+    entry OnScrapeGround EffectLinkageRecord[10]
+    entry OnHitWorld EffectLinkageRecord[10]
+    entry CAMERA_AVOIDABLE EA::Reflection::Bool
+    entry SimplePhysics EA::Reflection::Bool
+    entry MOMENT Attrib::Types::Vector3
+}
+class stylepoints in vault db reserve 2 {
+    entry 0x07E27DBC EA::Reflection::Float
+    entry 0x08194646 EA::Reflection::Float
+    entry Air_Feedback StylePointsFeedback[4]
+    entry Draft EA::Reflection::Float
+    entry Drift_Feedback StylePointsFeedback[4]
+    entry NOS_feedback StylePointsFeedback[4]
+    entry 0x7663D7BD EA::Reflection::Float
+    entry 0x8E9DB5C9 EA::Reflection::Float
+    entry DriftScale Attrib::Types::Matrix
+    entry 0x9EF44BEB EA::Reflection::Float
+    entry Draft_Feedback StylePointsFeedback[4]
+    entry 0xB4CEBCFD EA::Reflection::Float
+    entry Boost EA::Reflection::Float
+    entry 0xC84C52DF EA::Reflection::Float
+    entry Jump EA::Reflection::Float
+    entry 0xE8738606 EA::Reflection::Float
+    entry Drift EA::Reflection::Float
+}
+class system in vault db reserve 1 {
+    entry SimSubSystems Attrib::StringKey[20]
+    entry SimControls Attrib::StringKey[2]
+}
+class timeofdaylighting in vault db reserve 12 {
+    layout SpecularColour Attrib::Types::Vector4
+    layout FogHazeColour Attrib::Types::Vector4
+    layout FixedFunctionSkyColor Attrib::Types::Vector4
+    layout DiffuseColour Attrib::Types::Vector4
+    layout AmbientColour Attrib::Types::Vector4
+    layout FogSkyColourScale EA::Reflection::Float
+    layout FogHazeColourScale EA::Reflection::Float
+    layout FogDistanceScale EA::Reflection::Float
+    layout EnvSkyBrightness EA::Reflection::Float
+    layout CarSpecScale EA::Reflection::Float
+    entry FogInLightScatter EA::Reflection::Float
+    entry FogSkyColour Attrib::Types::Vector4
+    entry FogSunFalloff EA::Reflection::Float
+}
+class tires in vault db reserve 124 {
+    layout YAW_CONTROL EA::Reflection::Float[4]
+    layout DRIFT_ELLIPSE_RATIO EA::Reflection::Float[10]
+    layout STATIC_GRIP AxlePair
+    layout SECTION_WIDTH AxlePair
+    layout RIM_SIZE AxlePair
+    layout GRIP_SCALE AxlePair
+    layout DYNAMIC_GRIP AxlePair
+    layout ASPECT_RATIO AxlePair
+    layout YAW_SPEED EA::Reflection::Float
+    layout 0xA85A3251 EA::Reflection::Float
+    layout 0x6C3DD7DE EA::Reflection::Float
+    layout STEERING EA::Reflection::Float
+    layout DRIFT_MAINTAIN_SPEED_FORCE EA::Reflection::Float
+    layout DRIFT_LATERAL_FORCE EA::Reflection::Float
+    layout DRIFT_COUNTER_STEER_REDUCTION EA::Reflection::Float
+    layout DRIFT_COUNTER_STEER_BUILDUP EA::Reflection::Float
+    entry STEERING_RANGE EA::Reflection::Float[40]
+    entry 0xAC7BF132 EA::Reflection::Float
+    entry DRIFT_YAW_CONTROL EA::Reflection::Float[65535]
+    entry 0xEC7FAC21 EA::Reflection::Float
+    entry DRIFT_ADDITIONAL_YAW_CONTROL EA::Reflection::Float[65535]
+    entry 0xF53A39F4 EA::Reflection::Float
+}
+class trafficpattern in vault db reserve 37 {
+    layout CollectionName EA::Reflection::Text
+    entry LookAheadDistance EA::Reflection::Float
+    entry RaceStartDelay EA::Reflection::Float
+    entry 0x22D2215B EA::Reflection::Float
+    entry 0x52669AE4 EA::Reflection::Float
+    entry TrafficDensityGraph Attrib::Types::Matrix
+    entry MaxSpawnDistance EA::Reflection::Float
+    entry FarSpawnDistance EA::Reflection::Float
+    entry SpeedStreet EA::Reflection::Float
+    entry TrafficDensity EA::Reflection::Int32
+    entry Vehicles TrafficPatternRecord[6]
+    entry SpawnDist EA::Reflection::Float
+    entry 0x9DD14B1D EA::Reflection::Float
+    entry SpeedHighway EA::Reflection::Float
+    entry CullPixelSize EA::Reflection::Int8
+    entry SpawnTime EA::Reflection::Float
+    entry 0xC8B7E244 EA::Reflection::Float
+    entry 0xFEF5A3C7 EA::Reflection::Float
+}
+class transmission in vault db reserve 120 {
+    layout GEAR_RATIO EA::Reflection::Float[9]
+    layout GEAR_EFFICIENCY EA::Reflection::Float[9]
+    layout DIFFERENTIAL EA::Reflection::Float[3]
+    layout TORQUE_SPLIT EA::Reflection::Float
+    layout TORQUE_CONVERTER EA::Reflection::Float
+    layout SHIFT_SPEED EA::Reflection::Float
+    layout FINAL_GEAR EA::Reflection::Float
+    layout CLUTCH_SLIP EA::Reflection::Float
+    entry 0x70B9BB0B EA::Reflection::Float
+    entry 0x84C130E3 EA::Reflection::Float
+    entry OPTIMAL_SHIFT EA::Reflection::Float
+}
+class turbosfx in vault db reserve 25 {
+    layout BankName Attrib::StringKey
+    layout Vol_Spool EA::Reflection::UInt32
+    layout Vol_Blowoff2 EA::Reflection::UInt32
+    layout Vol_Blowoff1 EA::Reflection::UInt32
+    layout ChargeTime EA::Reflection::Float
+    entry 0x362B5263 EA::Reflection::Float
+    entry Leak_Rate EA::Reflection::Float
+}
+class visuallook in vault db reserve 36 {
+    layout RGBCurve Attrib::Types::Matrix[4]
+    layout RCurve Attrib::Types::Matrix[4]
+    layout GCurve Attrib::Types::Matrix[4]
+    layout BCurve Attrib::Types::Matrix[4]
+    layout SunLight Attrib::Types::Vector4
+    layout SkyLight Attrib::Types::Vector4
+    layout FESkyLight Attrib::Types::Vector4
+    layout FELight Attrib::Types::Vector4
+    layout 0x2880B044 EA::Reflection::Text
+    layout 0x92BB181F EA::Reflection::Text
+    layout 0x9D1438C2 EA::Reflection::Text
+    layout 0x5DC5C491 EA::Reflection::Text
+    layout 0xB6423A9B EA::Reflection::Text
+    layout SunTexture EA::Reflection::Text unsearchable
+    layout 0x81C20739 EA::Reflection::Text unsearchable
+    layout LensFlareTexture EA::Reflection::UInt32[10]
+    layout Desaturation EA::Reflection::Float[4]
+    layout trackShadowMin Attrib::Types::Vector2
+    layout trackShadowMax Attrib::Types::Vector2
+    layout 0xD66FA763 EA::Reflection::Float unsearchable
+    layout 0x8F059599 EA::Reflection::UInt32 unsearchable
+    layout 0x7F4E6151 EA::Reflection::Float
+    layout 0x3735801D EA::Reflection::Float
+    layout 0xB8A3A9FF EA::Reflection::Float
+    layout 0x9CCB5F1C EA::Reflection::Float
+    layout 0x805392C8 EA::Reflection::Float
+    layout 0x35F85985 EA::Reflection::Float
+    layout 0x3A091787 EA::Reflection::Float
+    layout 0xA419718C EA::Reflection::Float
+    layout 0x70E1F1BD EA::Reflection::Float
+    layout 0x7843F5CB EA::Reflection::Float
+    layout 0x5D5AB3FE EA::Reflection::UInt32
+    layout 0x14FF9074 EA::Reflection::UInt32
+    layout 0x45CBB51A EA::Reflection::UInt32
+    layout 0xC7F12CE0 EA::Reflection::UInt32
+    layout WhiteBloomThresholdFE EA::Reflection::Int32
+    layout WhiteBloomThreshold EA::Reflection::Int32
+    layout WhiteBloomIntensity EA::Reflection::Float
+    layout SunSize EA::Reflection::Float unsearchable
+    layout 0xEC52D535 EA::Reflection::Float
+    layout SunLightIntensity EA::Reflection::Float
+    layout SunColor EA::Reflection::UInt32 unsearchable
+    layout 0x1A4C8521 EA::Reflection::Bool
+    layout ReflectionIntensity EA::Reflection::UInt32 unsearchable
+    layout PickupTime EA::Reflection::Float
+    layout 0x542AE2A8 EA::Reflection::UInt32
+    layout 0xCA853F74 EA::Reflection::Float
+    layout 0x15C57E6E EA::Reflection::UInt32
+    layout LightFlareScale EA::Reflection::Float unsearchable
+    layout LightFlareColor EA::Reflection::UInt32 unsearchable
+    layout 0x81AE558A EA::Reflection::UInt32
+    layout 0xBC552B01 EA::Reflection::Float
+    layout 0x3D507463 EA::Reflection::Float
+    layout 0x33B5F34C EA::Reflection::Float
+    layout 0xE2E85124 EA::Reflection::Float
+    layout 0x1E20240B EA::Reflection::Float
+    layout HeatTime EA::Reflection::Float
+    layout HeatNumPeak EA::Reflection::Float
+    layout 0x79F634AE EA::Reflection::UInt32
+    layout 0xEA2E367D EA::Reflection::Float
+    layout 0x4517CD7C EA::Reflection::Float
+    layout 0x37CF653D EA::Reflection::Float
+    layout 0x515BF0CB EA::Reflection::Float
+    layout 0xBDBD0CB0 EA::Reflection::Float
+    layout 0x1D1F7942 EA::Reflection::Float
+    layout 0xB7D3745A EA::Reflection::Float
+    layout 0x8EF17266 EA::Reflection::UInt32
+    layout 0xB438275C EA::Reflection::Float
+    layout 0x694F44AD EA::Reflection::Float
+    layout 0x22B280C3 EA::Reflection::Float
+    layout FELightIntensity EA::Reflection::Float
+    layout 0x132F8972 EA::Reflection::Float
+    layout 0x0CE6E13B EA::Reflection::UInt32 unsearchable
+    layout 0xBE958148 EA::Reflection::Float unsearchable
+    layout CarShadowColor EA::Reflection::UInt32
+    layout 0x1A267C5C EA::Reflection::Float
+    layout 0x2779A73C EA::Reflection::Float
+    layout 0x11151333 EA::Reflection::UInt32
+    layout 0x0CE76832 EA::Reflection::Float
+    layout 0x8EBBB9E5 EA::Reflection::Float
+    layout 0x9E5E2E1D EA::Reflection::Float
+    layout 0xE0B7410E EA::Reflection::Float
+    layout 0x5F14E040 EA::Reflection::Float
+    layout 0xC2E5E821 EA::Reflection::UInt32
+    layout RequiredLevelCar EA::Reflection::Float
+    layout 0xFF461E3F EA::Reflection::UInt32
+    layout 0x5BA5BADE EA::Reflection::UInt32 unsearchable
+    layout BloomThreshold EA::Reflection::UInt32 unsearchable
+    layout BloomColor EA::Reflection::UInt32 unsearchable
+    layout 0x758409F7 EA::Reflection::UInt8
+    entry LensFlareRat EA::Reflection::Float[10]
+    entry 0x092CFEA0 EA::Reflection::Float
+    entry 0x0A6ABEFA EA::Reflection::Float
+    entry 0x13CED158 EA::Reflection::Float
+    entry 0x1B34C49E EA::Reflection::UInt32
+    entry 0x257BF1AB EA::Reflection::UInt32
+    entry LensFlareCol EA::Reflection::UInt32[10]
+    entry 0x3036799C EA::Reflection::Float
+    entry 0x394BAE1A EA::Reflection::Float
+    entry RoadSpecPower EA::Reflection::Float
+    entry PhotoFinishBarHeight EA::Reflection::Int32
+    entry FogColour EA::Reflection::UInt32
+    entry LensFlareSize EA::Reflection::Float[10]
+    entry 0x7836C419 EA::Reflection::Float
+    entry 0x86815B6F EA::Reflection::Float
+    entry DarkenReflectionMapAmount EA::Reflection::Int32
+    entry PhotoFinishFlashTime EA::Reflection::Int32
+    entry DarkenEnvmapAmount EA::Reflection::Int32
+    entry RoadSpecColor EA::Reflection::UInt32
+    entry 0x94B7E94A EA::Reflection::Float
+    entry 0x9924C2AB EA::Reflection::Float
+    entry 0x9FF20F12 EA::Reflection::Bool
+    entry 0xA4A45B01 EA::Reflection::Float
+    entry 0xABA913DE EA::Reflection::Float
+    entry 0xABE49D77 EA::Reflection::Float
+    entry WhiteBloomIntensityFE EA::Reflection::Float
+    entry 0xBC0B73A6 EA::Reflection::Float
+    entry 0xC257F9AE EA::Reflection::Float
+    entry 0xC5F343F7 EA::Reflection::Float
+    entry 0xC6F5562E EA::Reflection::Float
+    entry 0xD4AE3D96 EA::Reflection::Float
+    entry 0xE3F1501D EA::Reflection::Float
+    entry 0xE529626E EA::Reflection::Float
+    entry PhotoFinishFlashMax EA::Reflection::Int32
+    entry 0xEAB277D5 EA::Reflection::UInt32
+    entry 0xEFE20D3F EA::Reflection::Int8
+    entry 0xFE820BDE EA::Reflection::UInt32
+    entry 0xFEC1291D EA::Reflection::Float
+}
+class visuallookeffect in vault db reserve 9 {
+    layout graph Attrib::Types::Matrix
+    layout magnitude EA::Reflection::Float
+    layout length EA::Reflection::Float
+    layout heattrigger EA::Reflection::Float
+    layout _testvalue EA::Reflection::Float
+    entry radialblur_uvoffset EA::Reflection::Float
+    entry radialblur_scale EA::Reflection::Float
+}
+class visuallooktransition in vault db reserve 1 {
+    entry uves_pulse_length EA::Reflection::Float
+    entry uves_extreme Attrib::Types::Matrix
+    entry normal Attrib::Types::Matrix
+    entry uves_pulse Attrib::Types::Matrix
+    entry _testvalue EA::Reflection::Float
+    entry uves_pulse_trigger EA::Reflection::Float
+    entry uves Attrib::Types::Matrix
+}
+class warmup_launch in vault db reserve 1 {
+    layout WarmupTime EA::Reflection::Int32
+    layout 0x739F494E EA::Reflection::Float
+    layout SuccessTime EA::Reflection::Float
+    layout 0xF350B7D5 EA::Reflection::Float
+    layout FailTopSpeed EA::Reflection::Float
+    layout FailTime EA::Reflection::Float
+    layout 0x580B0E08 EA::Reflection::Float
+    layout 0xEDC94A9A EA::Reflection::Float
+    layout 0x563EE3D4 EA::Reflection::Float
+}
+class world in vault db reserve 1 {
+    entry MAX_NEWTONS EA::Reflection::UInt32
+    entry MAX_FRAGMENTS EA::Reflection::UInt32
+    entry BONDMOVE_RESTART_CLEAR EA::Reflection::Int32
+    entry AIC_BOND_RGADGET Attrib::StringKey
+    entry CHAIN_NEXT_MISSION EA::Reflection::Int32
+    entry SPLITMISSION_PREVHALF Attrib::StringKey
+    entry NUM_PED_TYPES_GC EA::Reflection::Int32
+    entry MAX_TRAFFIC_SPAWN_DISTANCE EA::Reflection::Float
+    entry TRAFFIC_LANE_CHANGES EA::Reflection::Bool
+    entry MAX_SMACKABLES EA::Reflection::UInt32
+    entry AIC_BOND_LGADGET Attrib::StringKey
+    entry VEHICLE_SLOTS_AVAIL EA::Reflection::Int32
+    entry TRAFFIC_SPEED EA::Reflection::Float
+    entry WORLD_TYPE Attrib::StringKey
+    entry NUM_CHECKPOINTS EA::Reflection::Int32
+    entry PED_OBJECTS Attrib::StringKey
+    entry CONTROLLER_CURVE EA::Reflection::Float
+    entry CHAIN_NEXT_MISSION_NAME Attrib::StringKey
+    entry NUM_PED_TYPES_XBOX EA::Reflection::Int32
+    entry HENCH_SLOTS_AVAIL EA::Reflection::Int32
+    entry PED_SPAWN_RADIUS EA::Reflection::Float
+    entry TRAFFIC_TYPES Attrib::StringKey[3]
+    entry RACE_SCORING EA::Reflection::Bool
+    entry ANIM_BANK_NIS_BUFFER EA::Reflection::Int32
+    entry SPLITMISSION_NEXTHALF Attrib::StringKey
+    entry ACCUMULATE_SCORES EA::Reflection::Int32
+    entry SPLITMISSION_CARRYDAMAGE EA::Reflection::Bool
+    entry CHECK_PLAYER_BEHIND_TRAFFIC EA::Reflection::Bool
+    entry MIN_TRAFFIC_SPAWN_DISTANCE EA::Reflection::Float
+    entry BONDMOVE_DIE_CLEAR EA::Reflection::Int32
+    entry MAX_TRAFFIC EA::Reflection::Int32
+    entry NUM_PED_TYPES_PS2 EA::Reflection::Int32
+    entry LINEAR_TRACK EA::Reflection::Bool
+}

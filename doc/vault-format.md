@@ -78,8 +78,14 @@ to 219), whose files carry no tool's mark. An NFS-VltEd 4.6 re-save of that
 build read before (each `StrE` starting with the string `NFS-VltEd 4.6.0.0 by
 nfsu360`, which nothing points at) loaded with every pointer explained, and
 saving wrote it in the retail layout. A 360 alpha (build 161) follows the
-same rules, and its five files rebuild byte for byte too. **V** No PS3 files have been seen. Nitro
-hasn't been checked against this.
+same rules, and its five files rebuild byte for byte too. **V** No PS3 files have been seen.
+
+**Nitro** (Wii) is the Wii's Undercover extended, on Carbon's engine, but its
+vaults put `StrN` before `DepN` as current-gen Undercover's do, and it marks
+handler types as current-gen Undercover does: every field of a reference type,
+and of a struct holding one, has the definition flag 0x20. A `Curve` field
+doesn't, where current-gen Undercover's does. Its four packs rebuild byte for
+byte with `nitro_wii.txt`. **V**
 
 **World** (the final PC build) is current-gen Undercover's layout with `EndC`
 chunks, and its event vaults are files of their own with a signature (below).

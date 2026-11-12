@@ -52,8 +52,9 @@ namespace attrib
 			// One schema for the final build, the betas and the builds between
 			// (IsWorldBetaVersion).
 			{Game::World, "world", "World", {P::PC}, {P::PC}},
-			// Nitro (2009) runs on Carbon's engine too, with many types of its own;
-			// its Wii version has AttribSys files.
+			// Nitro (2009) is the Wii's Undercover extended, with many types of its
+			// own. Its Wii files read and write (nitro_wii.txt), but it isn't listed:
+			// NFS-VltEd never read it, so nfsms has no words for it.
 			{Game::Nitro, "nitro", "Nitro", {}, {P::Wii}},
 		};
 

@@ -51,7 +51,7 @@ namespace attrib
 			return f.inLayout() ? FieldStorage::Layout : f.isStatic() ? FieldStorage::Static : FieldStorage::Entry;
 		}
 
-		bool IsHandlerTypeName(const std::string& n)
+		bool IsHandlerTypeName(const std::string& n, bool curves)
 		{
 			// Structs the game gives a handler that hold none of the kinds below
 			// directly (their pointers lead to RefSpecs): Undercover's CCarSlotEntry,
@@ -59,44 +59,52 @@ namespace attrib
 			static const char* const kListed[] = { "CCarSlotEntry", "PowerUps::EmitterEffectAndTarget", "PowerUps::GameplayEffectAndTarget" };
 			for (const char* l : kListed)
 				if (n == l) return true;
-			return n == "Attrib::RefSpec" || n == "Curve" || n.rfind("Attrib::Gen::ClassRefSpec_", 0) == 0;
+			return n == "Attrib::RefSpec" || (curves && n == "Curve") || n.rfind("Attrib::Gen::ClassRefSpec_", 0) == 0;
 		}
 
-		bool StructHasHandler(const StructDef* st, int depth)
+		bool StructHasHandler(const StructDef* st, bool curves, int depth)
 		{
 			if (!st || depth > 8) return false;
 			for (const MemberDef& m : st->members)
-				if (m.prim == MemberPrim::None && m.st && (IsHandlerTypeName(m.st->name) || StructHasHandler(m.st, depth + 1))) return true;
+				if (m.prim == MemberPrim::None && m.st && (IsHandlerTypeName(m.st->name, curves) || StructHasHandler(m.st, curves, depth + 1)))
+					return true;
 			return false;
 		}
 
 		// Undercover (PC, 360, PS3) and World mark the fields of types with a
 		// constructor or destructor (DefFlag::HasHandler); the games before don't.
-		bool UsesHandlerFlag(const Database& db)
+		// Nitro, the Wii's Undercover extended, marks its references and the
+		// structs holding them, not its curves (current-gen Undercover marks those).
+		enum class HandlerRule { None, All, NoCurves };
+
+		HandlerRule UsesHandlerFlag(const Database& db)
 		{
 			const Target& t = db.target();
+			if (t.game == Game::Nitro) return HandlerRule::NoCurves;
 			if (t.game == Game::World ||
 				(t.game == Game::Undercover && (t.platform == Platform::PC || t.platform == Platform::Xbox360 || t.platform == Platform::PS3)))
-				return true;
+				return HandlerRule::All;
 			for (const auto& c : db.classes())
 				for (const FieldDef& f : c->fields)
-					if (f.flags & DefFlag::HasHandler) return true;
-			return false;
+					if (f.flags & DefFlag::HasHandler) return HandlerRule::All;
+			return HandlerRule::None;
 		}
 
 		// Laying out goes by the types alone, so a retail class restored into a
 		// database whose other classes were deleted comes back as it was.
-		bool HandlerOf(bool usesHandler, const TypeInfo& type)
+		bool HandlerOf(HandlerRule rule, const TypeInfo& type)
 		{
-			if (!usesHandler) return false;
+			if (rule == HandlerRule::None) return false;
+			const bool curves = rule == HandlerRule::All;
 			switch (type.kind)
 			{
 				case TypeKind::RefSpec:
 				case TypeKind::ClassRefSpec:
-				case TypeKind::Curve:
 					return true;
+				case TypeKind::Curve:
+					return curves;
 				default:
-					return IsHandlerTypeName(type.name) || StructHasHandler(type.schemaStruct, 0);
+					return IsHandlerTypeName(type.name, curves) || StructHasHandler(type.schemaStruct, curves, 0);
 			}
 		}
 
@@ -352,7 +360,7 @@ namespace attrib
 
 	namespace
 	{
-		void LayOutWith(const Database& db, bool usesHandler, const ClassDesign& d, ClassDef& out);
+		void LayOutWith(const Database& db, HandlerRule usesHandler, const ClassDesign& d, ClassDef& out);
 	}
 
 	uint32_t DefaultDataAreaSize(const Target& t)
@@ -391,7 +399,7 @@ namespace attrib
 
 	namespace
 	{
-	void LayOutWith(const Database& db, bool usesHandler, const ClassDesign& d, ClassDef& out)
+	void LayOutWith(const Database& db, HandlerRule usesHandler, const ClassDesign& d, ClassDef& out)
 	{
 		const std::vector<std::string> problems = FieldProblems(db, d);
 		if (!problems.empty()) throw std::runtime_error(problems.front());
@@ -486,7 +494,7 @@ namespace attrib
 		// What the rules give, then the stored values that differ, field by field
 		// in the order laid out: an explicit alignment or offset moves the
 		// fields after it.
-		const bool usesHandler = UsesHandlerFlag(db);
+		const HandlerRule usesHandler = UsesHandlerFlag(db);
 		ClassDef plain;
 		plain.collections = cls.collections;
 		LayOutWith(db, usesHandler, d, plain);

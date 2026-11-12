@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate Attribulina's type schemas from the games' debug headers.
 
-    python3 scripts/gen_schema.py [--game prostreet|carbon|undercover|mw|world] [--platform pc|ps2|wii|x360|xbox|gamecube] [--demo|--alpha]
+    python3 scripts/gen_schema.py [--game prostreet|carbon|undercover|mw|world|nitro] [--platform pc|ps2|wii|x360|xbox|gamecube] [--demo|--alpha]
                                   [--header H] [--enums H] [--attributes ATTRIBUTES.BIN]
                                   [--fallback F ...] [--out data/schema/<game>_<platform>.txt]
 
@@ -36,6 +36,11 @@ Run from the repo root. Each game's defaults are in GAMES below:
                 (the 2010 beta's EASharp bindings, scripts/world/easharp.py) and
                 scripts/world/world_types.h (what NFS-VltEd's World classes and the data show),
                 read before them, then Undercover's debug header for what Carbon lacks.
+    nitro       wii writes nitro_wii.txt. An older Wii build's ELF (exes/wii/nitro-japan-oldelf)
+                has DWARF 2 with offsets but no namespaces (parse_dwarf, scripts/dwarf2.py): its
+                types first, its enums by their short names; then Carbon's dump for what it lacks;
+                scripts/nitro/nitro_types.h, read before them, for Nitro's own types no header has
+                as retail does.
     --attributes  attrib/databases/<platform>/<game>-vanilla/attributes.bin (its type table)
 
 What it emits: every attribute type in the type table (except the built-in
@@ -347,6 +352,104 @@ def parse_pahole(path):
     return defs, {}
 
 
+def parse_dwarf(path):
+    """Structs and enums from an ELF's DWARF 2 (scripts/dwarf2.py): the dicts
+    parse_pahole makes, with offsets, and enums. MetroWerks names types without
+    their namespace or class (GRace::Type is one of several enums named Type).
+    A bitfield's DW_AT_bit_offset counts from the top of its unit, the order
+    its members fill a big-endian unit, which is the schema's position. An
+    anonymous struct's members are inlined, an anonymous union's first."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import dwarf2
+    dies, _ = dwarf2.read(path)
+    TYPES = ('structure_type', 'class_type', 'union_type')
+
+    def strip(t):
+        while t is not None and t.tag in ('typedef', 'const_type', 'volatile_type'):
+            t = dies.get(t.at.get('type'))
+        return t
+
+    def size_of(t):
+        t = strip(t)
+        if t is None: return 0
+        if t.tag == 'array_type':
+            n = 1
+            for s in t.children:
+                if s.tag == 'subrange_type': n *= s.at.get('upper_bound', -1) + 1
+            return n * size_of(dies.get(t.at.get('type')))
+        if t.tag in ('pointer_type', 'reference_type'): return 4
+        return t.at.get('byte_size', 0)
+
+    def spell(t, name):
+        """The declaration of `name` as type t, in C."""
+        t = strip(t)
+        if t is None: return 'void ' + name
+        if t.tag == 'array_type':
+            dims = ''.join('[%d]' % (s.at.get('upper_bound', -1) + 1) for s in t.children if s.tag == 'subrange_type')
+            return spell(dies.get(t.at.get('type')), name + dims)
+        if t.tag in ('pointer_type', 'reference_type'):
+            to = strip(dies.get(t.at.get('type')))
+            if to is not None and to.tag == 'subroutine_type': return 'void (*%s)()' % name
+            return spell(to, ('* ' if t.tag == 'pointer_type' else '& ') + name)
+        if t.tag == 'enumeration_type' and not t.name():
+            return {1: 'unsigned char ', 2: 'unsigned short ', 4: 'unsigned int '}.get(t.at.get('byte_size'), 'unsigned int ') + name
+        if t.tag == 'ptr_to_member_type' or not t.name():
+            return 'unsigned char %s[%d]' % (name, max(size_of(t), 1))
+        return '%s %s' % (t.name(), name)
+
+    def members_of(die, base):
+        out = []
+        for m in die.children:
+            if m.tag != 'member': continue
+            off = dwarf2.member_offset(m)
+            if off is None:
+                if die.tag != 'union_type': continue  # a static member
+                off = 0
+            t = strip(dies.get(m.at.get('type')))
+            if t is not None and t.tag in TYPES and not t.name():
+                inner = members_of(t, base + off)
+                out += inner[:1] if t.tag == 'union_type' else inner
+            elif 'bit_size' in m.at:
+                unit = m.at.get('byte_size') or size_of(t)
+                pcbit, bits = m.at['bit_offset'], m.at['bit_size']
+                out.append(dict(decl='%s : %d' % (spell(t, m.name() or 'bits'), bits), fnptr=False, off=base + off,
+                                size=unit, bitoff=unit * 8 - pcbit - bits, bitsize=bits, pcbit=pcbit))
+            else:
+                decl = spell(t, m.name() or 'unnamed')
+                out.append(dict(decl=decl, fnptr=decl.startswith('void (*'), off=base + off, size=size_of(t),
+                                bitoff=None, bitsize=None, pcbit=None))
+            if die.tag == 'union_type' and out: break
+        return out
+
+    defs = defaultdict(list); enums = defaultdict(list); seen = set()
+    for die in dies.values():
+        name = die.name()
+        if not name or die.at.get('declaration'): continue
+        if die.tag in TYPES:
+            members = members_of(die, 0)
+            bases = [strip(dies.get(b.at.get('type'))).name() for b in die.children
+                     if b.tag == 'inheritance' and strip(dies.get(b.at.get('type'))) is not None]
+            key = (name, die.at.get('byte_size'), tuple(bases), tuple((m['decl'], m['off']) for m in members))
+            if key in seen: continue
+            seen.add(key)
+            defs[name].append(dict(kind={'structure_type': 'struct', 'class_type': 'class', 'union_type': 'union'}[die.tag],
+                                   name=name, bases=[b for b in bases if b], size=die.at.get('byte_size'),
+                                   members=members, src=path, line=die.off, pahole=True))
+        elif die.tag == 'enumeration_type':
+            size = die.at.get('byte_size', 4)
+            vals = []
+            for e in die.children:
+                if e.tag != 'enumerator': continue
+                v = e.at.get('const_value', 0)
+                if size == 4 and v >= 0x80000000: v -= 1 << 32
+                vals.append((e.name(), v))
+            key = (name, tuple(vals))
+            if key in seen: continue
+            seen.add(key)
+            enums[name].append(dict(name=name, values=vals, src=path, line=die.off))
+    return defs, enums
+
+
 # ----------------------------------------------------------- declarations ---
 
 PRIMS = {
@@ -427,7 +530,8 @@ def parse_decl(decl):
 # --------------------------------------------------------------- the model ---
 
 class Gen:
-    def __init__(self, primary, fallbacks, pc_types, platform='PC', game='Pro Street', unchecked=(), natural=False, overrides=None):
+    def __init__(self, primary, fallbacks, pc_types, platform='PC', game='Pro Street', unchecked=(), natural=False, overrides=None,
+                 short_enums=False):
         self.pdefs, self.penums = primary
         # (paths, defs, enums) whose structs and enums come before the primary
         # header's, laid out naturally: the early Most Wanted demos' changed
@@ -437,6 +541,10 @@ class Gen:
         # MetroWerks dump): its structs are laid out naturally with the
         # platform's bools, and found by their unqualified names.
         self.natural = natural
+        # The primary header's enums go by their unqualified names (MetroWerks
+        # DWARF: Most Wanted's dump, Nitro's ELF), its structs by their offsets
+        # unless `natural`.
+        self.short_enums = natural or short_enums
         self.fallbacks = fallbacks          # [(path, defs, enums)]
         self.pc = OrderedDict(pc_types)     # the platform's type table (named for the PC, the first one)
         self.platform = platform            # for comments: PC, PS2
@@ -469,6 +577,10 @@ class Gen:
         if want_size is not None:
             for d in ds:
                 if d['size'] == want_size: return d
+        # Of several primary headers, the first that defines the name (Nitro's
+        # own ELF before Carbon's dump), unless only another's has the size.
+        top = min(d.get('rank', 0) for d in ds)
+        ds = [d for d in ds if d.get('rank', 0) == top]
         full = max(ds, key=lambda d: len(d['members']))
         sizes = {d['size'] for d in ds if d['members']}
         if len(sizes) > 1:
@@ -485,9 +597,9 @@ class Gen:
         if base in self.qualify and base not in self.pc:
             q = self.qualify[base]
             if q in self.penums and q not in self.pdefs: return ('enum', q)
-            if self.natural and base in self.penums and base not in self.pdefs: return ('enum', q)
+            if self.short_enums and base in self.penums and base not in self.pdefs: return ('enum', q)
             return ('struct', q)
-        if self.natural and base in self.penums and base not in self.pdefs and len(self.distinct_enums(base)) > 1:
+        if self.short_enums and base in self.penums and base not in self.pdefs and len(self.distinct_enums(base)) > 1:
             return ('unknown', base)  # one of several unrelated enums of that name: a raw value
         for defs, enums in ([(self.pdefs, self.penums)] + ([(src_defs, src_enums)] if src_defs is not None else [])):
             if base in enums and base not in defs: return ('enum', base)
@@ -501,6 +613,11 @@ class Gen:
         # header defines (World's 48-byte Curve is Undercover's).
         if self.overrides and src_defs is self.overrides[1] and base in self.pc and self.struct_in_fallbacks(base):
             return ('struct', base)
+        # A header with offsets but short enum names (Nitro's DWARF), whose
+        # struct from the second header names an enum only a fallback has
+        # (Carbon's AirSupport, its AirSupportStrategy in Carbon's IDA header).
+        if self.short_enums and not self.natural and self.enum_in_fallbacks(base) and not self.struct_in_fallbacks(base):
+            return ('enum', base)
         return ('unknown', base)
 
     def distinct_enums(self, short):
@@ -540,9 +657,9 @@ class Gen:
             self.enums[name] = dict(size=4, values=e['values'], src=e['src'], override=True)
             self.report['enums from overrides'].append(name)
             return True
-        if name in self.penums and not (self.natural and len(self.distinct_enums(name)) > 1):
+        if name in self.penums and not (self.short_enums and len(self.distinct_enums(name)) > 1):
             e = self.penums[name][0]
-        elif self.natural and self.natural_enum(name) is not None:
+        elif self.short_enums and self.natural_enum(name) is not None:
             e = self.natural_enum(name)
         else:
             # Exact names only: a short-name match ("Status") picks up some
@@ -617,6 +734,9 @@ class Gen:
         self.state[name] = 'done'
         if lay is None: return None
         lay['src'] = src
+        if src is None and d.get('rank'):
+            lay['primary_src'] = d['src']
+            self.report['structs from the second primary header'].append(name)
         if src: self.report['structs from fallback headers'].append((name, os.path.basename(src)))
         self.structs[name] = lay
         return lay['size'], lay['align']
@@ -794,7 +914,7 @@ class Gen:
             if name.startswith(('EA::Reflection::', 'Attrib::Types::')):
                 continue
             is_enum = (name in self.penums and name not in self.pdefs) or \
-                (self.natural and self.natural_enum(name) is not None and not self.best_def(name, self.pdefs)) or \
+                (self.short_enums and self.natural_enum(name) is not None and not self.best_def(name, self.pdefs)) or \
                 (self.overrides is not None and name in self.overrides[2] and name not in self.overrides[1])
             if is_enum or (name not in self.pdefs and size == 4 and self.enum_in_fallbacks(name)
                            and not self.struct_in_fallbacks(name)):
@@ -909,6 +1029,8 @@ class Gen:
             if s.get('src'):
                 w('# source: %s (natural %s layout; size matches the %s type table)\n'
                   % (os.path.basename(s['src']), self.platform, self.platform))
+            elif s.get('primary_src'):
+                w('# source: %s (not in the %s header; its offsets)\n' % (os.path.basename(s['primary_src']), self.game))
             pcs = self.pc.get(name)
             if name in self.unchecked:
                 w('# unverified: no %s files seen; laid out with its bools (another platform\'s is %d bytes)\n'
@@ -1037,6 +1159,24 @@ GAMES = {
                     'bindings, and what NFS-VltEd\'s World classes and the data show), then Undercover\'s for the types\n'
                     'Carbon lacks. Each struct has the size of the final build\'s type table, or of a beta\'s for the\n'
                     'types the final build lacks.'}),
+    # Nitro (2009) is Undercover's Wii game extended, on Carbon's engine. An
+    # older Wii build's ELF (exes/wii/nitro-japan-oldelf) has DWARF 2 with
+    # offsets but no namespaces: its types first, its enums by their short
+    # names; then Carbon's dump for what it lacks, as Undercover's Wii schema
+    # has it, and the headers Undercover's Wii schema falls back on.
+    'nitro': dict(
+        title='Need for Speed: Nitro', name='Nitro', folder='nitro-vanilla',
+        header=['exes/wii/nitro-japan-oldelf/nfs_na_f.elf', 'nfs-data/carbon/ps3-milestone/types_pahole.txt'],
+        enums=None, short_enums=True,
+        # Its own types that no header has as retail does, and EmittedGeo.
+        overrides=['scripts/nitro/nitro_types.h'],
+        fallback=['nfs-data/carbon/ps3-milestone/EBOOT.ELF.h', 'nfs-data/SpeedDebugOpt-enUS.h',
+                  'exes/gamecube/mw-vanilla/NFSMWRELEASE.h'],
+        same={},
+        note={'wii': 'Nitro on the Wii. Its types come from an older Wii build\'s DWARF (exes/wii/nitro-japan-oldelf/nfs_na_f.elf,\n'
+                     'offsets, no namespaces), then Carbon\'s PS3 dump for the ones it lacks, as Undercover\'s Wii schema has\n'
+                     'them, and scripts/nitro/nitro_types.h for the types of its own, from the retail files and code. Each\n'
+                     'struct has the size of the retail type table; a type that build sizes otherwise is left to the others.'}),
 }
 
 
@@ -1095,12 +1235,23 @@ def main():
         for t in cfg.get('extra_tables', []):
             have = {n for n, _ in pc}
             pc += [(n, size) for n, size in read_pc_types(find_attributes(t)) if n not in have]
-    if cfg.get('natural'):
-        primary = parse_header(args.header, with_offsets=False)
-    elif open(args.header, 'rb').read(4096).find(b'/* size: ') >= 0 or args.header.endswith('pahole.txt'):
-        primary = parse_pahole(args.header)
-    else:
-        primary = parse_header(args.header, with_offsets=True)
+    def read_primary(path):
+        if cfg.get('natural'):
+            return parse_header(path, with_offsets=False)
+        if path.lower().endswith('.elf'):
+            return parse_dwarf(path)
+        if open(path, 'rb').read(4096).find(b'/* size: ') >= 0 or path.endswith('pahole.txt'):
+            return parse_pahole(path)
+        return parse_header(path, with_offsets=True)
+
+    # Several primary headers (Nitro: its ELF, then Carbon's dump): a name's
+    # definitions in the order of the headers, each marked with its rank.
+    headers = args.header if isinstance(args.header, list) else [args.header]
+    primary = (defaultdict(list), defaultdict(list))
+    for rank, path in enumerate(headers):
+        pd, pe = read_primary(path)
+        for k, v in pd.items(): primary[0][k].extend(dict(d, rank=rank) for d in v)
+        for k, v in pe.items(): primary[1][k].extend(v)
     if args.enums:
         # pahole prints no enums: the same build's IDA header has them.
         primary = (primary[0], parse_header(args.enums, with_offsets=False)[1])
@@ -1121,7 +1272,8 @@ def main():
             for k, v in fe.items(): oenums[k].extend(v)
         overrides = (paths, odefs, oenums)
     g = Gen(primary, fallbacks, pc, {'pc': 'PC', 'ps2': 'PS2', 'wii': 'Wii', 'x360': '360', 'xbox': 'Xbox', 'gamecube': 'GameCube'}[args.platform],
-            cfg['name'], unchecked, natural=cfg.get('natural', False), overrides=overrides)
+            cfg['name'], unchecked, natural=cfg.get('natural', False), overrides=overrides,
+            short_enums=cfg.get('short_enums', False))
     g.run()
     os.makedirs(os.path.dirname(args.out) or '.', exist_ok=True)
     with open(args.out, 'w', newline='\n') as out:

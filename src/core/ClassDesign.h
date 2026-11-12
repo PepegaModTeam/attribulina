@@ -116,6 +116,7 @@ namespace attrib
 	// 360, PS3) and World, a type the game gives a constructor or destructor
 	// (a table compiled into it): RefSpec, ClassRefSpec, Curve, the structs
 	// holding them, and a few listed by name, as every retail definition has it.
+	// Nitro marks the same but for Curve.
 	bool TypeHasHandler(const Database& db, const TypeInfo& type);
 	// The type a design names: a type of the table by its full name, or by its
 	// short label ("float", "RefSpec") when only one type has it. Null if none.

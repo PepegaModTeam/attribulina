@@ -679,7 +679,7 @@ class gameplay in vault db reserve 5667 {
     entry SelectionSet EA::Reflection::Text
     entry MiniMapItem GCollectionKey
     entry CashRewards GCollectionKey[65535]
-    entry 0x062E67B8 EA::Reflection::Int32
+    entry MidNISCameraTrack EA::Reflection::Int32
     entry RewardMarkerType EA::Reflection::Text
     entry BarriersExtra EA::Reflection::Text[65535]
     entry MilestoneBiggerIsBetter EA::Reflection::Bool
@@ -839,7 +839,7 @@ class gameplay in vault db reserve 5667 {
     entry 0x60117305 GCollectionKey[65535]
     entry MapCurvePoint GMapCurvePoint[65535]
     entry MasterCheckpoint GCollectionKey
-    entry 0x60F1215C EA::Reflection::Float
+    entry PostRaceDelay EA::Reflection::Float
     entry CrewIndex EA::Reflection::Int32
     entry MapArea GCollectionKey
     entry FinishCamera EA::Reflection::Text
@@ -873,7 +873,7 @@ class gameplay in vault db reserve 5667 {
     entry TargetGold EA::Reflection::Float
     entry RequiredRaces EA::Reflection::Int32
     entry ProgressionLevel EA::Reflection::Int32
-    entry 0x747E6458 EA::Reflection::Float
+    entry WorldModelHeight EA::Reflection::Float
     entry Limit EA::Reflection::Float
     entry RequirementName EA::Reflection::Text
     entry TimeLimit EA::Reflection::Float
@@ -913,7 +913,7 @@ class gameplay in vault db reserve 5667 {
     entry DifficultyLevel EA::Reflection::Int32
     entry FlasherType EA::Reflection::Text
     entry TrackRecord EA::Reflection::Float
-    entry 0x8B989BC2 EA::Reflection::Bool
+    entry CopsActLikeFreeRoam EA::Reflection::Bool
     entry Trigger GCollectionKey
     entry DDayRace EA::Reflection::Bool
     entry WaitForLoadedMessage EA::Reflection::Bool
@@ -947,7 +947,7 @@ class gameplay in vault db reserve 5667 {
     entry AreaName EA::Reflection::Text
     entry HurryUpSMSID EA::Reflection::Int32
     entry bytecode Attrib::Blob
-    entry 0x9BDAAB95 EA::Reflection::Bool
+    entry CopsStickAround EA::Reflection::Bool
     entry CannedPath GCollectionKey[65535]
     entry TOD EA::Reflection::Float
     entry RankPlayersByDistance EA::Reflection::Bool
@@ -1032,11 +1032,11 @@ class gameplay in vault db reserve 5667 {
     entry TutorialTag EA::Reflection::Text
     entry RaceOverNISLose EA::Reflection::Text
     entry UpgradeLevel EA::Reflection::Int32
-    entry 0xD2E9CF53 EA::Reflection::Int32
+    entry SpawnDistanceMin EA::Reflection::Int32
     entry InitialCarTier1 EA::Reflection::Text
     entry RequiredBounty EA::Reflection::Int32
-    entry 0xD3F6ECC2 Attrib::Types::Vector3
-    entry 0xD425E74B EA::Reflection::Int32
+    entry WorldModelSize Attrib::Types::Vector3
+    entry SpawnDistanceMax EA::Reflection::Int32
     entry Logo EA::Reflection::Text
     entry nitrouslevel EA::Reflection::Int32
     entry Domination EA::Reflection::Int32
@@ -1075,7 +1075,7 @@ class gameplay in vault db reserve 5667 {
     entry MapTriangle GMapTriangle[65535]
     entry DefectorMovie EA::Reflection::Text
     entry actionscript GCollectionKey
-    entry 0xE667730F EA::Reflection::Bool
+    entry RaceOverAsOutro EA::Reflection::Bool
     entry 0xE66DB136 EA::Reflection::Bool
     entry SpeedTrap GCollectionKey
     entry cartype EA::Reflection::Text
@@ -1116,7 +1116,7 @@ class gameplay in vault db reserve 5667 {
     entry ForceStartPosition GCollectionKey
     entry 0xFC6913E8 EA::Reflection::Int32
     entry UnlockRaces GCollectionKey[65535]
-    entry 0xFD1EF2E4 EA::Reflection::Text
+    entry WorldModelName EA::Reflection::Text
     entry CarTypeLowMem EA::Reflection::Text
     entry FirstSkill EA::Reflection::Text
     entry racestartReverse GCollectionKey
