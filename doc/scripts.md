@@ -265,9 +265,9 @@ Every database is one game on one platform, and the `game` line names it as `<ga
 | Pro Street | `prostreet` | `pc`, `ps2`, `ps3`, `x360`, `wii` | all |
 | Undercover | `undercover` | `pc`, `ps2`, `ps3`, `x360`, `wii` | `pc`, `x360` (retail, and an alpha), `ps2`, `wii` (the last two on Carbon's engine) |
 | World | `world` | `pc` | `pc` (the final build, its betas and the builds between) |
-| Nitro | `nitro` | `wii` | none yet (its `wii` files read and write, but nfsms has no words for it) |
+| Nitro | `nitro` | `wii` | `wii` (mod scripts only: nfsms has no words for it) |
 
-So `game prostreet_pc`, `game prostreet_x360`, `game prostreet_ps2` and `game prostreet_wii`. Each platform has its own id even where the types are the PC's (Pro Street's 360 and Wii files, Carbon's PS3 and Wii files). Attribulina edits Most Wanted, Pro Street, Carbon and Undercover so far (`undercover_pc`, `undercover_x360`, `undercover_wii`, `undercover_ps2`; not its PS3 files, which haven't been seen). The other games and platforms are listed so files and scripts can say what they are. The table is `src/core/Game.cpp`.
+So `game prostreet_pc`, `game prostreet_x360`, `game prostreet_ps2` and `game prostreet_wii`. Each platform has its own id even where the types are the PC's (Pro Street's 360 and Wii files, Carbon's PS3 and Wii files). Attribulina edits Most Wanted, Pro Street, Carbon, Undercover (`undercover_pc`, `undercover_x360`, `undercover_wii`, `undercover_ps2`; not its PS3 files, which haven't been seen), World and Nitro so far. The other platforms are listed so files and scripts can say what they are. The table is `src/core/Game.cpp`.
 
 Most Wanted's early demos key everything with a 64-bit hash, and so do the references and `GCollectionKey`s in their values. A script sets them by name as anywhere else (`simsurface/organic`); a name the dictionary doesn't know is learned and written as its 64-bit hash, and a bare `0x1234ABCD` can't stand for one, so such a line fails. A key with no known name is written in the demos' scripts as `"0x"` and 16 hex digits, quoted, which reads back as the same key.
 

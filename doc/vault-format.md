@@ -197,7 +197,12 @@ demo's, and every pack of Most Wanted's five folders (below).
 - **`ExpN` entries are 20 bytes**: `{u32 id; u32 type; u32 nameOffset; u32
   size; u32 offset}` (Most Wanted's `ExportEntry`). `nameOffset` is 0 in
   every file. The reader tells the two apart by whether every entry lands in
-  `DatN`.
+  `DatN` with a size above 0. The size check matters for a vault with one
+  export: read as 16 bytes, its entry gives the name offset 0 as the size and
+  the real size as the offset, which lands in `DatN` once the export is larger
+  than `DatN`'s offset. No retail vault is like that, but a mod's Most Wanted
+  `gameplay.bin` (NFS-VltEd 4.6) had twelve, each holding one 100- or 124-byte
+  collection at 0x58, and failed to load.
 - **`ClassLoadData` is 0x24 bytes**: `{u32 mClass; u32 mCollectionReserve; u32
   mNumDefinitions; Definition* mDefinitions; u32 mLayoutSize; u32
   mLayoutKeyShift; u32 mLayoutCount; u32 mStaticSize; void* mStaticData}`:
