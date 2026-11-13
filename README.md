@@ -20,8 +20,7 @@ This tool is tested against these games (in game chronological order):
 - Need for Speed Most Wanted - PC, PS2, GameCube, Xbox 360
 - Need for Speed Carbon Demo - PS2 (OPM)
 - Need for Speed Carbon Beta - PS3 (Alpha 56)
-- Need for Speed Carbon - PS3
-- Need for Speed Carbon - PC, GameCube, Wii, Xbox 360 (XBLA demo)
+- Need for Speed Carbon - PC, GameCube, Wii, Xbox 360, PS3
 - Need for Speed ProStreet - PC, PS2, Wii, Xbox 360
 - Need for Speed Undercover (Last Gen) - Wii
 - Need for Speed Undercover - PC, Xbox 360
