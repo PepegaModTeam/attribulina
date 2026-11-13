@@ -54,7 +54,7 @@ TEST("game: target ids name a game and a platform, and read back") {
     CHECK(SupportedOn(Game::MostWanted, Platform::Xbox) && SupportedOn(Game::MostWanted, Platform::GameCube));
     CHECK(SupportedOn(Game::World, Platform::PC)); // the final build and its betas, one schema
     CHECK(!IsWorldBetaVersion(0x6838F8C1836A18DEull) && IsWorldBetaVersion(0x2EDE8B2CB6712231ull));
-    CHECK(!SupportedAnywhere(Game::Nitro));
+    CHECK(SupportedOn(Game::Nitro, Platform::Wii)); // without nfsms, which NFS-VltEd never had for it
 }
 
 TEST("game: every database on disk says what it is, the early Most Wanted demos too") {
@@ -139,6 +139,45 @@ TEST("game: Most Wanted's attributes.bin names its platform: byte order, bool wi
     const Detection g = DetectTarget("somewhere/gameplay.bin", ReadFile(Db("pc/mw-vanilla/gameplay.bin")));
     CHECK(g.target.game == Game::MostWanted);
     CHECK(!g.certain);
+}
+
+// VaultLib (OGVI, the community Attribulator) writes World's final Vers into
+// every game's files. attributes.bin's classes catch that, but another pack
+// alone has none to check: OGVI's Most Wanted gameplay.bin read as certain World.
+TEST("game: World's Vers in a pack VaultLib saved is World's only when attributes.bin's classes say so") {
+    if (!std::filesystem::exists(Db("pc/mw-ogvi"))) return;
+    // Most Wanted's: its own exports under World's Vers, attributes.bin read or not.
+    Detection d = DetectTarget(Db("pc/mw-ogvi"));
+    CHECK_EQ(d.target.id(), std::string("mw_pc"));
+    CHECK(d.certain);
+    CHECK(d.reason.find("VaultLib") != std::string::npos && d.reason.find("timeofdaylighting") != std::string::npos);
+    for (const char* f : {"gameplay.bin", "fe_attrib.bin"}) {
+        d = DetectTarget(std::string("x/") + f, ReadFile(Db("pc/mw-ogvi/") + f));
+        CHECK_EQ(d.target.id(), std::string("mw_pc"));
+        CHECK(!d.certain);
+        CHECK(d.reason.find("VaultLib") != std::string::npos && d.reason.find("laid out as Most Wanted's") != std::string::npos);
+    }
+    // Pro Street's packs alone: the folder's name, else World's Vers, as a guess.
+    if (std::filesystem::exists(Db("pc/prostreet-ogvi"))) {
+        d = DetectTarget("x/gameplay.bin", ReadFile(Db("pc/prostreet-ogvi/gameplay.bin")));
+        CHECK(!d.certain);
+        CHECK_EQ(d.target.id(), std::string("world_pc"));
+        d = DetectTarget("Need for Speed ProStreet/gameplay.bin", ReadFile(Db("pc/prostreet-ogvi/gameplay.bin")));
+        CHECK(!d.certain);
+        CHECK_EQ(d.target.id(), std::string("prostreet_pc"));
+    }
+    // World's own: with attributes.bin's classes certain, and its packs alone
+    // without VaultLib's mark too.
+    if (std::filesystem::exists(Db("pc/world-final-ogvi"))) {
+        d = DetectTarget(Db("pc/world-final-ogvi"));
+        CHECK(d.certain && d.target.id() == "world_pc");
+        d = DetectTarget(Db("pc/world-final-ogvi/gpcore.bin"));
+        CHECK(d.certain && d.target.id() == "world_pc");
+    }
+    if (std::filesystem::exists(Db("pc/world-final"))) {
+        d = DetectTarget("x/FE_ATTRIB.bin", ReadFile(Db("pc/world-final/FE_ATTRIB.bin")));
+        CHECK(d.certain && d.target.id() == "world_pc");
+    }
 }
 
 TEST("game: without a known Vers, the chunks, the type table and the folder names guess") {

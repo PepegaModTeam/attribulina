@@ -156,6 +156,50 @@ TEST("gameplay: an activity runs its templates' states too (Carbon's career_game
     }
 }
 
+TEST("gameplay: a race mode runs its templates' states, and the handlers it, its templates and its CollectionName own") {
+    // Pro Street's lapknockout has no states of its own: it runs basicrace's
+    // (through circuit), and owns one handler of theirs.
+    auto db = LoadGameplay();
+    GameplayModel m(*db);
+    Collection* lap = Gp(*db, "lapknockout");
+    Collection* circuit = Gp(*db, "circuit");
+    Collection* basicrace = Gp(*db, "basicrace");
+    Collection* drift = Gp(*db, "driftrace");
+    CHECK(lap && circuit && basicrace && drift && lap->parent == circuit);
+    if (!lap || !circuit || !basicrace || !drift) return;
+    CHECK(m.statesOf(lap).empty());
+    CHECK(m.allStatesOf(lap) == m.allStatesOf(basicrace));
+    // The State Graph Builder lists them all.
+    const std::vector<Collection*> acts = m.graphActivities();
+    for (Collection* c : {lap, circuit, basicrace, drift}) CHECK(std::find(acts.begin(), acts.end(), c) != acts.end());
+    // The handler lapknockout owns runs for lapknockout, not for basicrace.
+    Collection* own = nullptr;
+    Collection* state = nullptr;
+    for (Collection* s : m.allStatesOf(lap))
+        for (Collection* h : m.handlersOf(s))
+            if (m.handlerOwner(h) == lap) {
+                own = h;
+                state = s;
+            }
+    CHECK(own && state);
+    if (!own) return;
+    CHECK(m.handlerCountsFor(own, lap));
+    CHECK(!m.handlerCountsFor(own, basicrace));
+    CHECK(!m.handlerCountsFor(own, drift));
+    const std::vector<Collection*> forLap = m.handlersOf(state, lap), forBasic = m.handlersOf(state, basicrace);
+    CHECK(std::find(forLap.begin(), forLap.end(), own) != forLap.end());
+    CHECK(std::find(forBasic.begin(), forBasic.end(), own) == forBasic.end());
+    // basicrace's own handlers of the state run for lapknockout too; driftrace's don't.
+    for (Collection* h : m.handlersOf(state)) {
+        if (m.handlerOwner(h) == basicrace) CHECK(std::find(forLap.begin(), forLap.end(), h) != forLap.end());
+        if (m.handlerOwner(h) == drift) CHECK(std::find(forLap.begin(), forLap.end(), h) == forLap.end());
+    }
+    // Every handler of every state counts for its owner.
+    for (Collection* s : m.allStatesOf(basicrace))
+        for (Collection* h : m.handlersOf(s))
+            if (Collection* o = m.handlerOwner(h)) CHECK(m.handlerCountsFor(h, o));
+}
+
 TEST("gameplay: duplicate a track layout, add a race on it, delete the copy") {
     auto db = LoadGameplay();
     LoadedPack& gp = *db->packs().back();

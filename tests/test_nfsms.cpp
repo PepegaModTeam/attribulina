@@ -607,8 +607,7 @@ TEST("nfsms: ToModScript writes a mod script that does what the nfsms script doe
 TEST("nfsms: ToModScript names a field, key, bin key, reference or new name given as its hash, when the name is known") {
     // Shifted's dlc_car.nfsms writes car's isBoosterPack as 0x767fffc1.
     auto db = Load();
-    for (const auto& e : std::filesystem::directory_iterator(test::DataPath("data/bin_keys")))
-        if (e.path().extension() == ".txt") db->binNames().loadFile(e.path().string());
+    db->binNames().loadFile(test::DataPath("data/bin_keys.txt"));
     const std::string script =
         "version 4.6\n"
         "game PS\n"
@@ -1312,6 +1311,76 @@ TEST("nfsms: the Shifted mod (nfsms/Shifted, when present) runs NFS-VltEd compat
     ns::RunSettings ext = st;
     ext.vltEd = false;
     CHECK(ns::Run(*other, s, ext).errors() > 400);
+}
+
+TEST("nfsms: Noob's ProStreet Handling Overhaul 2.1.4 (when present) installs with every option, then its Mod Options, with no failed line") {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::path(test::DataPath("nfsms/Noob's ProStreet Handling Overhaul 2.1.4"));
+    if (!fs::exists(dir / "Handling Installer.nfsms")) {
+        std::printf("        (skipped: no %s)\n", dir.string().c_str());
+        return;
+    }
+    auto read = [&](const char* name) {
+        std::ifstream in(dir / name, std::ios::binary);
+        std::ostringstream ss;
+        ss << in.rdbuf();
+        return ns::Parse(ss.str(), name, dir.string());
+    };
+    auto db = Load(true);
+    ns::RunSettings st;
+    st.names = ns::PropertyNames::Load(test::DataPath("data/nfsms/prostreet_pc.txt"));
+    st.vltEd = true;
+    // Every checkbox on and the steering's second choice, then the options
+    // script (it needs the installer's collections: 350z_driftlow, ...).
+    auto everything = [](const ns::Script& s, const char* option) {
+        ns::Choices c = ns::DefaultChoices(s);
+        for (const ns::Control& ctl : s.controls)
+            if (ctl.kind == ns::Control::Kind::Checkbox) c.checkboxes[ctl.name] = true;
+            else c.radios[ctl.group] = option;
+        return c;
+    };
+    // McLaren F1 sound fix, lines 17 and 18: caraudio's engineaudio is told
+    // por_carrgt_a_eng, an engineaudio_ng collection (the mod's slip; NFS-VltEd
+    // sets it the same).
+    auto onlyTheModsSlip = [](const sc::ApplyReport& r) {
+        size_t other = 0;
+        for (const sc::Message& m : r.messages)
+            if (m.level == sc::Message::Level::Warning && m.text.find("engineaudio/por_carrgt_a_eng") == std::string::npos) ++other;
+        return other == 0;
+    };
+    const ns::Script installer = read("Handling Installer.nfsms");
+    st.choices = everything(installer, "option2");
+    sc::ApplyReport r = ns::Run(*db, installer, st);
+    if (r.errors()) std::fprintf(stderr, "%s", Messages(r).substr(0, 2000).c_str());
+    CHECK_EQ(r.errors(), size_t(0));
+    CHECK_EQ(r.warnings(), size_t(2));
+    CHECK(onlyTheModsSlip(r));
+    CHECK(r.valuesSet > 35000 && r.created == 388 && r.renamed == 374 && r.deleted == 332);
+    // The options script after an installation with the installer's own
+    // choices (picking an option in both adds NOS twice, which NFS-VltEd
+    // refuses too: "already contains the 'NOS' field").
+    db = Load(true);
+    st.choices = ns::DefaultChoices(installer);
+    CHECK_EQ(ns::Run(*db, installer, st).errors(), size_t(0));
+    const ns::Script options = read("Mod Options.nfsms");
+    st.choices = everything(options, "option2");
+    r = ns::Run(*db, options, st);
+    if (r.errors()) std::fprintf(stderr, "%s", Messages(r).substr(0, 2000).c_str());
+    CHECK_EQ(r.errors(), size_t(0));
+    CHECK(onlyTheModsSlip(r));
+    CHECK(r.valuesSet > 5000);
+    // What it made writes, and reads back as itself.
+    const fs::path out = fs::temp_directory_path() / "attribulina_noob_handling_test";
+    fs::remove_all(out);
+    fs::create_directories(out);
+    for (const auto& p : db->packs()) WriteFile((out / fs::path(p->path).filename()).string(), WritePackFile(*db, *p));
+    if (fs::exists(fs::path(Vanilla("gameplay.bin")))) fs::copy_file(fs::path(Vanilla("gameplay.bin")), out / "gameplay.bin");
+    auto again = LoadFolder(out.string());
+    for (const auto& p : again->packs()) {
+        CHECK(WritePackFile(*again, *p) == ReadFile(p->path));
+        for (const auto& v : p->vaults) CHECK(v->exactlyWritable && v->warnings.empty());
+    }
+    fs::remove_all(out);
 }
 
 TEST("nfsms: NFS-VltEd compatible runs set Undercover's curves in structs, vinyl layers' words, a u32 over a float and a reference's pointer word") {

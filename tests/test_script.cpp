@@ -767,13 +767,13 @@ TEST("script: a PS2 database reads as PC does; its 4-byte bools edit and write b
     CHECK_EQ(Changes(diff), size_t(0));
 }
 
-TEST("script: Carbon's and the Wii's Undercover databases write as scripts and apply back unchanged; one carbon_all script "
-     "edits each Carbon the same") {
+TEST("script: Carbon's, the Wii's Undercover's and Nitro's databases write as scripts and apply back unchanged; one carbon_all "
+     "script edits each Carbon the same") {
     auto load = [](const std::string& folder) {
         auto db = std::make_unique<Database>();
         for (const char* s :
              {"prostreet_pc", "prostreet_ps2", "carbon_pc", "carbon_ps2", "carbon_x360", "carbon_x360_demo", "carbon_ps2_demo", "undercover_wii",
-              "undercover_ps2"})
+              "undercover_ps2", "nitro_wii"})
             db->addTypeSchema(TypeSchema::Load(test::DataPath(std::string("data/schema/") + s + ".txt")));
         db->names().loadFile(test::DataPath("data/attrib_keys.txt"));
         for (const FolderFile& f : FolderPacks(test::DataPath("attrib/databases/" + folder)))
@@ -804,7 +804,7 @@ TEST("script: Carbon's and the Wii's Undercover databases write as scripts and a
     const std::vector<std::pair<std::string, size_t>> folders = {
         {"pc/carbon-vanilla", 2},       {"ps3/carbon-vanilla", 2},      {"wii/carbon-vanilla", 2},
         {"ps2/carbon-vanilla", 2},      {"gamecube/carbon-vanilla", 2}, {"360/carbon-vanilla", 2},
-        {"wii/undercover-vanilla", 4},  {"360/carbon-latedemo", 2}};
+        {"wii/undercover-vanilla", 4},  {"360/carbon-latedemo", 2},     {"wii/nitro-vanilla", 2}};
     for (const auto& [folder, handlersAsBytes] : folders) {
         if (!std::filesystem::exists(test::DataPath("attrib/databases/" + folder))) continue;
         auto db = load(folder);
@@ -1467,11 +1467,13 @@ TEST("script: a gameplay folder written as a script makes it, its vaults and its
     CHECK_OK(twice);
     CHECK_EQ(twice.summary(), std::string("no changes"));
 
-    // A retail race lists its checkpoints, kept under its track's path: they come
-    // with it, and the script changes nothing in the database it came from.
+    // A retail track layout lists its checkpoints, kept under its path: they
+    // come with it, and the script changes nothing in the database it came
+    // from. (Carbon's race_bin_exotic/4_5_2/shortcut06 shares its hash, and the
+    // name lists once showed it under that name.)
     GameplayModel bm(*base);
-    const GameplayModel::Node* race = bm.node("race_bin_exotic/4_5_2/shortcut06");
-    CHECK(race && race->collection && race->children.empty());
+    const GameplayModel::Node* race = bm.node("tracks/leipzig/leipzig_grip_1_gp");
+    CHECK(race && race->collection);
     const std::vector<Collection*> withCheckpoints = GameplayFolderContents(bm, *race);
     CHECK(std::find(withCheckpoints.begin(), withCheckpoints.end(),
                     &Col(*base, "gameplay", "tracks/leipzig/leipzig_grip_1_gp/checkpoint1")) != withCheckpoints.end());

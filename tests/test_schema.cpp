@@ -10,10 +10,12 @@
 #include "core/Game.h"
 #include "core/Hash.h"
 #include "core/Schema.h"
+#include "core/Script.h"
 #include "core/Writer.h"
 
 #include <algorithm>
 #include <filesystem>
+#include <functional>
 
 using namespace attrib;
 
@@ -200,16 +202,15 @@ TEST("schema: a field line gives a class's integer field an enum") {
 TEST("schema: light_flares_cg's flare_texture is an eLightFlareTextures in every game, and every stored value names a texture") {
     namespace fs = std::filesystem;
     // Most Wanted's build has three textures (and the count), the later games
-    // add the cat's eye and the lamp post flare, and the Wii's Undercover the
-    // sun's six. Every game folder but Nitro's, which isn't supported; a folder
-    // of builds (pc/world-various) stands for each of them.
+    // add the cat's eye and the lamp post flare, and the Wii's Undercover and
+    // Nitro the sun's six. Every game folder; a folder of builds
+    // (pc/world-various) stands for each of them.
     std::vector<std::pair<std::string, size_t>> folders;
     for (const auto& platform : fs::directory_iterator(test::DataPath("attrib/databases")))
         for (const auto& game : fs::directory_iterator(platform.path())) {
             const std::string name = game.path().filename().string();
-            if (name.rfind("nitro", 0) == 0) continue;
             const std::string dir = platform.path().filename().string() + "/" + name;
-            const size_t values = name.rfind("mw", 0) == 0 ? 4 : dir == "wii/undercover-vanilla" ? 12 : 6;
+            const size_t values = name.rfind("mw", 0) == 0 ? 4 : dir == "wii/undercover-vanilla" || dir == "wii/nitro-vanilla" ? 12 : 6;
             if (FindFileNoCase(game.path().string(), "attributes.bin")) folders.emplace_back(dir, values);
             else
                 for (const auto& build : fs::directory_iterator(game.path()))
@@ -263,4 +264,75 @@ TEST("schema: light_flares_cg's flare_texture is an eLightFlareTextures in every
         CHECK(g && g->fieldEnum == f->fieldEnum);
     }
     CHECK(seen > 100);
+}
+
+TEST("schema: Nitro's types come from its older Wii build's DWARF and its own files; every stored value of an enum has a name") {
+    namespace fs = std::filesystem;
+    namespace sc = attrib::script;
+    const std::string dir = test::DataPath("attrib/databases/wii/nitro-vanilla");
+    if (!fs::exists(dir)) return;
+    Database db;
+    db.setTarget(DetectTarget(dir).target);
+    CHECK_EQ(db.target().id(), std::string("nitro_wii"));
+    for (const auto& e : fs::directory_iterator(test::DataPath("data/schema")))
+        if (e.path().extension() == ".txt") db.addTypeSchema(TypeSchema::Load(e.path().string()));
+    db.names().loadFile(test::DataPath("data/attrib_keys.txt"));
+    db.binNames().loadFile(test::DataPath("data/attrib_keys.txt"));
+    db.binNames().loadFile(test::DataPath("data/bin_keys.txt"));
+    for (const FolderFile& f : FolderPacks(dir))
+        if (f.skipped.empty()) db.loadPack(f.path);
+    CHECK(db.typeSchema() && db.typeSchema()->source.find("nitro_wii.txt") != std::string::npos);
+    // Nitro's race types, from the DWARF: not Undercover's (Knockout is 3 there).
+    const EnumDef* race = db.typeSchema()->findEnum("GRace::Type");
+    CHECK(race && race->nameOf(9) && *race->nameOf(9) == "kRaceType_TeamRace");
+    // Every type that holds a pointer is described: the type layouts cover each
+    // one (the round trip in test_writer), and only types without data stay raw.
+    size_t unknown = 0;
+    for (const TypeInfo& t : db.types()) unknown += t.kind == TypeKind::Unknown;
+    CHECK(unknown <= 13);
+    auto text = [&](const char* cls, const char* name) {
+        const Collection* c = db.findCollection(StringHash32(cls), StringHash32(name));
+        CHECK(c != nullptr);
+        if (!c) return std::string();
+        std::vector<const Collection*> cs = {c};
+        return sc::Print(sc::NewScript(db, sc::Export(db, cs)));
+    };
+    auto has = [](const std::string& t, const char* what) {
+        if (t.find(what) == std::string::npos) std::fprintf(stderr, "no %s in:\n%s\n", what, t.substr(0, 2000).c_str());
+        return t.find(what) != std::string::npos;
+    };
+    // The four types of its own (scripts/nitro/nitro_types.h) and their strings.
+    CHECK(has(text("interactive_music_settings", "tracks"), "Name = \"AlltheCash\""));
+    CHECK(has(text("frontend_sfx", "feng_sound_map"), "mSoundName = \"BTN_BACK\""));
+    CHECK(has(text("presetridepackage", "tier3_1st"), "MCOROLLA_MADRID_01"));
+    CHECK(has(text("parameter_maps", "reverb"), "DebugName = \"Tunnel\""));
+    // Names found for Nitro: fields from its code, collections by their pattern.
+    CHECK(has(text("audio_pickup", "nitro_level_1"), "collection audio_pickup/nitro_level_1 under audio_pickup/nitro"));
+    CHECK(db.names().find(StringHash32("DefaultHwVoice")) != nullptr);
+    // Every enum value stored names a value of its enum, in attributes and in
+    // struct members, but for ParticleTextureRecord's 0 (no texture), which
+    // Carbon's files hold too and no enum names.
+    size_t values = 0, unnamed = 0;
+    std::function<void(const DataBlock&, uint32_t, const ValueType&, Endian)> walk = [&](const DataBlock& b, uint32_t off, const ValueType& vt, Endian e) {
+        if (off + vt.size > b.bytes.size()) return;
+        if (vt.kind == TypeKind::Enum && vt.en) {
+            const int64_t v = ReadInteger(b, off, vt, e);
+            ++values;
+            if (!vt.en->nameOf(v) && !(vt.en->name == "eTEG_ParticleTextures" && v == 0)) {
+                std::fprintf(stderr, "%s %lld has no name\n", vt.en->name.c_str(), static_cast<long long>(v));
+                ++unnamed;
+            }
+        } else if (vt.kind == TypeKind::Struct && vt.st)
+            for (const MemberDef& m : vt.st->members)
+                if (!m.isBitfield())
+                    for (uint32_t i = 0; i < m.count; ++i) walk(b, off + m.offset + i * m.elemSize, TypeOfMember(m), e);
+    };
+    for (const auto& cls : db.classes())
+        for (const Collection* c : cls->collections)
+            for (const Attribute& a : c->attributes) {
+                const ValueType vt = TypeOfAttribute(a, db.names().format(a.key));
+                for (uint32_t i = 0; i < a.count; ++i) walk(a.data, uint32_t(a.elem(i) - a.data.bytes.data()), vt, c->vault->raw.endian);
+            }
+    CHECK(values > 1000);
+    CHECK_EQ(unnamed, size_t(0));
 }

@@ -978,7 +978,7 @@ TEST("ui: the game and platform come from the files; the prompt asks when they d
     CHECK(item("Pro Street  (best guess)###"));
     CHECK(item("PS2  (best guess)###"));
     CHECK(item("World###"));
-    CHECK(item("Nitro  (not supported yet)###"));
+    CHECK(item("Nitro###"));
     CHECK(item("Most Wanted###"));
     // Another file dropped meanwhile joins the database it opens.
     CHECK(!a.open((dir / "cars_vault.BIN").string()));
@@ -1823,6 +1823,241 @@ std::pair<Collection*, std::vector<Collection*>> ParentWithLeaves(Database& db) 
 
 std::string Clipboard() { return ImGui::GetClipboardText() ? ImGui::GetClipboardText() : ""; }
 } // namespace
+
+TEST("ui: state graph builder: race modes under basicrace are listed under it, with the handlers each runs; a new handler's empty bytecode opens it") {
+    platform::HeadlessImGui imgui;
+    imgui.beforeFrame = ProbeBefore;
+    imgui.afterFrame = ProbeAfter;
+    test::UiProbe& probe = test::UiProbe::get();
+    probe.conflicts.clear();
+    platform::HeadlessHost host;
+    app::App a(host);
+    a.setup(1.0f, "");
+    a.setUserKeysPath("");
+    CHECK(a.open(ProStreetDir()));
+    Database* db = a.database();
+    if (!db) return;
+    const uint32_t gp = StringHash32("gameplay");
+    Collection* lap = db->findCollection(gp, StringHash32("lapknockout"));
+    Collection* basicrace = db->findCollection(gp, StringHash32("basicrace"));
+    CHECK(lap && basicrace);
+    if (!lap || !basicrace) return;
+    // lapknockout's own handler: the builder opens on it as lapknockout runs basicrace's state.
+    GameplayModel m(*db);
+    Collection* own = nullptr;
+    for (Collection* st : m.allStatesOf(lap))
+        for (Collection* h : m.handlersOf(st))
+            if (m.handlerOwner(h) == lap) own = h;
+    CHECK(own);
+    if (!own) return;
+    a.openStateGraphBuilder(own);
+    imgui.run(a, 3);
+    CHECK(a.sequenceActivity() == lap && a.sequenceHandler() == own);
+    // The Activity list: lapknockout, indented under circuit under basicrace.
+    const test::ProbeItem* newState = probe.find("New State...", "State Graph Builder");
+    CHECK(newState);
+    if (!newState) return;
+    const ImVec2 combo(newState->rect.Min.x - 30, (newState->rect.Min.y + newState->rect.Max.y) * 0.5f);
+    ClickItem(imgui, a, test::ProbeItem{0, ImRect(combo, combo), "", ""});
+    imgui.run(a, 1);
+    const test::ProbeItem* lapItem = probe.find("lapknockout", "##Combo");
+    const test::ProbeItem* basicItem = probe.find("basicrace", "##Combo");
+    CHECK(lapItem && basicItem);
+    if (lapItem && basicItem) CHECK(lapItem->rect.Min.x > basicItem->rect.Min.x + ImGui::GetFontSize());
+    if (lapItem) ClickItem(imgui, a, *lapItem); // picked again: the list closes
+    imgui.run(a, 2);
+    CHECK(a.sequenceActivity() == lap);
+    // Another activity's handlers of the state: a link shows the state as it runs it.
+    const test::ProbeItem* drift = probe.find("driftrace", "State Graph Builder");
+    if (drift) {
+        ClickItem(imgui, a, *drift);
+        imgui.run(a, 2);
+        CHECK(a.sequenceActivity() == db->findCollection(gp, StringHash32("driftrace")));
+    }
+
+    // A handler made from messagehandler: its bytecode is the template's empty
+    // one, and its field still opens the builder, which starts its function.
+    CHECK(a.runConsole("create gameplay/attribulina_new_handler under gameplay/messagehandler"));
+    imgui.run(a, 2);
+    Collection* fresh = db->findCollection(gp, StringHash32("attribulina_new_handler"));
+    CHECK(fresh);
+    if (!fresh) return;
+    a.stateGraphBuilderOpen() = false; // it floats over the inspector
+    a.viewOptions() = app::ViewOptions{true, true, true};
+    CHECK(ShowField(imgui, a, "gameplay", "attribulina_new_handler", "bytecode") == nullptr); // inherited, not its own
+    const test::ProbeItem* open = probe.find("State Graph Builder", "##fields"); // the bytecode row's
+    CHECK(open);
+    if (!open) return;
+    ClickItem(imgui, a, *open);
+    imgui.run(a, 3);
+    CHECK(a.sequenceHandler() == fresh);
+    CHECK(a.sequenceSource().find(HandlerFunction(*db, "attribulina_new_handler")) != std::string::npos);
+    CHECK(a.compileHandler());
+    CHECK(!HandlerChunk(*fresh).empty());
+    // Its own bytecode now: the row isn't greyed, and the button is there too.
+    a.stateGraphBuilderOpen() = false;
+    CHECK(ShowField(imgui, a, "gameplay", "attribulina_new_handler", "bytecode") != nullptr);
+    const test::ProbeItem* again = probe.find("State Graph Builder", "##fields");
+    CHECK(again);
+    if (again) ClickItem(imgui, a, *again);
+    imgui.run(a, 2);
+    CHECK(a.stateGraphBuilderOpen() && a.sequenceHandler() == fresh);
+    for (const auto& c : probe.conflicts) std::printf("        ID conflict: %s\n", c.c_str());
+    CHECK(probe.conflicts.empty());
+}
+
+TEST("ui: state graph builder: a handler's menu deletes it, and a template's handler says the activities that lose it") {
+    platform::HeadlessImGui imgui;
+    imgui.beforeFrame = ProbeBefore;
+    imgui.afterFrame = ProbeAfter;
+    test::UiProbe& probe = test::UiProbe::get();
+    probe.conflicts.clear();
+    platform::HeadlessHost host;
+    app::App a(host);
+    a.setup(1.0f, "");
+    a.setUserKeysPath("");
+    CHECK(a.open(ProStreetDir()));
+    Database* db = a.database();
+    if (!db) return;
+    const uint32_t gp = StringHash32("gameplay");
+    Collection* lap = db->findCollection(gp, StringHash32("lapknockout"));
+    Collection* basicrace = db->findCollection(gp, StringHash32("basicrace"));
+    CHECK(lap && basicrace);
+    if (!lap || !basicrace) return;
+    auto message = [&](const Collection* h) {
+        const Attribute* at = h->resolve(StringHash32("message_id"));
+        return at ? LoadKey(*db, at->elem(0), at->elemSize, h->vault->raw.endian) : 0u;
+    };
+    // A state lapknockout runs with a handler of its own and one of basicrace's.
+    GameplayModel m(*db);
+    Collection *own = nullptr, *inherited = nullptr;
+    for (Collection* st : m.allStatesOf(lap)) {
+        Collection *o = nullptr, *b = nullptr;
+        const std::vector<Collection*> hs = m.handlersOf(st, lap);
+        auto unique = [&](const Collection* h) {
+            return std::count_if(hs.begin(), hs.end(), [&](const Collection* x) { return message(x) == message(h); }) == 1;
+        };
+        for (Collection* h : hs) {
+            if (!unique(h)) continue;
+            if (m.handlerOwner(h) == lap) o = h;
+            else if (m.handlerOwner(h) == basicrace) b = h;
+        }
+        if (o && b && message(o) != message(b) && !own) own = o, inherited = b;
+    }
+    CHECK(own && inherited);
+    if (!own || !inherited) return;
+    const uint32_t ownKey = own->key, inheritedKey = inherited->key;
+    const std::string inheritedName = db->names().format(inheritedKey);
+    size_t runIt = 0;
+    for (const Collection* act : m.graphActivities()) runIt += act != basicrace && m.handlerCountsFor(inherited, act);
+    CHECK(runIt > 1); // the race modes under basicrace
+    a.openStateGraphBuilder(own);
+    imgui.run(a, 3);
+    CHECK(a.sequenceActivity() == lap && a.sequenceHandler() == own);
+    // The list shows a few rows before it scrolls: the wheel over it brings one up.
+    auto row = [&](uint32_t msg) -> const test::ProbeItem* {
+        const std::string label = db->names().format(msg);
+        const test::ProbeItem* header = probe.find("Message", "##handlers");
+        CHECK(header);
+        if (!header) return nullptr;
+        imgui.mouseMove(header->rect.Min.x + 20, header->rect.Max.y + 40);
+        ImGui::GetIO().AddMouseWheelEvent(0, 100); // to the top
+        imgui.run(a, 2);
+        bool past = false; // one notch more: a row that just came up is cut off at the bottom
+        for (int step = 0; step < 60 && !past; ++step) {
+            past = probe.find(label, "##handlers") && step > 0;
+            if (probe.find(label, "##handlers") && step == 0) break; // in view from the top
+            ImGui::GetIO().AddMouseWheelEvent(0, -1);
+            imgui.run(a, 2);
+        }
+        CHECK_EQ(probe.count(label, "##handlers"), 1);
+        return probe.find(label, "##handlers");
+    };
+    auto deleteFromMenu = [&](uint32_t msg) {
+        Rightclick(imgui, a, row(msg));
+        const test::ProbeItem* item = probe.find("Delete Handler...", "##Popup");
+        if (!item) std::printf("        no menu for %s\n", db->names().format(msg).c_str());
+        ClickItem(imgui, a, item);
+        imgui.run(a, 2);
+    };
+    const uint32_t ownMsg = message(own), inheritedMsg = message(inherited);
+
+    // basicrace's, shown in lapknockout: the prompt warns; Cancel keeps it.
+    deleteFromMenu(inheritedMsg);
+    CHECK(probe.find("Delete", "Delete Handler"));
+    ClickItem(imgui, a, probe.find("Cancel", "Delete Handler"));
+    imgui.run(a, 2);
+    CHECK(db->findCollection(gp, inheritedKey));
+    // lapknockout's own goes, and the builder lets go of it.
+    deleteFromMenu(ownMsg);
+    ClickItem(imgui, a, probe.find("Delete", "Delete Handler"));
+    imgui.run(a, 3);
+    CHECK(!db->findCollection(gp, ownKey));
+    CHECK(a.sequenceHandler() == nullptr && a.sequenceActivity() == lap);
+    // basicrace's from lapknockout's list: the Log counts the activities that ran it.
+    deleteFromMenu(inheritedMsg);
+    ClickItem(imgui, a, probe.find("Delete", "Delete Handler"));
+    imgui.run(a, 3);
+    CHECK(!db->findCollection(gp, inheritedKey));
+    bool logged = false;
+    for (const auto& l : a.log())
+        logged |= l.text == "Deleted handler " + inheritedName + "; " + std::to_string(runIt) + " other activities ran it";
+    CHECK(logged);
+    CHECK_EQ(Errors(a), size_t(0));
+    // Undone, it is back.
+    CHECK(a.undo());
+    imgui.run(a, 2);
+    CHECK(a.database() && a.database()->findCollection(gp, inheritedKey) && !a.database()->findCollection(gp, ownKey));
+    for (const auto& c : probe.conflicts) std::printf("        ID conflict: %s\n", c.c_str());
+    CHECK(probe.conflicts.empty());
+}
+
+TEST("ui: state graph builder: text typed in one handler's code stays out of the next handler's") {
+    // ImGui hands a text box's last text to the next box with its id when it
+    // loses the keyboard; the editor is one box for every handler.
+    platform::HeadlessImGui imgui;
+    imgui.beforeFrame = ProbeBefore;
+    imgui.afterFrame = ProbeAfter;
+    test::UiProbe& probe = test::UiProbe::get();
+    platform::HeadlessHost host;
+    app::App a(host);
+    a.setup(1.0f, "");
+    a.setUserKeysPath("");
+    CHECK(a.open(ProStreetDir()));
+    Database* db = a.database();
+    if (!db) return;
+    Collection* first = db->findCollection(StringHash32("gameplay"), StringHash32("basicrace/stategraph_basicrace_racing_handler_notifyescaped"));
+    CHECK(first);
+    if (!first) return;
+    a.openStateGraphBuilder(first);
+    imgui.run(a, 3);
+    auto typeInCode = [&] {
+        const test::ProbeItem* code = probe.find("##code", "State Graph Builder");
+        CHECK(code);
+        if (!code) return;
+        ClickItem(imgui, a, *code);
+        imgui.key(a, ImGuiKey_End | ImGuiMod_Ctrl);
+        imgui.type(a, "--typed");
+        imgui.run(a, 8);
+        CHECK(a.sequenceSource().find("--typed") != std::string::npos);
+    };
+    // A click on another handler's row.
+    typeInCode();
+    ClickItem(imgui, a, probe.find("MCommandRacerStart", "State Graph Builder")); // the first row: the table scrolls
+    imgui.run(a, 3);
+    CHECK(a.sequenceHandler() && a.sequenceHandler() != first);
+    CHECK(a.sequenceSource().find("--typed") == std::string::npos);
+    CHECK(a.sequenceSource().find("h_") != std::string::npos);
+    // Another handler opened while the editor still has the keyboard.
+    typeInCode();
+    a.openStateGraphBuilder(first);
+    imgui.run(a, 3);
+    CHECK(a.sequenceHandler() == first);
+    CHECK(a.sequenceSource().find("--typed") == std::string::npos);
+    imgui.type(a, "x");
+    imgui.run(a, 3);
+    CHECK(a.sequenceSource().find("--typed") == std::string::npos);
+}
 
 TEST("ui: state graph builder: the graph runs top to bottom from initial; Carbon's career_game shows the initial it runs from career") {
     namespace fs = std::filesystem;
@@ -3311,15 +3546,18 @@ TEST("ui: script: a gameplay folder and a vault go to the script from their menu
         imgui.run(a, 2);
     };
 
-    // A path no element has: its race, and the checkpoints the race lists under
-    // a track's path. (Revealing the race scrolls the tree to the folder.)
-    Collection* shortcut = db->findCollection(StringHash32("gameplay"), StringHash32("race_bin_exotic/4_5_2/shortcut06"));
-    CHECK(shortcut);
-    a.select(shortcut, true);
+    // A path no element has: the elements under it. (Revealing one scrolls the
+    // tree to the folder.)
+    const std::string folder = "tracks/chicago_gd/chicago_gd_drift_2";
+    std::vector<std::string> under;
+    for (const Collection* c : db->findClass(StringHash32("gameplay"))->collections)
+        if (const std::string n = db->names().format(c->key); n.rfind(folder + "/", 0) == 0) under.push_back(n);
+    CHECK(!under.empty() && !db->findCollection(StringHash32("gameplay"), StringHash32(folder)));
+    if (under.empty()) return;
+    a.select(db->findCollection(StringHash32("gameplay"), StringHash32(under.front())), true);
     imgui.run(a, 3);
-    addToScript("race_bin_exotic", "##gameplay", "With Everything Under It");
-    CHECK(has("collection gameplay/race_bin_exotic/4_5_2/shortcut06 under "));
-    CHECK(has("collection gameplay/tracks/leipzig/leipzig_grip_1_gp/checkpoint1 under gameplay/checkpoint in vault "));
+    addToScript("chicago_gd_drift_2", "##gameplay", "With Everything Under It");
+    for (const std::string& n : under) CHECK(has("collection gameplay/" + n + " under "));
 
     // A race bin: nothing is made from it as a template, and everything under it
     // comes with the vaults it is kept in and the Children list naming it.
@@ -5173,6 +5411,72 @@ TEST("ui: changes made in the editor are recorded as nfsms and as a mod script")
     CHECK_EQ(a.nfsmsText(), before);
 }
 
+TEST("ui: a value typed in one collection stays there when another collection of its class is selected, and only it is recorded") {
+    // ImGui hands a box's last text to the next box with its id when the box
+    // loses the keyboard, and the inspector's boxes go by field: the same
+    // field of the collection selected next took the value, and the recorder
+    // wrote it as a change of that collection too.
+    platform::HeadlessImGui imgui;
+    imgui.beforeFrame = ProbeBefore;
+    imgui.afterFrame = ProbeAfter;
+    test::UiProbe& probe = test::UiProbe::get();
+    platform::HeadlessHost host;
+    app::App a(host);
+    a.setup(1.0f, "");
+    a.setUserKeysPath("");
+    CHECK(a.open(ProStreetDir() + "/ATTRIBUTES.BIN"));
+    Database* db = a.database();
+    if (!db) return;
+    a.setRecording(true, true);
+    imgui.run(a, 1);
+    // Two collections of a class that each set the field.
+    const uint32_t field = StringHash32("total_frames_short");
+    std::vector<Collection*> own;
+    for (Collection* c : db->findClass(StringHash32("audio_revlimiter"))->collections)
+        if (c->find(field) && db->names().find(c->key)) own.push_back(c);
+    CHECK(own.size() >= 2);
+    if (own.size() < 2) return;
+    auto value = [&](Collection* c) { return load32(c->find(field)->data.bytes.data(), Endian::Little); };
+    auto typeIn = [&](Collection* c, const char* text) {
+        CHECK(ShowField(imgui, a, "audio_revlimiter", db->names().format(c->key).c_str(), "total_frames_short"));
+        ClickItem(imgui, a, probe.find("##int", "Collection"));
+        imgui.key(a, ImGuiKey_A | ImGuiMod_Ctrl);
+        imgui.type(a, text); // no Enter: the box still has the keyboard
+        imgui.run(a, 4);     // a character a frame
+    };
+    for (int way = 0; way < 3; ++way) {
+        Collection* from = own[0];
+        Collection* to = own[1];
+        const uint32_t before = value(to);
+        const std::string toName = db->names().format(to->key);
+        a.select(to, true); // in the tree, and in the history for Back
+        imgui.run(a, 2);
+        const std::string typed = std::to_string(300 + way);
+        typeIn(from, typed.c_str());
+        CHECK(value(from) != uint32_t(300 + way)); // ImGui writes it as the box lets go
+        if (way == 0) {
+            // Clicking the other collection in the Explorer.
+            const test::ProbeItem* node = probe.find(toName, "Explorer");
+            CHECK(node);
+            ClickItem(imgui, a, node);
+        } else if (way == 1) {
+            // Back to the collection shown before.
+            ClickItem(imgui, a, probe.find("##back", "Collection"));
+        } else {
+            // A click on nothing first, then the other collection selected.
+            a.select(to, false);
+        }
+        imgui.run(a, 3);
+        CHECK(a.selection() == to);
+        if (value(to) != before) std::printf("        way %d: %s took %u\n", way, toName.c_str(), value(to));
+        CHECK_EQ(value(to), before);
+        CHECK_EQ(value(from), uint32_t(300 + way));
+        CHECK(a.nfsmsText().find(" " + toName + " total_frames_short") == std::string::npos);
+        CHECK(a.scriptText().find("audio_revlimiter/" + toName) == std::string::npos);
+    }
+    CHECK(a.nfsmsText().find(db->names().format(own[0]->key) + " total_frames_short 302") != std::string::npos);
+}
+
 TEST("ui: class designer: a new class is made from its design; the game's classes show read only, copy, delete and restore") {
     platform::HeadlessImGui imgui;
     imgui.beforeFrame = ProbeBefore;
@@ -5813,6 +6117,122 @@ TEST("ui: search: a hit's menu copies a cell, its line, a column or every line, 
     imgui.key(a, ImGuiMod_Ctrl | ImGuiKey_C);
     imgui.run(a, 1);
     CHECK_EQ(Clipboard(), line);
+    CHECK_EQ(Errors(a), size_t(0));
+    for (const auto& x : probe.conflicts) std::printf("        ID conflict: %s\n", x.c_str());
+    CHECK(probe.conflicts.empty());
+}
+
+TEST("ui: search: Names lists classes and collections; hits picked with Ctrl+click copy together") {
+    platform::HeadlessImGui imgui;
+    imgui.beforeFrame = ProbeBefore;
+    imgui.afterFrame = ProbeAfter;
+    test::UiProbe& probe = test::UiProbe::get();
+    probe.conflicts.clear();
+    platform::HeadlessHost host;
+    app::App a(host);
+    a.setup(1.0f, "");
+    CHECK(a.open(ProStreetDir()));
+    Database* db = a.database();
+    if (!db) return;
+    imgui.run(a, 2);
+    auto clickOn = [&](const char* label, const char* window) {
+        const test::ProbeItem* it = probe.find(label, window);
+        if (!it) std::printf("        no %s in %s\n", label, window);
+        ClickItem(imgui, a, it);
+    };
+    imgui.key(a, ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_F);
+    imgui.run(a, 1);
+    // A combo reports no label to the test engine: the mode is the item left of the query.
+    const test::ProbeItem* query = probe.find("##query", "Search");
+    CHECK(query);
+    if (!query) return;
+    const ImVec2 combo(query->rect.Min.x - 20, (query->rect.Min.y + query->rect.Max.y) * 0.5f);
+    ClickItem(imgui, a, test::ProbeItem{0, ImRect(combo, combo), "", ""});
+    imgui.run(a, 1);
+    clickOn("Names", "##Combo");
+    imgui.run(a, 1);
+    clickOn("##query", "Search");
+    imgui.key(a, ImGuiMod_Ctrl | ImGuiKey_A);
+    imgui.type(a, "draghpfall");
+    imgui.run(a, 12);
+    imgui.key(a, ImGuiKey_Enter);
+    imgui.run(a, 2);
+    const uint32_t veh = StringHash32("vehicle");
+    Collection* one = db->findCollection(veh, StringHash32("240sx_draghpfall"));
+    Collection* two = db->findCollection(veh, StringHash32("350z_draghpfall"));
+    CHECK(one && two);
+    if (!one || !two) return;
+    const test::ProbeItem* first = probe.find("vehicle/240sx_draghpfall", "Search");
+    CHECK(first);
+    if (!first) return;
+    // A click opens one; Ctrl+click picks another without opening it.
+    ClickItem(imgui, a, *first);
+    imgui.run(a, 2);
+    CHECK_EQ(a.searchHitsPicked(), 1);
+    CHECK(a.selection() == one);
+    const test::ProbeItem* second = probe.find("vehicle/350z_draghpfall", "Search");
+    CHECK(second);
+    if (!second) return;
+    ImGuiIO& io = ImGui::GetIO();
+    io.AddKeyEvent(ImGuiMod_Ctrl, true);
+    ClickItem(imgui, a, *second);
+    io.AddKeyEvent(ImGuiMod_Ctrl, false);
+    imgui.run(a, 2);
+    CHECK_EQ(a.searchHitsPicked(), 2);
+    CHECK(a.selection() == one);
+    Rightclick(imgui, a, probe.find("vehicle/350z_draghpfall", "Search"));
+    clickOn("Copy 2 Names", "##Popup");
+    imgui.run(a, 1);
+    CHECK_EQ(Clipboard(), std::string("240sx_draghpfall\n350z_draghpfall\n"));
+    // Ctrl+C copies both hits' lines.
+    ImGui::SetClipboardText("");
+    imgui.key(a, ImGuiMod_Ctrl | ImGuiKey_C);
+    imgui.run(a, 1);
+    auto line = [&](Collection* c) {
+        return "vehicle/" + db->names().format(c->key) + "\t(collection)\t" + (c->parentKey ? db->names().format(c->parentKey) : std::string()) + "\n";
+    };
+    CHECK_EQ(Clipboard(), line(one) + line(two));
+    // Shift+click: every hit from the last one clicked (the second) to this one.
+    std::vector<test::ProbeItem> rows;
+    for (const auto& it : probe.items)
+        if (it.window.find("Search") != std::string::npos && it.label.rfind("vehicle/", 0) == 0) rows.push_back(it);
+    CHECK(rows.size() >= 4);
+    if (rows.size() >= 4) {
+        io.AddKeyEvent(ImGuiMod_Shift, true);
+        ClickItem(imgui, a, rows[3]);
+        io.AddKeyEvent(ImGuiMod_Shift, false);
+        imgui.run(a, 2);
+        CHECK_EQ(a.searchHitsPicked(), 3);
+        CHECK(a.selection() == one);
+    }
+    // Ctrl+A picks every hit; Escape none.
+    imgui.key(a, ImGuiMod_Ctrl | ImGuiKey_A);
+    CHECK(a.searchHitsPicked() > 3);
+    imgui.key(a, ImGuiKey_Escape);
+    CHECK_EQ(a.searchHitsPicked(), 0);
+    // Every hit's name, from Copy Column.
+    Rightclick(imgui, a, probe.find("vehicle/240sx_draghpfall", "Search"));
+    clickOn("Copy Column", "##Popup");
+    imgui.run(a, 1);
+    clickOn("Name", "##Menu");
+    imgui.run(a, 1);
+    const std::string all = Clipboard();
+    CHECK(all.find("350z_draghpfall\n") != std::string::npos);
+    CHECK(all.find("/") == std::string::npos);
+    // A class's hit opens it in the Explorer and leaves the selection.
+    clickOn("##query", "Search");
+    imgui.key(a, ImGuiMod_Ctrl | ImGuiKey_A);
+    imgui.type(a, "pvehicle");
+    imgui.run(a, 10);
+    imgui.key(a, ImGuiKey_Enter);
+    imgui.run(a, 2);
+    const test::ProbeItem* cls = probe.find("pvehicle", "Search");
+    CHECK(cls);
+    ClickItem(imgui, a, cls);
+    imgui.run(a, 3);
+    CHECK(a.selection() == one);
+    CHECK(probe.find(db->names().format(db->findClass(StringHash32("pvehicle"))->collections.front()->key), "##classes") ||
+          !db->findClass(StringHash32("pvehicle"))->collections.front()->parent);
     CHECK_EQ(Errors(a), size_t(0));
     for (const auto& x : probe.conflicts) std::printf("        ID conflict: %s\n", x.c_str());
     CHECK(probe.conflicts.empty());

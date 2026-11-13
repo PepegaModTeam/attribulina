@@ -36,8 +36,7 @@ const Database& Full() {
             if (e.path().extension() == ".txt") d->addTypeSchema(TypeSchema::Load(e.path().string()));
         d->names().loadFile(test::DataPath("data/attrib_keys.txt"));
         d->binNames().loadFile(test::DataPath("data/attrib_keys.txt"));
-        for (const auto& e : fs::directory_iterator(test::DataPath("data/bin_keys")))
-            if (e.path().extension() == ".txt") d->binNames().loadFile(e.path().string());
+        d->binNames().loadFile(test::DataPath("data/bin_keys.txt"));
         for (const MessageDef& m : LoadMessages(test::DataPath("data/messages/prostreet_pc.txt"))) d->names().add(m.name);
         d->loadPack(PS("ATTRIBUTES.BIN"));
         d->loadPack(PS("cars_vault.BIN"));
@@ -450,11 +449,11 @@ TEST("search: a collection is found by its name, an unknown name by its hex or p
 TEST("search: a 0x... number finds the text and names it is the StringHash32 or bStringHash of") {
     const Database& db = Full();
     const uint32_t race = StringHash32(kRace), layout = StringHash32("TrackLayout");
-    // TrackLayout is a key (GCollectionKey): its stored number either way, its
-    // name's bStringHash as bStringHash.
+    // TrackLayout is a key (GCollectionKey): its stored number as StringHash32,
+    // its name's bStringHash as bStringHash.
     CHECK(Find(Values(Hex(race), true), kGameplay, race, 0, "(name)"));
-    for (app::SearchHash h : {app::SearchHash::StringHash32, app::SearchHash::BinHash})
-        CHECK(Find(Values(Hex(StringHash32(kLayout)), true, 0, h), kGameplay, race, layout, "TrackLayout"));
+    CHECK(Find(Values(Hex(StringHash32(kLayout)), true), kGameplay, race, layout, "TrackLayout"));
+    CHECK(!Find(Values(Hex(StringHash32(kLayout)), true, 0, app::SearchHash::BinHash), kGameplay, race, layout, "TrackLayout"));
     CHECK(!Find(Values(Hex(BinHash(kLayout)), true), kGameplay, race, layout, "TrackLayout"));
     CHECK(Find(Values(Hex(BinHash(kLayout)), true, 0, app::SearchHash::BinHash), kGameplay, race, layout, "TrackLayout"));
 
@@ -501,6 +500,78 @@ TEST("search: a 0x... number finds the text and names it is the StringHash32 or 
     CHECK(!Find(app::RunSearch(db, q), kGameplay, race, layout, "TrackLayout"));
     q.hexHash = app::SearchHash::BinHash;
     CHECK(Find(app::RunSearch(db, q), kGameplay, race, layout, "TrackLayout"));
+}
+
+TEST("search: as bStringHash, a 0x... finds bStringHash values and the text and names it is the bStringHash of, nothing else") {
+    const Database& db = Full();
+    // Every hit of "0x" alone is a bStringHash value no name is known for.
+    const SearchResult none = Values("0x", false, 0, app::SearchHash::BinHash);
+    CHECK(!none.hits.empty());
+    for (const SearchHit& h : none.hits) {
+        CHECK(h.value.rfind("0x", 0) == 0);
+        CHECK(h.value != "0x00000000" && h.value != "0xFFFFFFFF"); // no value
+    }
+    CHECK(none.hits.size() < 100);
+    // "0x1" as StringHash32 also finds every 1 and every key shown as 0x1...;
+    // as bStringHash only bStringHash values shown so.
+    const SearchResult sh = Values("0x1", false), bin = Values("0x1", false, 0, app::SearchHash::BinHash);
+    CHECK(sh.hits.size() > 1000);
+    CHECK(bin.hits.size() < 20);
+    for (const SearchHit& h : bin.hits) CHECK(h.value.rfind("0x1", 0) == 0);
+    // A bStringHash value by its whole number; a Text by the bStringHash of its text.
+    const Found bk = FirstAttribute([&](const Collection& c, const Attribute& a, const app::ValueType& vt) {
+        return vt.kind == TypeKind::BinKey && db.binNames().find(load32(a.data.bytes.data(), EndianOf(c)));
+    });
+    const uint32_t v = load32(bk.a->data.bytes.data(), EndianOf(*bk.c));
+    CHECK(Find(Values(Hex(v), true, 0, app::SearchHash::BinHash), bk.c->classKey, bk.c->key, bk.a->key, FieldName(bk.a->key)));
+    CHECK(Values(Hex(0xFFFFFFFFu), true, 0, app::SearchHash::BinHash).hits.size() <
+          Values(Hex(0xFFFFFFFFu), true).hits.size()); // empty texts aren't the empty name's
+}
+
+TEST("search: Names finds classes and collections by part of their name, the whole name, or 0x...") {
+    const Database& db = Full();
+    const uint32_t car = StringHash32("car"), pv = StringHash32("pvehicle"), veh = StringHash32("vehicle");
+    SearchQuery q;
+    q.mode = SearchMode::Names;
+    q.text = "LANCEREVOX";
+    q.limit = 1000000;
+    SearchResult r = app::RunSearch(db, q);
+    CHECK(r.error.empty());
+    CHECK(Find(r, car, StringHash32("lancerevox"), 0, "(collection)"));
+    CHECK(Find(r, pv, StringHash32("lancerevox"), 0, "(collection)"));
+    const SearchHit* drag = Find(r, veh, StringHash32("lancerevox_draghpfall"), 0, "(collection)");
+    CHECK(drag);
+    for (size_t i = 1; i < r.hits.size(); ++i) CHECK(InOrder(r.hits[i - 1], r.hits[i]));
+    q.wholeValue = true;
+    r = app::RunSearch(db, q);
+    CHECK(Find(r, pv, StringHash32("lancerevox"), 0, "(collection)"));
+    CHECK(!Find(r, veh, StringHash32("lancerevox_draghpfall"), 0, "(collection)"));
+    // A class: its own hit (key 0) before its collections.
+    q.text = "pvehicle";
+    r = app::RunSearch(db, q);
+    CHECK(!r.hits.empty() && r.hits.front().classKey == pv && r.hits.front().key == 0 && r.hits.front().where == "(class)");
+    // A collection's parent is its value.
+    q.wholeValue = false;
+    q.text = app::ToLower("0x") + Hex(StringHash32("lancerevox")).substr(2);
+    r = app::RunSearch(db, q);
+    const SearchHit* byKey = Find(r, pv, StringHash32("lancerevox"), 0, "(collection)");
+    CHECK(byKey);
+    if (const Collection* c = db.findCollection(pv, StringHash32("lancerevox")); c && byKey)
+        CHECK_EQ(byKey->value, c->parentKey ? db.names().format(c->parentKey) : std::string());
+    // In one class only.
+    q.text = "lancerevox";
+    q.inClass = car;
+    r = app::RunSearch(db, q);
+    CHECK(!r.hits.empty());
+    for (const SearchHit& h : r.hits) CHECK_EQ(h.classKey, car);
+    // No text: every collection of the class, or nothing without one.
+    q.text = "";
+    r = app::RunSearch(db, q);
+    CHECK(r.error.empty());
+    const ClassDef* carClass = db.findClass(car);
+    CHECK(carClass && r.hits.size() == carClass->collections.size());
+    q.inClass = 0;
+    CHECK(!app::RunSearch(db, q).error.empty());
 }
 
 TEST("search: ValueLines lists every value under one with the inspector's paths") {

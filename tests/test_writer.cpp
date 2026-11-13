@@ -148,11 +148,12 @@ TEST("writer: Pro Street PS2 packs round trip byte for byte") {
     CHECK(db.typeSchema() && db.typeSchema()->platforms == std::vector<Platform>{Platform::PS2});
 }
 
-TEST("writer: Carbon's and the Wii's Undercover packs round trip byte for byte") {
+TEST("writer: Carbon's, the Wii's Undercover's and Nitro's packs round trip byte for byte") {
     // Every pack of each folder, with all the schemas, as the editor opens it.
     // Carbon's PC layouts are the PS3's, the Wii's and the retail 360's; its
     // PS2's (4-byte bools) are the GameCube's. The Wii's Undercover is
-    // Carbon's engine. The two demos use Most Wanted's vault layout and older
+    // Carbon's engine, and Nitro the Wii's Undercover extended (its schema
+    // from an older build's DWARF). The two demos use Most Wanted's vault layout and older
     // types, each with its own schema.
     struct Folder {
         std::string path, target, schema;
@@ -168,13 +169,14 @@ TEST("writer: Carbon's and the Wii's Undercover packs round trip byte for byte")
         {"360/carbon-latedemo", "carbon_x360", "carbon_x360_demo.txt"},
         {"ps2/carbon-demo", "carbon_ps2", "carbon_ps2_demo.txt"},
         {"wii/undercover-vanilla", "undercover_wii", "undercover_wii.txt"},
+        {"wii/nitro-vanilla", "nitro_wii", "nitro_wii.txt"},
         // VLTEd's re-save: every pointer explained, but it lays the packs out its own way.
         {"pc/carbon-vlted", "carbon_pc", "carbon_pc.txt"}};
     for (const auto& [folder, target, schema] : folders) {
         Database db;
         for (const char* s :
              {"prostreet_pc", "prostreet_ps2", "carbon_pc", "carbon_ps2", "carbon_x360", "carbon_x360_demo", "carbon_ps2_demo", "undercover_wii",
-              "undercover_ps2"})
+              "undercover_ps2", "nitro_wii"})
             db.addTypeSchema(TypeSchema::Load(test::DataPath(std::string("data/schema/") + s + ".txt")));
         for (const FolderFile& f : FolderPacks(test::DataPath("attrib/databases/" + folder))) {
             if (!f.skipped.empty()) continue;

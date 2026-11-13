@@ -327,6 +327,36 @@ TEST("hash: bStringHash names resolve through Database::binNames") {
     CHECK(db.names().find(StringHash32(*any)) != nullptr);
 }
 
+TEST("hash: a vault's own string names its hash over a listed name that shares it") {
+    // Two names in the list share the hash: Carbon's character and Pro
+    // Street's checkpoint, whose CollectionName the vault holds.
+    const uint32_t key = StringHash32("tracks/portland/portland_grip_1/checkpoint1");
+    CHECK_EQ(key, StringHash32("characters/major_crew_darius/alan"));
+    KeyNames n(&StringHash32);
+    n.add("characters/major_crew_darius/alan");
+    n.add("tracks/portland/portland_grip_1/checkpoint1");
+    CHECK_EQ(*n.find(key), std::string("characters/major_crew_darius/alan"));
+    CHECK(n.find64(StringHash64("characters/major_crew_darius/alan")) != nullptr);
+    n.addFromData("tracks/portland/portland_grip_1/checkpoint1");
+    CHECK_EQ(*n.find(key), std::string("tracks/portland/portland_grip_1/checkpoint1"));
+    CHECK(n.find64(StringHash64("characters/major_crew_darius/alan")) == nullptr);
+    CHECK(n.find64(StringHash64("tracks/portland/portland_grip_1/checkpoint1")) != nullptr);
+    // The first string the data has keeps it; a listed name added later doesn't take it.
+    n.addFromData("characters/major_crew_darius/alan");
+    n.add("characters/major_crew_darius/alan");
+    CHECK_EQ(*n.find(key), std::string("tracks/portland/portland_grip_1/checkpoint1"));
+    KeyNames copy = n;
+    copy.addFromData("characters/major_crew_darius/alan");
+    CHECK_EQ(*copy.find(key), std::string("tracks/portland/portland_grip_1/checkpoint1"));
+
+    Database db;
+    db.names().loadFile(test::DataPath("data/attrib_keys.txt"));
+    CHECK_EQ(db.names().format(key), std::string("characters/major_crew_darius/alan"));
+    db.loadPack(PS("ATTRIBUTES.BIN"));
+    db.loadPack(PS("gameplay.lzc"));
+    CHECK_EQ(db.names().format(key), std::string("tracks/portland/portland_grip_1/checkpoint1"));
+}
+
 TEST("compression: CompressBest follows the game's LZCompress choice") {
     // Retail Lua chunks: 235 HUFF and 16 JDLZ, each the smaller of the two.
     Database db;

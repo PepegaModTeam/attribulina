@@ -60,6 +60,7 @@ const ClassFolder kFolders[] = {
     {"360/undercover-alpha161", "undercover_x360_alpha", "Undercover, Xbox 360 alpha (build 161)"},
     {"pc/undercover-vanilla", "undercover_pc", "Undercover, PC retail"},
     {"wii/undercover-vanilla", "undercover_wii", "Undercover, Wii retail"},
+    {"wii/nitro-vanilla", "nitro_wii", "Nitro, Wii retail"},
     {"pc/world-final", "world_pc", "World, PC final build"},
     {"pc/world-2010-beta", "world_pc_2010_beta", "World, PC 2010 beta"},
     {"pc/world-2009-beta", "world_pc_2009_beta", "World, PC 2009 beta"},

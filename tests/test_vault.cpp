@@ -159,6 +159,42 @@ TEST("vaults: deleting a vault with what it holds takes its collections and thos
     for (const auto& w : back.vaults) CHECK(w->warnings.empty());
 }
 
+// A mod's Most Wanted gameplay.bin held twelve vaults of one collection each
+// (JVpursuit, 100 bytes at DatN's 0x58), and loading it threw
+// "CollectionLoadData export is too small": read as 16-byte entries, the one
+// 20-byte export entry gave size 0 at offset 100, which lies in DatN.
+TEST("vaults: a Most Wanted vault holding one collection larger than DatN's offset reads back") {
+    const std::string dir = test::DataPath("attrib/databases/pc/mw-vanilla");
+    if (!std::filesystem::exists(dir + "/gameplay.bin")) return;
+    Database db;
+    db.addTypeSchema(TypeSchema::Load(test::DataPath("data/schema/mw_pc.txt")));
+    db.names().loadFile(test::DataPath("data/attrib_keys.txt"));
+    db.loadPack(dir + "/attributes.bin");
+    LoadedPack& gp = db.loadPack(dir + "/gameplay.bin");
+    Collection* lone = nullptr;
+    for (const auto& v : gp.vaults)
+        for (Collection* c : v->collections)
+            if (!lone && c->children.empty() && c->loadedEntryKeys.size() >= 4) lone = c;
+    CHECK(lone);
+    if (!lone) return;
+    const uint32_t cls = lone->classKey, key = lone->key;
+    Vault& nv = CreateVault(gp, "attribulina_pursuit", *gp.vaults.front());
+    CollectionEditor(db).moveToVault(*lone, nv);
+    CHECK_EQ(nv.collections.size(), size_t(1));
+
+    Database again;
+    again.addTypeSchema(TypeSchema::Load(test::DataPath("data/schema/mw_pc.txt")));
+    again.loadPack(dir + "/attributes.bin");
+    LoadedPack& back = again.loadPack(gp.path, WritePack(db, gp));
+    const Vault* rv = FindVault(back, "attribulina_pursuit");
+    CHECK(rv && rv->warnings.empty() && rv->raw.mostWantedOwn() && rv->collections.size() == 1);
+    if (!rv) return;
+    // The case itself: the export's size reaches past DatN's offset.
+    CHECK(rv->raw.exports.size() == 1 && rv->raw.exports[0].size >= rv->raw.datOffset);
+    const Collection* read = again.findCollection(cls, key);
+    CHECK(read && read->vault == rv && read->attributes.size() == lone->attributes.size());
+}
+
 TEST("vaults: a vault made in World's packs has its EndC chunks, and a new event vault file writes, reads back and drops again") {
     if (!std::filesystem::exists(WorldDir())) return;
     Database db;
@@ -295,13 +331,12 @@ TEST("vaults: a vault made in each pack of every game folder, with a collection 
     for (const auto& platform : fs::directory_iterator(root))
         if (platform.is_directory())
             for (const auto& f : fs::directory_iterator(platform.path()))
-                // Not Nitro (set aside), nor the -vlted re-saves: the user's edits in prostreet-vlted make two of
+                // Not the -vlted re-saves: the user's edits in prostreet-vlted make two of
                 // its packs write shorter the second time, which is expected. Nor Pro Street's OGVI save, whose
                 // empty camera lists VaultLib points at the block after them (not repaired, the user's call:
                 // VaultLib.h). Nor a folder of builds (pc/world-various: some 9800 packs of the final build's
                 // format, which test_writer covers).
-                if (f.is_directory() && f.path().filename().string().rfind("nitro", 0) != 0 &&
-                    f.path().filename().string().find("-vlted") == std::string::npos && f.path().filename() != "prostreet-ogvi" &&
+                if (f.is_directory() && f.path().filename().string().find("-vlted") == std::string::npos && f.path().filename() != "prostreet-ogvi" &&
                     FindFileNoCase(f.path().string(), "attributes.bin"))
                     folders.push_back(f.path());
     std::sort(folders.begin(), folders.end());
