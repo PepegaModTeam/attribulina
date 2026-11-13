@@ -100,10 +100,10 @@ class audiosystem in vault db reserve 15 {
     entry PrintCarAttachment EA::Reflection::Bool
     entry 0x19D16A04 Attrib::StringKey
     entry AEMS_Singapore_Drag_Bank Attrib::StringKey
-    entry 0x224CA2B9 Attrib::StringKey
+    entry AEMS_Singapore_Child_Bank Attrib::StringKey
     entry AEMS_FECommonBank Attrib::StringKey
     entry AEMS_Madrid_Drag_Bank Attrib::StringKey
-    entry 0x254FDDB0 Attrib::StringKey
+    entry AEMS_Madrid_Parent_Bank Attrib::StringKey
     entry 0x25CA00C9 Attrib::StringKey
     entry 0x264AFE4E EA::Reflection::Bool
     entry AEMS_animatedobject_DubaiChild_Bank Attrib::StringKey[65535]
@@ -125,19 +125,19 @@ class audiosystem in vault db reserve 15 {
     entry PrintTrannyInfo EA::Reflection::Bool
     entry AEMS_Dubai_Drag_Bank Attrib::StringKey
     entry AEMS_Singapore_Bank Attrib::StringKey
-    entry 0x658E9FE9 Attrib::StringKey
+    entry AEMS_Dubai_Child_Bank Attrib::StringKey
     entry AEMS_animatedobject_CairoParent_Bank Attrib::StringKey[65535]
     entry AEMS_Rio_Bank Attrib::StringKey
     entry PrintWorldObjectInfo EA::Reflection::Bool
     entry AEMS_RoadNoiseBank Attrib::StringKey
     entry EnableDefaultSwVoice EA::Reflection::Bool
-    entry 0x75AA8385 Attrib::StringKey
+    entry AEMS_Rio_Parent_Bank Attrib::StringKey
     entry 0x7AB079C8 EA::Reflection::Float
     entry 0x7B76A1FB EA::Reflection::Bool
-    entry 0x7BFCA850 Attrib::StringKey
+    entry AEMS_Rio_Child_Bank Attrib::StringKey
     entry 0x7E8558B4 EA::Reflection::Bool
     entry PrintSplicerSfxInfo EA::Reflection::Bool
-    entry 0x8195E2DC Attrib::StringKey
+    entry AEMS_Madrid_Child_Bank Attrib::StringKey
     entry DisplayWooshTrigger EA::Reflection::Bool
     entry PrintReverbInfo EA::Reflection::Bool
     entry Splicer_Banks Attrib::StringKey[3]
@@ -152,9 +152,9 @@ class audiosystem in vault db reserve 15 {
     entry 0xBCE8A8A3 nfs::Audio::AttribSwVoice[65535]
     entry AEMS_EnvBank Attrib::StringKey
     entry AEMS_TrafficBank Attrib::StringKey
-    entry 0xC346F215 Attrib::StringKey
+    entry AEMS_Cairo_Child_Bank Attrib::StringKey
     entry PrintReverbZone EA::Reflection::Bool
-    entry 0xCA31B368 Attrib::StringKey[65535]
+    entry AEMS_animatedobject_DubaiParent_Bank Attrib::StringKey[65535]
     entry 0xCA67EBA0 EA::Reflection::Bool
     entry 0xCE5B38AD Attrib::StringKey
     entry AEMS_PickupsCommonBank Attrib::StringKey
@@ -163,7 +163,7 @@ class audiosystem in vault db reserve 15 {
     entry AEMS_PickupsStream Attrib::StringKey
     entry VoicePool nfs::Audio::PooledVoice[65535]
     entry DefaultSwVoice nfs::Audio::eAemsSwVoiceType
-    entry 0xE3E25C10 Attrib::StringKey
+    entry AEMS_Cairo_Parent_Bank Attrib::StringKey
     entry JitterParams nfs::Audio::JittererParams[65535]
     entry AEMS_animatedobject_CairoChild_Bank Attrib::StringKey[65535]
     entry AEMS_NOSBank Attrib::StringKey
@@ -173,8 +173,8 @@ class audiosystem in vault db reserve 15 {
     entry DisplayTunnelTags EA::Reflection::Bool
     entry AEMS_MiscBank Attrib::StringKey
     entry 0xF723D3C3 EA::Reflection::Float
-    entry 0xF90AB262 Attrib::StringKey
-    entry 0xFA181A98 Attrib::StringKey
+    entry AEMS_Dubai_Parent_Bank Attrib::StringKey
+    entry AEMS_Singapore_Parent_Bank Attrib::StringKey
     entry EnableDefaultHwVoice EA::Reflection::Bool
 }
 class audio_impose_your_world in vault db reserve 1 {
@@ -250,7 +250,7 @@ class aud_moment_strm in vault db reserve 63 {
     layout CanInterupt EA::Reflection::Bool
     layout strmpriority EA::Reflection::Int8
     entry IsPositioned EA::Reflection::Bool
-    entry 0xEF59EC8E eSFXAudio_en_index
+    entry soundfx_index eSFXAudio_en_index
 }
 class aud_stitch_loop in vault db reserve 2 {
     entry stitch STICH_COLLISION_TYPE
@@ -1225,7 +1225,7 @@ class gamemode in vault db reserve 7 {
     entry 0x763B6DF0 EA::Reflection::Float
     entry TeamColors Attrib::Types::Colour[4]
     entry ScoringInterval EA::Reflection::Float
-    entry 0x87B26124 EA::Reflection::Float[65535]
+    entry PositionScores EA::Reflection::Float[65535]
     entry 0xB635666B EA::Reflection::Float
     entry 0xC09F5E1C EA::Reflection::Float
 }
@@ -1246,7 +1246,7 @@ class gameplay in vault db reserve 3840 {
     entry curvetags GCollectionKey[65535]
     entry TunnelTags GCollectionKey[65535]
     entry CarClass GRace::RaceCarClass
-    entry 0x091BA530 EA::Reflection::Bool
+    entry OneDropForAll EA::Reflection::Bool
     entry TutorialRace EA::Reflection::Bool
     entry InitialSpeed EA::Reflection::Float
     entry size EA::Reflection::Float
@@ -1288,7 +1288,7 @@ class gameplay in vault db reserve 3840 {
     entry curve_tags GCollectionKey
     entry NextBinNumber EA::Reflection::Int32
     entry IntroCameraTrack EA::Reflection::Int32
-    entry 0x388E3E8C GCollectionKey[65535]
+    entry PlayerSpawns GCollectionKey[65535]
     entry CopsInRace EA::Reflection::Bool
     entry FlareSpacing EA::Reflection::Float
     entry Radius EA::Reflection::Float
@@ -1383,7 +1383,7 @@ class gameplay in vault db reserve 3840 {
     entry CatchUpSkill EA::Reflection::Text
     entry Player2CarType EA::Reflection::Text
     entry SpeedTrapList GCollectionKey[65535]
-    entry 0x82DB6E06 GCollectionKey
+    entry ForceOpponentStart GCollectionKey
     entry DefaultCamera EA::Reflection::Text
     entry StartTime EA::Reflection::Float
     entry Corners GCollectionKey[65535]
@@ -1515,7 +1515,7 @@ class gameplay in vault db reserve 3840 {
     entry 0xE6CB4BE0 EA::Reflection::Bool
     entry cartype EA::Reflection::Text
     entry MaxOpenWorldHeat EA::Reflection::Float
-    entry 0xEB52A9BA EA::Reflection::Text
+    entry InstructionString EA::Reflection::Text
     entry NumCarsPerRow EA::Reflection::Int32
     entry CarBehavior EA::Reflection::Text
     entry ShortcutType GRace::ShortcutType
@@ -1654,9 +1654,9 @@ class nis_trigger_race_start in vault db reserve 25 {
     entry race_type GRace::Type[65535]
 }
 class nos in vault db reserve 82 {
-    layout 0xABFA8375 EA::Reflection::Float
-    layout 0x3E474129 EA::Reflection::Float
-    layout 0x5AE5AF35 EA::Reflection::Float
+    layout TORQUE_BOOST_LEVEL3 EA::Reflection::Float
+    layout TORQUE_BOOST_LEVEL2 EA::Reflection::Float
+    layout TORQUE_BOOST_LEVEL1 EA::Reflection::Float
     layout TORQUE_BOOST EA::Reflection::Float
     layout RECHARGE_MIN_SPEED EA::Reflection::Float
     layout RECHARGE_MIN EA::Reflection::Float
@@ -2267,7 +2267,7 @@ class simsurface in vault db reserve 99 {
     layout ASSIST_TRACK_CENTER_DIR_APM EA::Reflection::Float[2]
     layout WORLD_FRICTION EA::Reflection::Float
     layout STICK EA::Reflection::Float
-    layout 0x3498EAC0 EA::Reflection::Float
+    layout RUMBLE_AMPLITUDE EA::Reflection::Float
     layout ROLLING_RESISTANCE EA::Reflection::Float
     layout 0xED3B95C0 EA::Reflection::Float
     layout 0x48EF4989 EA::Reflection::Float
@@ -2278,7 +2278,7 @@ class simsurface in vault db reserve 99 {
     layout HEAT_AMOUNT EA::Reflection::Float
     layout GROUND_FRICTION EA::Reflection::Float
     layout DRIVE_GRIP EA::Reflection::Float
-    layout RSNMCHUNK_FERESNAMES EA::Reflection::UInt32
+    layout Aud_Skid_Type EA::Reflection::UInt32
     layout WheelEffectFrequency EA::Reflection::UInt16
     layout WheelEffectIntensity EA::Reflection::UInt8
     entry FFB_SKID FFBWaveRecord[4]

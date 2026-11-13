@@ -1586,7 +1586,7 @@ class simsurface in vault db reserve 117 layoutcount 40 {
     entry CollisionSweetenerSFX Attrib::RefSpec
     entry FFB_SLIP FFBWaveRecord[4]
     entry MATERIAL_STRENGTH EA::Reflection::Float
-    entry RACECOURSE_MINI_NOS RUMBLEFX
+    entry RumbleFX_ID RUMBLEFX
     entry Aud_RoadNoise_TransON FXROADNOISE_TRANSITION
     entry FFB_ROLL FFBWaveRecord[4]
     entry RollFX_ID ROLLFX_LOOP

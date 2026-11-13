@@ -824,8 +824,8 @@ namespace attrib
 			for (uint32_t off = raw.strEOffset; off < raw.strEOffset + raw.strESize;)
 			{
 				const std::string s = br.cstr(off);
-				names_.add(s);
-				binNames_.add(s);
+				names_.addFromData(s);
+				binNames_.addFromData(s);
 				off += uint32_t(s.size()) + 1;
 			}
 		}

@@ -15,8 +15,10 @@
 #include <cfloat>
 #include <cmath>
 #include <deque>
+#include <functional>
 #include <map>
 #include <optional>
+#include <unordered_set>
 
 namespace app
 {
@@ -69,7 +71,9 @@ namespace app
 		Collection* activity = nullptr;
 		Collection* state = nullptr;
 		Collection* handler = nullptr;
-		if (KeyField(*db_, *c, "stateref"))
+		// A handler: what has a stateref, its own or messagehandler's (0 in a new
+		// one that isn't hooked to a state yet; its code can still be written).
+		if (KeyField(*db_, *c, "stateref") || (c->resolve(StringHash32("stateref")) && c->children.empty()))
 		{
 			handler = c;
 			state = db_->findCollection(gp, KeyField(*db_, *c, "stateref"));
@@ -145,31 +149,74 @@ namespace app
 		const KeyNames& names = db_->names();
 		const GameplayModel& m = *gameplay_;
 
-		// Activity templates that have states.
+		// What has a graph: templates with states (theirs or their templates'),
+		// as a tree by template (lapknockout under circuit under basicrace), and
+		// elements that own handlers, under their template.
 		ImGui::AlignTextToFramePadding();
 		ImGui::TextUnformatted("Activity");
 		ImGui::SameLine();
 		ImGui::SetNextItemWidth(ImGui::GetFontSize() * 18);
 		if (ImGui::BeginCombo("##activity", sbActivity_ ? names.format(sbActivity_->key).c_str() : "(choose)", ImGuiComboFlags_HeightLarge))
 		{
-			for (Collection* t : m.templates())
+			if (ImGui::IsWindowAppearing())
 			{
-				if (m.statesOf(t).empty()) continue; // one that only inherits runs its template's graph
-				const size_t n = m.allStatesOf(t).size();
-				ImGui::PushID(t);
-				if (ImGui::Selectable(names.format(t->key).c_str(), t == sbActivity_))
+				sbActivityFilter_.clear();
+				ImGui::SetKeyboardFocusHere();
+			}
+			ImGui::SetNextItemWidth(-FLT_MIN);
+			ImGui::InputTextWithHint("##activityfilter", "filter", &sbActivityFilter_);
+			const std::vector<Collection*> acts = m.graphActivities();
+			const std::unordered_set<const Collection*> listed(acts.begin(), acts.end());
+			std::map<const Collection*, std::vector<Collection*>> under;
+			std::vector<Collection*> roots;
+			for (Collection* a : acts)
+			{
+				const Collection* p = a->parent;
+				while (p && !listed.count(p)) p = p->parent;
+				(p ? under[p] : roots).push_back(a);
+			}
+			const std::string f = Lower(sbActivityFilter_);
+			auto entry = [&](Collection* a, int depth)
+			{
+				const std::string n = names.format(a->key);
+				if (!f.empty() && Lower(n).find(f) == std::string::npos) return;
+				ImGui::PushID(a);
+				const float indent = f.empty() ? float(depth) * ImGui::GetFontSize() : 0.0f; // Indent(0) is a full step
+				if (indent > 0) ImGui::Indent(indent);
+				if (ImGui::Selectable(n.c_str(), a == sbActivity_))
 				{
-					sbActivity_ = t;
+					sbActivity_ = a;
 					sbState_ = stateNamed("initial");
 					sbHandler_ = nullptr;
 					sbPan_ = ImVec2(0, 0);
 				}
 				ImGui::SameLine();
-				ImGui::TextDisabled("%zu states", n);
+				const size_t own = m.statesOf(a).size();
+				std::string what;
+				if (own) what = std::to_string(own) + (own == 1 ? " state" : " states");
+				else if (const std::vector<Collection*> all = m.allStatesOf(a); !all.empty() && m.stateTemplate(all.front()))
+					what = "runs " + names.format(m.stateTemplate(all.front())->key) + "'s";
+				size_t handlers = 0;
+				for (Collection* s : m.allStatesOf(a))
+					for (Collection* h : m.handlersOf(s))
+						handlers += m.handlerOwner(h) == a;
+				if (handlers) what += (what.empty() ? "" : ", ") + std::to_string(handlers) + (handlers == 1 ? " handler" : " handlers");
+				ImGui::TextDisabled("%s", what.c_str());
+				if (indent > 0) ImGui::Unindent(indent);
 				ImGui::PopID();
-			}
+			};
+			std::function<void(Collection*, int)> walk = [&](Collection* a, int depth)
+			{
+				entry(a, depth);
+				if (auto it = under.find(a); it != under.end())
+					for (Collection* kid : it->second) walk(kid, depth + 1);
+			};
+			for (Collection* r : roots) walk(r, 0);
 			ImGui::EndCombo();
 		}
+		if (ImGui::IsItemHovered())
+			ImGui::SetTooltip("An activity runs its own states and its templates' (the race modes under basicrace run basicrace's),\n"
+							  "and the handlers its own, its templates' or its CollectionName's.");
 		ImGui::SameLine();
 		ImGui::BeginDisabled(!sbActivity_);
 		if (ImGui::Button("New State...")) request(Pending::NewState);
@@ -191,7 +238,19 @@ namespace app
 		}
 		if (!sbActivity_)
 		{
-			ImGui::TextDisabled("Choose an activity template. Its states and their message handlers make up the graph.");
+			if (sbHandler_)
+			{
+				// A handler not hooked to an activity's state yet (made from
+				// messagehandler): its code, and how it joins a graph.
+				ImGui::TextDisabled("%s has no handler_owner or stateref yet: set them in the inspector to see it in its activity's graph.",
+									names.format(sbHandler_->key).c_str());
+				ImGui::Separator();
+				drawCodeEditor();
+			}
+			else
+			{
+				ImGui::TextDisabled("Choose an activity. Its states and their message handlers make up the graph.");
+			}
 			ImGui::End();
 			return;
 		}
@@ -233,7 +292,7 @@ namespace app
 		for (size_t i = 0; i < states.size(); ++i) index[states[i]] = i;
 		std::vector<Edge> edges;
 		for (size_t i = 0; i < states.size(); ++i)
-			for (Collection* h : m.handlersOf(states[i]))
+			for (Collection* h : m.handlersOf(states[i], sbActivity_))
 				for (uint32_t k : KeyList(*db_, *h, "transitionlist"))
 					if (Collection* t = db_->findCollection(m.cls()->key, k); t && index.count(t))
 					{
@@ -351,10 +410,10 @@ namespace app
 			if (ImGui::IsMouseClicked(ImGuiMouseButton_Middle)) openInNewTab(s, false);
 			const Collection* t = m.stateTemplate(s);
 			if (t && t != sbActivity_)
-				ImGui::SetTooltip("%s\n%zu handler(s)\nA state of %s, which %s inherits", names.format(s->key).c_str(), m.handlersOf(s).size(),
-								  names.format(t->key).c_str(), names.format(sbActivity_->key).c_str());
+				ImGui::SetTooltip("%s\n%zu handler(s)\nA state of %s, which %s inherits", names.format(s->key).c_str(),
+								  m.handlersOf(s, sbActivity_).size(), names.format(t->key).c_str(), names.format(sbActivity_->key).c_str());
 			else
-				ImGui::SetTooltip("%s\n%zu handler(s)", names.format(s->key).c_str(), m.handlersOf(s).size());
+				ImGui::SetTooltip("%s\n%zu handler(s)", names.format(s->key).c_str(), m.handlersOf(s, sbActivity_).size());
 		}
 	}
 
@@ -371,7 +430,14 @@ namespace app
 		ImGui::SameLine();
 		if (ImGui::TextLink("open")) select(sbState_, true);
 		linkClicks(sbState_);
-		const std::vector<Collection*> handlers = gameplay_->handlersOf(sbState_);
+		// The handlers that run while this activity runs the state; the state's
+		// others belong to other activities (lapknockout's, driftrace's, a race's).
+		const std::vector<Collection*> handlers = gameplay_->handlersOf(sbState_, sbActivity_);
+		std::vector<Collection*> others;
+		for (Collection* hd : gameplay_->handlersOf(sbState_))
+			if (Collection* o = gameplay_->handlerOwner(hd); o && !gameplay_->handlerCountsFor(hd, sbActivity_) &&
+				std::find(others.begin(), others.end(), o) == others.end())
+				others.push_back(o);
 		const float h = std::min(ImGui::GetFrameHeightWithSpacing() * float(handlers.size() + 1.5f), ImGui::GetContentRegionAvail().y * 0.35f);
 		if (ImGui::BeginTable("##handlers", 3,
 							  ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable,
@@ -402,10 +468,30 @@ namespace app
 				ImGui::TableSetColumnIndex(2);
 				const std::string n = names.format(hd->key);
 				const size_t at = n.rfind("handler_");
-				ImGui::TextDisabled("%s", at == std::string::npos ? n.c_str() : n.c_str() + at);
+				// A template's handler (basicrace's, in lapknockout) says whose it is.
+				const Collection* owner = gameplay_->handlerOwner(hd);
+				const std::string whose = owner && owner != sbActivity_ ? names.format(owner->key) + "'s " : "";
+				ImGui::TextDisabled("%s%s", whose.c_str(), at == std::string::npos ? n.c_str() : n.c_str() + at);
 				ImGui::PopID();
 			}
 			ImGui::EndTable();
+		}
+		if (!others.empty())
+		{
+			ImGui::AlignTextToFramePadding();
+			ImGui::TextDisabled("Also handled in:");
+			for (Collection* o : others)
+			{
+				ImGui::SameLine();
+				ImGui::PushID(o);
+				if (ImGui::TextLink(names.format(o->key).c_str()))
+				{
+					sbActivity_ = o;
+					sbHandler_ = nullptr;
+				}
+				if (ImGui::IsItemHovered()) ImGui::SetTooltip("Show the state as %s runs it, with its handlers", names.format(o->key).c_str());
+				ImGui::PopID();
+			}
 		}
 	}
 

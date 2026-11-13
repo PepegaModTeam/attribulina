@@ -406,7 +406,14 @@ namespace app
 				lower_ = LowerAscii(query);
 				hasHex_ = ParseHex(query, hex_);
 				// "0xBDFC" is part of a name shown as its hash ("0xBDFC670F").
-				hexText_ = lower_.size() > 2 && lower_[0] == '0' && lower_[1] == 'x';
+				const bool hexLike = lower_.size() >= 2 && lower_[0] == '0' && lower_[1] == 'x';
+				hexText_ = hexLike && lower_.size() > 2;
+				// As bStringHash, 0x... finds bStringHash values only (by number,
+				// or the 0x... an unnamed one shows: "0x" alone lists those), and
+				// text and names whose bStringHash it is. A StringHash32 key shown
+				// as 0x..., and every 1 a 0x1 is, buried them.
+				binOnly_ = hexLike && hexHash_ == SearchHash::BinHash;
+				if (binOnly_) hexText_ = true;
 				double num = 0;
 				if (ParseNumber(query, num))
 				{
@@ -428,6 +435,7 @@ namespace app
 			bool operator()(const DataBlock& b, uint32_t off, const ValueType& vt, Endian e)
 			{
 				const uint8_t* p = b.bytes.data() + off;
+				if (binOnly_) return binOnly(b, off, vt, e);
 				switch (vt.kind)
 				{
 					case TypeKind::Bool: return ReadInteger(b, off, vt, e) ? isTrue_ : isFalse_;
@@ -503,6 +511,11 @@ namespace app
 			// A collection's own name, as a key value is matched.
 			bool ownName(const Collection& c) const
 			{
+				if (binOnly_)
+				{
+					const std::string* n = db_.names().find(c.key);
+					return n && named(*n);
+				}
 				return key(db_.names(), c.key, hash_);
 			}
 
@@ -513,12 +526,54 @@ namespace app
 			{
 				const uint32_t v = c.parentKey;
 				if (!v) return false;
+				if (binOnly_)
+				{
+					const std::string* n = db_.names().find(v);
+					return n && named(*n);
+				}
 				if (v == hash_ || (hasHex_ && v == hex_)) return true;
 				const std::string* n = db_.names().find(v);
 				return n && (EqualsCI(*n, lower_) || named(*n));
 			}
 
 		private:
+			// binOnly_: a bStringHash value by its number or as shown, and any
+			// text or name by its bStringHash.
+			bool binOnly(const DataBlock& b, uint32_t off, const ValueType& vt, Endian e) const
+			{
+				const uint8_t* p = b.bytes.data() + off;
+				auto nameOf = [&](const KeyNames& dict, uint32_t v) { const std::string* n = dict.find(v); return n && named(*n); };
+				switch (vt.kind)
+				{
+					case TypeKind::BinKey:
+					{
+						const uint32_t v = load32(p, e);
+						if (hasHex_ && v == hex_) return true;
+						if (const std::string* n = db_.binNames().find(v)) return plain(*n) || named(*n);
+						// 0 and 0xFFFFFFFF (the empty name's) are no value.
+						return v != 0 && v != 0xFFFFFFFFu && shownHex(v);
+					}
+					case TypeKind::Text:
+					{
+						const PtrSlot* s = b.ptrAt(off);
+						return s && named(s->text);
+					}
+					case TypeKind::StringKey:
+					{
+						const PtrSlot* s = b.ptrAt(off + StringKeyAt(vt.size).text);
+						return s && named(s->text);
+					}
+					case TypeKind::Key: return nameOf(db_.names(), LoadKey(db_, p, vt.size, e));
+					case TypeKind::ClassRefSpec: return nameOf(db_.names(), load32(p, e));
+					case TypeKind::RefSpec:
+					{
+						const RefSpecLayout rl = RefSpecAt(vt.size);
+						return nameOf(db_.names(), LoadKey(db_, p + rl.col, rl.keySize, e));
+					}
+					default: return false;
+				}
+			}
+
 			// Text as shown: it contains (or is) the query.
 			bool plain(std::string_view s) const
 			{
@@ -528,7 +583,7 @@ namespace app
 			// A 0x... query is also the hash of the text it finds.
 			bool named(std::string_view s) const
 			{
-				return hasHex_ && (hexHash_ == SearchHash::BinHash ? BinHash(s) : StringHash32(s)) == hex_;
+				return hasHex_ && !s.empty() && (hexHash_ == SearchHash::BinHash ? BinHash(s) : StringHash32(s)) == hex_;
 			}
 
 			bool text(std::string_view s) const
@@ -595,7 +650,8 @@ namespace app
 			bool whole_;
 			SearchHash hexHash_;
 			std::string lower_;
-			bool hasHex_ = false, hexText_ = false, hasNum_ = false, hasInt_ = false, isTrue_ = false, isFalse_ = false, hasSlash_ = false;
+			bool hasHex_ = false, hexText_ = false, binOnly_ = false, hasNum_ = false, hasInt_ = false, isTrue_ = false, isFalse_ = false,
+				 hasSlash_ = false;
 			uint32_t hex_ = 0, hash_ = 0, binHash_ = 0;
 			double num_ = 0;
 			int64_t int_ = 0;
@@ -787,6 +843,69 @@ namespace app
 
 	} // namespace
 
+	namespace
+	{
+		// Classes, then each class's collections by name, whose name matches.
+		void SearchNames(const Database& db, const SearchQuery& q, const std::string& text, SearchResult& r)
+		{
+			const KeyNames& names = db.names();
+			const std::string lower = LowerAscii(text);
+			uint32_t hex = 0;
+			const bool isHex = ParseHex(text, hex);
+			const bool hexLike = lower.size() >= 2 && lower[0] == '0' && lower[1] == 'x';
+			auto matches = [&](uint32_t key)
+			{
+				if (lower.empty()) return true; // every collection of q.inClass
+				if (isHex && key == hex) return true;
+				if (const std::string* n = names.find(key))
+				{
+					if (q.wholeValue ? EqualsCI(*n, lower) : ContainsCI(*n, lower)) return true;
+					return isHex && (q.hexHash == SearchHash::BinHash ? BinHash(*n) : StringHash32(*n)) == hex;
+				}
+				// A name nobody knows shows as its hash.
+				if (!hexLike) return false;
+				char b[16];
+				std::snprintf(b, sizeof(b), "0x%08X", key);
+				return q.wholeValue ? EqualsCI(b, lower) : ContainsCI(b, lower);
+			};
+			auto full = [&]
+			{
+				if (r.hits.size() < q.limit) return false;
+				r.truncated = true;
+				return true;
+			};
+			for (const ClassDef* cls : SortedClasses(db, q.inClass))
+			{
+				if (!lower.empty() && matches(cls->key))
+				{
+					if (full()) return;
+					SearchHit h;
+					h.classKey = cls->key;
+					h.where = "(class)";
+					h.value = std::to_string(cls->collections.size()) + (cls->collections.size() == 1 ? " collection" : " collections");
+					r.hits.push_back(std::move(h));
+				}
+				std::vector<std::pair<std::string, const Collection*>> found;
+				for (const Collection* c : cls->collections)
+				{
+					++r.collectionsSearched;
+					if (matches(c->key)) found.emplace_back(names.format(c->key), c);
+				}
+				std::stable_sort(found.begin(), found.end(), [](const auto& a, const auto& b) { return LessCI(a.first, b.first); });
+				for (auto& [name, c] : found)
+				{
+					if (full()) return;
+					SearchHit h;
+					h.classKey = cls->key;
+					h.key = c->key;
+					h.where = "(collection)";
+					if (c->parentKey) h.value = names.format(c->parentKey);
+					r.hits.push_back(std::move(h));
+				}
+			}
+		}
+	} // namespace
+
 	SearchResult RunSearch(const Database& db, const SearchQuery& q)
 	{
 		SearchResult r;
@@ -798,14 +917,16 @@ namespace app
 		}
 		const std::string text = Trim(q.text);
 
-		if (q.mode == SearchMode::Fields)
+		if (q.mode == SearchMode::Fields || q.mode == SearchMode::Names)
 		{
-			if (text.empty())
+			// Names in one class needs no text: every collection of it.
+			if (text.empty() && !(q.mode == SearchMode::Names && q.inClass))
 			{
-				r.error = "Type something to search for";
+				r.error = q.mode == SearchMode::Names ? "Type part of a name, or pick a class to list its collections" : "Type something to search for";
 				return r;
 			}
-			SearchFields(db, q, text, r);
+			if (q.mode == SearchMode::Fields) SearchFields(db, q, text, r);
+			else SearchNames(db, q, text, r);
 			return r;
 		}
 

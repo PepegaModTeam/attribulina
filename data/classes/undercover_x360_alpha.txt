@@ -511,7 +511,7 @@ class car_part in vault db reserve 330 {
     layout kit_min EA::Reflection::Int32
     layout kit_max EA::Reflection::Int32
     entry fe_data Attrib::RefSpec
-    entry 0x3B2F062D CAR_SLOT_ID[65535]
+    entry displacedParts CAR_SLOT_ID[65535]
     entry windtunnel Attrib::RefSpec
     entry physics Attrib::RefSpec[65535]
     entry isStandardDef EA::Reflection::Bool
@@ -1423,7 +1423,7 @@ class frontend in vault db reserve 149 {
     layout Cost EA::Reflection::Int32
     layout UnlockedAt EA::Reflection::UInt8
     entry p_tires_2 type_bStringHash[65535]
-    entry 0x0D39C2F2 EA::Reflection::UInt8[4]
+    entry damageColor26_50 EA::Reflection::UInt8[4]
     entry p_induction_1 type_bStringHash[65535]
     entry damageColor100 EA::Reflection::UInt8[4]
     entry p_tires_4 type_bStringHash[65535]
@@ -1434,16 +1434,16 @@ class frontend in vault db reserve 149 {
     entry hud3DDamageFlashInterval EA::Reflection::Float
     entry p_suspension_1 type_bStringHash[65535]
     entry flashingZone EA::Reflection::Float
-    entry 0x446EC692 EA::Reflection::UInt8[4]
+    entry damageColor1_25 EA::Reflection::UInt8[4]
     entry p_induction_2 type_bStringHash[65535]
-    entry 0x4D5C1B09 EA::Reflection::UInt8[4]
+    entry damageColor76_99 EA::Reflection::UInt8[4]
     entry p_engine_3 type_bStringHash[65535]
     entry p_engine_1 type_bStringHash[65535]
     entry winningZone EA::Reflection::Float
     entry p_brakes_2 type_bStringHash[65535]
     entry FallBehindPercFlasher EA::Reflection::Float
     entry p_transmission_2 type_bStringHash[65535]
-    entry 0x7DDEDA93 EA::Reflection::UInt8[4]
+    entry damageColor51_75 EA::Reflection::UInt8[4]
     entry p_nitrous_1 type_bStringHash[65535]
     entry p_engine_4 type_bStringHash[65535]
     entry slow_increment EA::Reflection::Int16
@@ -2100,7 +2100,7 @@ class nis in vault db reserve 266 {
     entry isSkippable EA::Reflection::Bool
     entry postNISTransition NIS::EndTransition
     entry isMultiplayerCapable EA::Reflection::Bool
-    entry 0xCA435DEC EA::Reflection::Bool
+    entry isPlayerUnderAIControl EA::Reflection::Bool
     entry Chooser_FinishOutcome NIS::eFinishOutcome
     entry isAnimSceneOnlyInICE EA::Reflection::Bool
     entry Chooser_BustedLevel NIS::eBustedLevel
@@ -2604,7 +2604,7 @@ class shader_parameters in vault db reserve 77 {
     entry uv_scroll Attrib::Types::Vector4
     entry AO_factors Attrib::Types::Vector4
     entry specular_power EA::Reflection::Float
-    entry PresetrideGarages Attrib::Types::Vector4
+    entry fresnel_values2 Attrib::Types::Vector4
     entry dirt_specular_intensity EA::Reflection::Float
     entry specular_power1 EA::Reflection::Float
     entry diffuse_intensity EA::Reflection::Float
@@ -2617,7 +2617,7 @@ class shader_parameters in vault db reserve 77 {
     entry cvUVScroll Attrib::Types::Vector4
     entry diffuse_intensity2 EA::Reflection::Float
     entry reflection_offset Attrib::Types::Vector4
-    entry 0xB7D1A7BD Attrib::Types::Vector4
+    entry char_hemi_light_colour Attrib::Types::Vector4
     entry rock_diffuse_intensity EA::Reflection::Float
     entry dirt_specular_color Attrib::Types::Vector4
     entry dirt_specular_power EA::Reflection::Float
@@ -2636,7 +2636,7 @@ class shader_parameters in vault db reserve 77 {
     entry debug_gray_specular_tex EA::Reflection::Float
     entry diffuse_intensity1 EA::Reflection::Float
     entry grass_ambient_intensity EA::Reflection::Float
-    entry 0xFFC503A5 Attrib::Types::Vector4
+    entry test_numbers Attrib::Types::Vector4
 }
 class shader_parameters_car_materials in vault db reserve 350 {
     entry DiffuseFlakes EA::Reflection::Float
@@ -2713,7 +2713,7 @@ class simsurface in vault db reserve 107 {
     entry CollisionSweetenerSFX Attrib::RefSpec
     entry FFB_SLIP FFBWaveRecord[4]
     entry MATERIAL_STRENGTH EA::Reflection::Float
-    entry RACECOURSE_MINI_NOS RUMBLEFX
+    entry RumbleFX_ID RUMBLEFX
     entry FFB_ROLL FFBWaveRecord[4]
     entry RollFX_ID ROLLFX_LOOP
     entry RugosityFrequency EA::Reflection::Float
@@ -3006,13 +3006,13 @@ class trafficpattern in vault db reserve 9 {
 }
 class traffic_engine in vault db reserve 9 {
     entry SmallRpmEnd EA::Reflection::Float
-    entry 0x154FC21E Attrib::RefSpec[65535]
+    entry TrailerList Attrib::RefSpec[65535]
     entry BandAidFile Attrib::StringKey
     entry SmallRpmStart EA::Reflection::Float
     entry SpeedDeltaThreshold EA::Reflection::Float
     entry LargeRpmEnd EA::Reflection::Float
-    entry 0x84A5B763 Attrib::RefSpec[65535]
-    entry 0xA55134FB Attrib::RefSpec[65535]
+    entry TractorList Attrib::RefSpec[65535]
+    entry CarList Attrib::RefSpec[65535]
     entry LargeRpmStart EA::Reflection::Float
 }
 class traffic_horn in vault db reserve 14 {

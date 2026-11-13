@@ -1,6 +1,6 @@
-// The Search panel: values, field names and references across the whole
-// database (Search.h), with hits that open their collection and point at the
-// field.
+// The Search panel: values, field names, class and collection names and
+// references across the whole database (Search.h), with hits that open their
+// collection and point at the field, and that copy one at a time or together.
 
 #include "App.h"
 
@@ -8,6 +8,7 @@
 #include "imgui_internal.h"
 #include "imgui_stdlib.h"
 
+#include <algorithm>
 #include <cfloat>
 #include <chrono>
 
@@ -26,11 +27,16 @@ namespace app
 		{
 			kCollection, kField, kValue
 		};
+		// A hit's own name: its collection's, or a class hit's (key 0) class's.
+		std::string NameOf(const KeyNames& names, const SearchHit& h)
+		{
+			return names.format(h.key ? h.key : h.classKey);
+		}
 		std::string Cell(const KeyNames& names, const SearchHit& h, int column)
 		{
 			switch (column)
 			{
-				case kCollection: return names.format(h.classKey) + "/" + names.format(h.key);
+				case kCollection: return h.key ? names.format(h.classKey) + "/" + names.format(h.key) : names.format(h.classKey);
 				case kField: return h.where;
 				default: return h.value;
 			}
@@ -41,11 +47,19 @@ namespace app
 		{
 			return Cell(names, h, kCollection) + "\t" + Cell(names, h, kField) + "\t" + Cell(names, h, kValue);
 		}
-		std::string Lines(const KeyNames& names, const std::vector<SearchHit>& hits, int column = -1)
+		// Every hit's line (`column` -1), the column names first unless `header`
+		// is off, or one column of each.
+		std::string Lines(const KeyNames& names, const std::vector<SearchHit>& hits, int column = -1, bool header = true)
 		{
 			std::string out;
-			if (column < 0) out = "Collection\tField\tValue\n";
+			if (column < 0 && header) out = "Collection\tField\tValue\n";
 			for (const SearchHit& h : hits) out += (column < 0 ? Line(names, h) : Cell(names, h, column)) + "\n";
+			return out;
+		}
+		std::string NameLines(const KeyNames& names, const std::vector<SearchHit>& hits)
+		{
+			std::string out;
+			for (const SearchHit& h : hits) out += NameOf(names, h) + "\n";
 			return out;
 		}
 		// A value cell on its own: a text without the quotes it is shown in.
@@ -94,6 +108,8 @@ namespace app
 			}
 		}
 		const auto t0 = std::chrono::steady_clock::now();
+		searchPicked_.clear();
+		searchAnchor_ = -1;
 		searchResult_ = RunSearch(*db_, q);
 		searchMs_ = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
 	}
@@ -125,14 +141,18 @@ namespace app
 		const float em = ImGui::GetFontSize();
 
 		// Mode, query, Search.
-		int mode = int(searchQuery_.mode);
+		const SearchMode modes[] = { SearchMode::Values, SearchMode::Names, SearchMode::Fields, SearchMode::References };
+		int mode = int(std::find(std::begin(modes), std::end(modes), searchQuery_.mode) - std::begin(modes));
 		ImGui::SetNextItemWidth(em * 8);
-		if (ImGui::Combo("##mode", &mode, "Values\0Field names\0References to\0")) searchQuery_.mode = SearchMode(mode);
+		if (ImGui::Combo("##mode", &mode, "Values\0Names\0Field names\0References to\0")) searchQuery_.mode = modes[mode];
 		if (ImGui::IsItemHovered())
-			ImGui::SetTooltip("Values: text, names, numbers or 0x... in any field.\nField names: collections that set a field.\n"
+			ImGui::SetTooltip("Values: text, names, numbers or 0x... in any field.\n"
+							  "Names: classes and collections by name. Ctrl+click and Shift+click pick several hits to copy.\n"
+							  "Field names: collections that set a field.\n"
 							  "References to: what points at a collection (class/collection) or a class.");
 		ImGui::SameLine();
 		const char* hint = searchQuery_.mode == SearchMode::Values ? "a value: text, a name, a number or 0x..."
+			: searchQuery_.mode == SearchMode::Names ? (searchQuery_.inClass ? "part of a name, or nothing for every collection" : "part of a class or collection name, or 0x...")
 			: searchQuery_.mode == SearchMode::Fields ? "part of a field name"
 			: "class/collection, or a class";
 		ImGui::SetNextItemWidth(-(ImGui::CalcTextSize("Search").x + ImGui::GetStyle().FramePadding.x * 2 + ImGui::GetStyle().ItemSpacing.x));
@@ -183,10 +203,12 @@ namespace app
 			ImGui::SetNextItemWidth(em * 10);
 			if (ImGui::Combo("##hash", &hash, "0x is StringHash32\0" "0x is bStringHash\0")) searchQuery_.hexHash = SearchHash(hash);
 			if (ImGui::IsItemHovered())
-				ImGui::SetTooltip("A 0x... number finds what holds that number, and the names and text it is the hash of.\n"
-								  "StringHash32 hashes keys and collection and field names, and 0xBD014895 is HELLO's.\n"
-								  "bStringHash hashes type_bStringHash values, and 0x02E8DF33 is HELLO's.\n"
-								  "A name nobody knows shows as its hash, and part of the hash finds it too, as 0xBD01 does.");
+				ImGui::SetTooltip("StringHash32 hashes keys and class, collection and field names, and 0xBD014895 is HELLO's.\n"
+								  "A 0x... number then finds what holds that number, and the names and text it is the hash of.\n"
+								  "bStringHash hashes type_bStringHash values, and 0x02E8DF33 is HELLO's. A 0x... then finds\n"
+								  "only type_bStringHash values, by number, and the names and text it is the bStringHash of.\n"
+								  "A name nobody knows shows as its hash, and part of the hash finds it too, as 0xBD01 does.\n"
+								  "So 0x alone, as bStringHash, lists the type_bStringHash values no name is known for.");
 		}
 		ImGui::SameLine();
 		const SearchResult& r = searchResult_;
@@ -212,7 +234,8 @@ namespace app
 			ImGui::TextWrapped("Defined in %s", defs.c_str());
 		}
 
-		// Hits: click opens the collection at the field, middle-click a background tab.
+		// Hits: click opens the collection at the field, middle-click or Ctrl+Enter a
+		// background tab; Ctrl+click and Shift+click pick hits to copy together.
 		const ImGuiTableFlags tf = ImGuiTableFlags_Resizable | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV |
 			ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingStretchProp;
 		if (!r.hits.empty() && ImGui::BeginTable("##hits", 3, tf))
@@ -223,35 +246,83 @@ namespace app
 			ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch, 0.3f);
 			ImGui::TableHeadersRow();
 			std::optional<size_t> open, refsOf;
+			std::optional<uint32_t> classOf;
 			bool openInTab = false;
 			auto copy = [](const std::string& text) { ImGui::SetClipboardText(text.c_str()); };
+			// Hits picked together (Ctrl+click, Shift+click, Ctrl+A), in table order.
+			std::vector<bool>& pickedHits = searchPicked_;
+			pickedHits.resize(r.hits.size());
+			auto picked = [&]
+			{
+				std::vector<SearchHit> v;
+				for (size_t i = 0; i < r.hits.size(); ++i)
+					if (pickedHits[i]) v.push_back(r.hits[i]);
+				return v;
+			};
+			const size_t pickedCount = size_t(std::count(pickedHits.begin(), pickedHits.end(), true));
+			if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && !ImGui::GetIO().WantTextInput)
+			{
+				if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_A)) pickedHits.assign(r.hits.size(), true);
+				if (ImGui::Shortcut(ImGuiKey_Escape)) pickedHits.assign(r.hits.size(), false);
+			}
 			ImGuiListClipper clip;
 			clip.Begin(int(r.hits.size()));
 			while (clip.Step())
 				for (int i = clip.DisplayStart; i < clip.DisplayEnd; ++i)
 				{
 					const SearchHit& h = r.hits[size_t(i)];
-					Collection* c = db_->findCollection(h.classKey, h.key);
+					Collection* c = h.key ? db_->findCollection(h.classKey, h.key) : nullptr;
+					const bool isClass = !h.key; // Names: the class itself
+					const bool gone = isClass ? !db_->findClass(h.classKey) : !c;
 					ImGui::TableNextRow();
 					ImGui::TableSetColumnIndex(0);
 					ImGui::PushID(i);
-					const std::string label = names.format(h.classKey) + "/" + names.format(h.key);
+					const std::string label = Cell(names, h, kCollection);
 					// A hit whose collection is gone (unloaded) is grey, not disabled: a
 					// disabled item never opens its menu, and its text can still be copied.
-					if (!c) ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-					if (ImGui::Selectable(label.c_str(), c && c == selected_, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap) && c)
+					if (gone) ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+					const bool isPicked = pickedHits[size_t(i)];
+					const ImGuiIO& io = ImGui::GetIO();
+					const bool pressed = ImGui::Selectable(label.c_str(), isPicked || (c && c == selected_),
+														   ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap);
+					const bool clicked = ImGui::IsItemClicked(ImGuiMouseButton_Left);
+					if (pressed && !io.KeyCtrl && !io.KeyShift)
 					{
-						open = size_t(i);
-						openInTab = ImGui::GetIO().KeyCtrl;
+						// A plain click picks it alone and opens it.
+						pickedHits.assign(r.hits.size(), false);
+						pickedHits[size_t(i)] = true;
+						searchAnchor_ = i;
+						if (isClass) classOf = h.classKey;
+						else if (!gone) open = size_t(i);
 					}
-					if (!c) ImGui::PopStyleColor();
+					else if (clicked && io.KeyShift)
+					{
+						// Shift: every hit from the last one clicked to this one.
+						const int from = searchAnchor_ >= 0 && searchAnchor_ < int(r.hits.size()) ? searchAnchor_ : i;
+						if (!io.KeyCtrl) pickedHits.assign(r.hits.size(), false);
+						for (int k = std::min(from, i); k <= std::max(from, i); ++k) pickedHits[size_t(k)] = true;
+					}
+					else if (clicked && io.KeyCtrl)
+					{
+						// Ctrl: this one in or out.
+						pickedHits[size_t(i)] = !isPicked;
+						searchAnchor_ = i;
+					}
+					else if (pressed && io.KeyCtrl && c)
+					{
+						// Ctrl+Enter: a background tab.
+						open = size_t(i);
+						openInTab = true;
+					}
+					if (gone) ImGui::PopStyleColor();
 					if (c && ImGui::IsItemClicked(ImGuiMouseButton_Middle))
 					{
 						open = size_t(i);
 						openInTab = true;
 					}
-					if (ImGui::IsItemFocused() && !ImGui::GetIO().WantTextInput && ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_C, ImGuiInputFlags_RouteFocused))
-						copy(Line(names, h));
+					const bool several = isPicked && pickedCount > 1;
+					if (ImGui::IsItemFocused() && !io.WantTextInput && ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_C, ImGuiInputFlags_RouteFocused))
+						copy(several ? Lines(names, picked(), -1, false) : Line(names, h));
 					if (ImGui::BeginPopupContextItem())
 					{
 						ImGui::BeginDisabled(!c);
@@ -264,12 +335,24 @@ namespace app
 						if (ImGui::MenuItem("Find References to It")) refsOf = size_t(i);
 						ImGui::EndDisabled();
 						ImGui::Separator();
-						if (ImGui::MenuItem("Copy Line", "Ctrl+C")) copy(Line(names, h));
+						if (several)
+						{
+							const std::vector<SearchHit> sel = picked();
+							const std::string n = std::to_string(sel.size());
+							if (ImGui::MenuItem(("Copy " + n + " Names").c_str())) copy(NameLines(names, sel));
+							if (ImGui::IsItemHovered()) ImGui::SetTooltip("The names of the hits picked, one per line");
+							if (ImGui::MenuItem(("Copy " + n + " Collections").c_str())) copy(Lines(names, sel, kCollection));
+							if (ImGui::MenuItem(("Copy " + n + " Lines").c_str(), "Ctrl+C"))
+								copy(Lines(names, sel, -1, false));
+							if (ImGui::IsItemHovered()) ImGui::SetTooltip("Collection, field and value of each, split by tabs");
+							ImGui::Separator();
+						}
+						if (ImGui::MenuItem("Copy Line", several ? "" : "Ctrl+C")) copy(Line(names, h));
 						if (ImGui::IsItemHovered()) ImGui::SetTooltip("Collection, field and value, split by tabs");
 						if (ImGui::MenuItem("Copy Collection")) copy(Cell(names, h, kCollection));
 						if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", label.c_str());
-						if (ImGui::MenuItem("Copy Name")) copy(names.format(h.key));
-						if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", names.format(h.key).c_str());
+						if (ImGui::MenuItem("Copy Name")) copy(NameOf(names, h));
+						if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", NameOf(names, h).c_str());
 						if (ImGui::MenuItem("Copy Field")) copy(h.where);
 						if (ImGui::MenuItem("Copy Value")) copy(Unquoted(h.value));
 						ImGui::Separator();
@@ -277,6 +360,8 @@ namespace app
 						{
 							// Every hit's, one per line, as the table lists them.
 							if (ImGui::MenuItem("Collection")) copy(Lines(names, r.hits, kCollection));
+							if (ImGui::MenuItem("Name")) copy(NameLines(names, r.hits));
+							if (ImGui::IsItemHovered()) ImGui::SetTooltip("The collection's name without its class (a class hit's class)");
 							if (ImGui::MenuItem("Field")) copy(Lines(names, r.hits, kField));
 							if (ImGui::MenuItem("Value")) copy(Lines(names, r.hits, kValue));
 							ImGui::EndMenu();
@@ -294,7 +379,11 @@ namespace app
 					ImGui::TextUnformatted(h.value.c_str());
 				}
 			ImGui::EndTable();
-			if (refsOf)
+			if (classOf)
+			{
+				if (ClassDef* cls = db_->findClass(*classOf)) revealClass(cls);
+			}
+			else if (refsOf)
 			{
 				const SearchHit h = r.hits[*refsOf];
 				findReferences(h.classKey, h.key);

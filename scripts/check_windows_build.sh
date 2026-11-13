@@ -58,5 +58,5 @@ done
 echo "OK: $OUT/Attribulina.exe"
 
 "$ZIG" c++ -target x86_64-windows-gnu -municode "$OUT"/src_core_*.o "$OUT"/external_lua50_*.o "$OUT"/external_lua51_*.o "$OUT"/src_lzcompress_*.o \
-    "$OUT"/cli/*.o -o "$OUT/attribcli.exe" > "$OUT/link_cli.log" 2>&1 || { grep -E "error" "$OUT/link_cli.log" | grep -v "warning:" | head -20; exit 1; }
+    "$OUT"/cli/*.o -lshell32 -lole32 -o "$OUT/attribcli.exe" > "$OUT/link_cli.log" 2>&1 || { grep -E "error" "$OUT/link_cli.log" | grep -v "warning:" | head -20; exit 1; }
 echo "OK: $OUT/attribcli.exe"

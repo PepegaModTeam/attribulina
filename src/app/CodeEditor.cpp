@@ -1049,6 +1049,22 @@ namespace app
 
 		ImGuiWindow* parent = ImGui::GetCurrentWindow();
 		const ImGuiID id = parent->GetID(label);
+		if (newDocument_)
+		{
+			// The box shows another document now (another handler, an nfsms
+			// file's tab). An active InputText keeps its own copy of the text,
+			// and one that just lost the keyboard hands its last text to the
+			// next box of its id: either wrote the last document over this one.
+			// The box starts again on this text, with the keyboard if it had it.
+			newDocument_ = false;
+			if (g.ActiveId == id)
+			{
+				ImGui::ClearActiveID();
+				focusNext_ = true;
+			}
+			if (g.InputTextDeactivatedState.ID == id) g.InputTextDeactivatedState.ID = 0;
+			if (g.DeactivatedItemData.ID == id) g.DeactivatedItemData.ID = 0;
+		}
 		// The InputText's child window, where its text would have been drawn (as
 		// of the last frame until the InputText is drawn).
 		char name[512];

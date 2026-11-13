@@ -546,22 +546,21 @@ namespace app
 				log(LogLevel::Warning, std::string("Key names: ") + e.what());
 			}
 		}
-		// bStringHash name lists (data/bin_keys/*.txt), for type_bStringHash values.
-		std::error_code ec;
-		size_t binCount = 0;
-		for (const auto& e : fs::directory_iterator(FromUtf8(host_.executableDirectory()) / "data" / "bin_keys", ec))
+		// bStringHash names for type_bStringHash values: every game's list,
+		// merged into one file (scripts/merge_bin_keys.py).
+		const fs::path binKeys = FromUtf8(host_.executableDirectory()) / "data" / "bin_keys.txt";
+		if (std::error_code ec; fs::exists(binKeys, ec))
 		{
-			if (!e.is_regular_file(ec) || ToLower(ToUtf8(e.path().extension())) != ".txt") continue;
 			try
 			{
-				binCount += db_->binNames().loadFile(ToUtf8(e.path()));
+				const size_t n = db_->binNames().loadFile(ToUtf8(binKeys));
+				log(LogLevel::Info, "Loaded " + std::to_string(n) + " bStringHash names from data/bin_keys.txt");
 			}
 			catch (const std::exception& ex)
 			{
 				log(LogLevel::Warning, std::string("bStringHash names: ") + ex.what());
 			}
 		}
-		if (binCount) log(LogLevel::Info, "Loaded " + std::to_string(binCount) + " bStringHash names from data/bin_keys");
 	}
 
 	bool App::loadKeyNames(const std::string& path)
@@ -1260,6 +1259,7 @@ namespace app
 		tabs_.clear();
 		activeTab_ = 0;
 		reveal_.clear();
+		scrollToClass_ = nullptr;
 		pendingTarget_ = nullptr;
 		pendingClass_ = nullptr;
 		pendingVault_ = nullptr;
@@ -1323,6 +1323,14 @@ namespace app
 		}
 	}
 
+	void App::revealClass(ClassDef* cls)
+	{
+		reveal_.clear();
+		reveal_.insert(cls);
+		scrollToClass_ = cls;
+		revealIn_ = explorerTabRequest_ = 1;
+	}
+
 	void App::openInNewTab(Collection* c, bool activate)
 	{
 		if (!c) return;
@@ -1373,6 +1381,7 @@ namespace app
 		sbBoxes_.clear();
 		if (sbSourceFor_ == c) sbSourceFor_ = nullptr;
 		if (selected_ == c) selected_ = tabs_.empty() ? nullptr : tabs_[activeTab_].collection;
+		if (inspected_ == c) inspected_ = nullptr;
 		if (pendingTarget_ == c) pendingTarget_ = nullptr;
 		if (explorerFocus_.collection == c) explorerFocus_ = {};
 		if (explorerTarget_.collection == c) explorerTarget_ = {};
@@ -2201,6 +2210,7 @@ namespace app
 			if (reveal_.count(cls)) ImGui::SetNextItemOpen(true);
 			const bool open = ImGui::TreeNodeEx(KeyId(cls->key), ImGuiTreeNodeFlags_SpanAvailWidth, "%s  (%zu)", names.format(cls->key).c_str(),
 				cls->collections.size());
+			if (cls == scrollToClass_) ImGui::SetScrollHereY(0.2f);
 			if (ImGui::IsItemFocused()) explorerFocus_ = { nullptr, cls };
 			noteTreeFocus(id, open);
 			dropTarget(nullptr, cls);
@@ -2220,6 +2230,7 @@ namespace app
 		{
 			reveal_.clear();
 			revealIn_ = 0;
+			scrollToClass_ = nullptr;
 		}
 		treeBackgroundMenu(Tree::Classes);
 		ImGui::EndChild();
@@ -2490,7 +2501,10 @@ namespace app
 		env.prefs = &prefs_;
 		env.swatches = &paintSwatches_;
 		if (view_.gameplayView && isGameplay(c)) env.gameplay = gameplay_.get();
-		if (isGameplay(c) && c->find(StringHash32("stateref"))) env.openScript = [this, c]()
+		// A handler's bytecode opens it in the State Graph Builder: what has a
+		// stateref, its own or the messagehandler template's, and nothing made
+		// from it (a new handler copies the template's Template flag).
+		if (isGameplay(c) && c->resolve(StringHash32("stateref")) && c->children.empty()) env.openScript = [this, c]()
 		{
 			openStateGraphBuilder(c);
 		};
@@ -2590,11 +2604,45 @@ namespace app
 		}
 		if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) lastPanel_ = Panel::Inspector;
 		if (db_) drawTabBar();
+		// A box of the inspector being typed in when another collection is
+		// selected (a click in the Explorer, a tab, Back): ImGui writes a typed
+		// number when its box loses the keyboard, into the box of that id drawn
+		// then, and the boxes go by field. It went into the same field of the
+		// collection selected, and the recorder recorded it there. So the
+		// collection typed in is drawn once more and takes its value, and the
+		// next one draws clean. A frame draws one collection (inspected_), even
+		// when Back or a link selects another while it draws.
+		ImGuiContext& g = *ImGui::GetCurrentContext();
+		const uint64_t selectedKeys = selected_ ? (uint64_t(selected_->classKey) << 32) | selected_->key : 0;
+		bool commitTyped = false;
 		Collection* c = selected_;
+		if (db_ && inspectorEditId_ && selectedKeys != inspectorShown_)
+		{
+			if (g.ActiveId == inspectorEditId_) ImGui::ClearActiveID();
+			commitTyped = (g.DeactivatedItemData.ID == inspectorEditId_ && g.DeactivatedItemData.ElapseFrame >= g.FrameCount) ||
+				(g.InputTextDeactivatedState.ID == inspectorEditId_ && g.InputTextDeactivatedState.ElapseFrame >= g.FrameCount);
+			if (commitTyped && inspectorShown_)
+				if (Collection* typedIn = db_->findCollection(uint32_t(inspectorShown_ >> 32), uint32_t(inspectorShown_))) c = typedIn;
+		}
+		inspected_ = c;
+		inspectorShown_ = c ? (uint64_t(c->classKey) << 32) | c->key : 0;
+		auto endInspector = [&]
+		{
+			if (g.ActiveId && g.ActiveIdWindow && g.ActiveIdWindow->RootWindow == ImGui::GetCurrentWindow()->RootWindow)
+				inspectorEditId_ = g.ActiveId;
+			ImGui::End();
+			applyPendingEdit();
+			inspected_ = nullptr;
+			if (!commitTyped) return;
+			// What was typed is in; nothing of it is left for the next collection.
+			if (g.DeactivatedItemData.ID == inspectorEditId_) g.DeactivatedItemData.ID = 0;
+			if (g.InputTextDeactivatedState.ID == inspectorEditId_) g.InputTextDeactivatedState.ID = 0;
+			inspectorEditId_ = 0;
+		};
 		if (!db_ || !c)
 		{
 			ImGui::TextDisabled("Select a collection in the Explorer. Middle-click one to open it in a new tab.");
-			ImGui::End();
+			endInspector();
 			return;
 		}
 		drawNavigation(c);
@@ -2629,6 +2677,8 @@ namespace app
 			ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_WidthStretch, 0.18f);
 			ImGui::TableHeadersRow();
 			const std::string lf = ToLower(fieldFilter_);
+			// A command above deleted it (inspected_ forgotten): drawn from the next frame on.
+			if (inspected_ == c)
 			for (const FieldDef* f : sortedFields_[c->cls])
 			{
 				if (!lf.empty() && ToLower(db_->names().format(f->key)).find(lf) == std::string::npos) continue;
@@ -2636,8 +2686,7 @@ namespace app
 			}
 			ImGui::EndTable();
 		}
-		ImGui::End();
-		applyPendingEdit();
+		endInspector();
 	}
 
 	// Browser-style tabs over the inspector: each holds a collection and its
@@ -2721,7 +2770,7 @@ namespace app
 	{
 		PendingEdit e = pendingEdit_;
 		pendingEdit_ = {};
-		Collection* c = selected_;
+		Collection* c = inspected_ ? inspected_ : selected_; // the rows drawn this frame are its
 		if (e.kind == PendingEdit::Kind::None || !c) return;
 		const std::string field = db_->names().format(e.field);
 		switch (e.kind)
@@ -3331,10 +3380,10 @@ namespace app
 					: "At most " + std::to_string(limit) +
 					", the count its definition allows. Edit > Allow Arrays Past Their Limit lets it hold more.";
 				const uint32_t before = a.count;
-				if (CountInput(n, maxN, tip) && selected_)
+				if (CountInput(n, maxN, tip) && inspected_)
 				{
 					// What shrinking takes off the end comes back when it grows again.
-					ArrayTail& t = arrayTails_["a" + std::to_string(selected_->classKey) + ":" + std::to_string(selected_->key) + ":" +
+					ArrayTail& t = arrayTails_["a" + std::to_string(inspected_->classKey) + ":" + std::to_string(inspected_->key) + ":" +
 						std::to_string(a.key)];
 					if (t.countAfter != a.count) t.removed.clear();
 					while (a.count > n)
@@ -3411,7 +3460,7 @@ namespace app
 
 	void App::drawFieldRow(const FieldDef& f)
 	{
-		Collection* c = selected_;
+		Collection* c = inspected_;
 		const KeyNames& names = db_->names();
 		const Collection* owner = nullptr;
 		const Attribute* found = c->resolve(f.key, &owner);

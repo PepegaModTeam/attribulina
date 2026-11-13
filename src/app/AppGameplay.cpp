@@ -243,7 +243,7 @@ namespace app
 			ImGui::Separator();
 			if (ImGui::MenuItem("Open in New Tab", "Ctrl+Enter")) openInNewTab(t, false);
 			if (!leaf) treeToggleItem(id, open);
-			if (!gameplay_->statesOf(t).empty() && ImGui::MenuItem("Open in State Graph Builder")) openStateGraphBuilder(t);
+			if (!gameplay_->allStatesOf(t).empty() && ImGui::MenuItem("Open in State Graph Builder")) openStateGraphBuilder(t);
 			ImGui::Separator();
 			drawEditItems({ t, t->cls, EditTarget::Kind::Template });
 			ImGui::EndPopup();
@@ -412,7 +412,8 @@ namespace app
 		if (ImGui::Button("References")) findReferences(c->classKey, c->key);
 		if (ImGui::IsItemHovered()) ImGui::SetTooltip("What refers to this element (Shift+F12 in the Explorer)");
 		// Activities, their states and message handlers open in the State Graph Builder.
-		const bool scripted = !m.statesOf(c).empty() || c->find(StringHash32("templateref")) || c->find(StringHash32("stateref"));
+		const bool scripted = !m.allStatesOf(c).empty() || c->find(StringHash32("templateref")) ||
+			(c->resolve(StringHash32("stateref")) && c->children.empty());
 		if (scripted)
 		{
 			ImGui::SameLine();

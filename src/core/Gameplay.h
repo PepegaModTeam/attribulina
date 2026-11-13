@@ -130,7 +130,21 @@ namespace attrib
 		// What ChangeState calls a state: its Name (GActivity::GetStateByName),
 		// else its collection name without "stategraph_<template>_".
 		std::string stateName(const Collection* state) const;
+		// Every handler whose stateref is the state, whatever activity owns it.
 		std::vector<Collection*> handlersOf(const Collection* state) const;
+		// The ones that run while `activity` runs the state: their handler_owner
+		// is the activity, one of its templates, or an element with its
+		// CollectionName (GActivity::CollectionIsHandlerForState). Pro Street's
+		// lapknockout runs basicrace's states, and one handler of theirs is
+		// lapknockout's own.
+		std::vector<Collection*> handlersOf(const Collection* state, const Collection* activity) const;
+		bool handlerCountsFor(const Collection* handler, const Collection* activity) const;
+		Collection* handlerOwner(const Collection* handler) const; // what its handler_owner names
+		// What the State Graph Builder shows a graph for, by name: templates
+		// that run states (their own or their templates', as the race modes
+		// under basicrace run its), and elements that own handlers (a race with
+		// a script of its own).
+		std::vector<Collection*> graphActivities() const;
 
 	private:
 		const Database& db_;
@@ -145,6 +159,8 @@ namespace attrib
 		std::map<uint32_t, RefField> refFields_;
 		std::unordered_map<const Collection*, std::vector<Collection*>> states_, handlers_;
 		std::unordered_map<const Collection*, Collection*> stateTemplates_;
+		std::unordered_map<const Collection*, Collection*> handlerOwners_;
+		std::unordered_set<const Collection*> ownsHandlers_;
 	};
 
 	// --- edits -------------------------------------------------------------------

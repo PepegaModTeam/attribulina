@@ -685,7 +685,7 @@ class gameplay in vault db reserve 5667 {
     entry MilestoneBiggerIsBetter EA::Reflection::Bool
     entry Targets GCollectionKey[65535]
     entry CarClass GRace::RaceCarClass
-    entry 0x091BA530 EA::Reflection::Bool
+    entry OneDropForAll EA::Reflection::Bool
     entry TutorialRace EA::Reflection::Bool
     entry InitialSpeed EA::Reflection::Float
     entry PrimaryRoleLevel EA::Reflection::Float
@@ -733,32 +733,32 @@ class gameplay in vault db reserve 5667 {
     entry MidNIS2 EA::Reflection::Text
     entry RespawnMarker GCollectionKey
     entry PostRaceWarpPoint GCollectionKey
-    entry 0x25583552 EA::Reflection::Int32
+    entry TargetThreatLevel EA::Reflection::Int32
     entry transitionlist GCollectionKey[65535]
     entry cashmultiplier EA::Reflection::Int32
     entry OvertimePenaltyPerSec EA::Reflection::Int32
     entry TargetActivity GCollectionKey
     entry RequiredXP EA::Reflection::Int32
-    entry 0x294B96B9 EA::Reflection::Int32
+    entry CashWinAmount EA::Reflection::Int32
     entry 0x29A9D7C6 EA::Reflection::Bool
     entry AutoActivateGPS EA::Reflection::Bool
     entry MajorCrew GCollectionKey
     entry TrackPosition Attrib::Types::Vector2
     entry CheckpointsVisible EA::Reflection::Bool
     entry PursuitRace EA::Reflection::Bool
-    entry 0x2C3BF7BA EA::Reflection::Int32
+    entry PointsPerDrop EA::Reflection::Int32
     entry ResetTime EA::Reflection::Float
     entry 0x2CC7236E GCollectionKey
     entry BinRewards GCollectionKey[65535]
     entry ThresholdValue EA::Reflection::Float
-    entry 0x30CB32DC EA::Reflection::Int32
+    entry NoCollisionTime EA::Reflection::Int32
     entry UsesDriftSections EA::Reflection::Bool
     entry InitialHeatLevel EA::Reflection::Int32
     entry Checkpoint GCollectionKey[65535]
     entry ZoneMultiplier1 EA::Reflection::Float
-    entry 0x35209657 EA::Reflection::Int32
+    entry numofopponents EA::Reflection::Int32
     entry IntroCameraTrack EA::Reflection::Int32
-    entry 0x388E3E8C GCollectionKey[65535]
+    entry PlayerSpawns GCollectionKey[65535]
     entry BossDefeatedActivity GCollectionKey
     entry CopsInRace EA::Reflection::Bool
     entry FlareSpacing EA::Reflection::Float
@@ -793,7 +793,7 @@ class gameplay in vault db reserve 5667 {
     entry CheatTime EA::Reflection::Float
     entry pvehicle EA::Reflection::Text
     entry parentstate GCollectionKey
-    entry 0x4AEAFD1F EA::Reflection::Int32
+    entry PointsPerBust EA::Reflection::Int32
     entry NISShell EA::Reflection::Bool
     entry IndependentTrack EA::Reflection::Bool
     entry HurryUpSMSID2 EA::Reflection::Int32
@@ -835,7 +835,7 @@ class gameplay in vault db reserve 5667 {
     entry Defector GCollectionKey
     entry ParticleEffect EA::Reflection::Text
     entry SpeedTrapTrigger GCollectionKey
-    entry 0x5FDF7D3C EA::Reflection::Int32
+    entry NumMoneyBags EA::Reflection::Int32
     entry 0x60117305 GCollectionKey[65535]
     entry MapCurvePoint GMapCurvePoint[65535]
     entry MasterCheckpoint GCollectionKey
@@ -891,15 +891,15 @@ class gameplay in vault db reserve 5667 {
     entry RaceLength EA::Reflection::Float
     entry 0x7C21331F EA::Reflection::Int32
     entry racefinishReverse GCollectionKey
-    entry 0x7DF2AD9C EA::Reflection::Int32
+    entry EndOfPath EA::Reflection::Int32
     entry MapCurve GMapCurve[65535]
     entry checkpoint_in GCollectionKey
     entry InitialZoneHeat EA::Reflection::Float
-    entry 0x7FD74B8C EA::Reflection::Int32[65535]
+    entry chasetimelimits EA::Reflection::Int32[65535]
     entry CatchUpSkill EA::Reflection::Text
     entry SpeedTrapList GCollectionKey[65535]
-    entry 0x82AC6405 EA::Reflection::Text
-    entry 0x82DB6E06 GCollectionKey
+    entry MilestoneComparator EA::Reflection::Text
+    entry ForceOpponentStart GCollectionKey
     entry DefaultCamera EA::Reflection::Text
     entry StartTime EA::Reflection::Float
     entry GoalEasy EA::Reflection::Float
@@ -917,7 +917,7 @@ class gameplay in vault db reserve 5667 {
     entry Trigger GCollectionKey
     entry DDayRace EA::Reflection::Bool
     entry WaitForLoadedMessage EA::Reflection::Bool
-    entry 0x8D93969E EA::Reflection::Int32
+    entry HotAreaChance EA::Reflection::Int32
     entry ArenaType EA::Reflection::Text
     entry DamageLimit EA::Reflection::Int32
     entry Bounty EA::Reflection::Int32
@@ -939,7 +939,7 @@ class gameplay in vault db reserve 5667 {
     entry ForcePreload EA::Reflection::Bool
     entry IntimidationNIS2 EA::Reflection::Text
     entry Weight EA::Reflection::Float
-    entry 0x977BFCCE EA::Reflection::Int32
+    entry MidNIS2CameraTrack EA::Reflection::Int32
     entry ZoneMultiplier2 EA::Reflection::Float
     entry ZoneTracks GCollectionKey[65535]
     entry DriftSectionTriggers GCollectionKey[65535]
@@ -979,7 +979,7 @@ class gameplay in vault db reserve 5667 {
     entry RandomPartRules EA::Reflection::Text
     entry CashReward EA::Reflection::Float
     entry RequirementOutcome EA::Reflection::Text
-    entry 0xACB8C04D EA::Reflection::Int32[65535]
+    entry chaseperception EA::Reflection::Int32[65535]
     entry ZoneDistanceAhead EA::Reflection::Float
     entry CompleteString EA::Reflection::Text
     entry PresetSkin EA::Reflection::Text
@@ -995,7 +995,7 @@ class gameplay in vault db reserve 5667 {
     entry Drafts GCollectionKey[65535]
     entry OutroMovie EA::Reflection::Text
     entry RollingStart EA::Reflection::Bool
-    entry 0xB96CD42B IndexedBarrierName[65535]
+    entry BarriersHotArea IndexedBarrierName[65535]
     entry BustRate EA::Reflection::Float
     entry Height EA::Reflection::Float
     entry BaselineUnlocks GCollectionKey[65535]
@@ -1017,13 +1017,13 @@ class gameplay in vault db reserve 5667 {
     entry RingTime EA::Reflection::Float
     entry distance EA::Reflection::Float
     entry TrafficLevel EA::Reflection::Int32
-    entry 0xC65FDADD EA::Reflection::Int32
+    entry HotAreaTime EA::Reflection::Int32
     entry CellChallengeRace GCollectionKey
     entry GateActivity GCollectionKey
     entry CrewBoss GCollectionKey
     entry checkpoint_out GCollectionKey
     entry StringName EA::Reflection::Text
-    entry 0xCA8D1D55 GCollectionKey[65535]
+    entry DropOffPoints GCollectionKey[65535]
     entry Region EA::Reflection::Text
     entry RacerHP EA::Reflection::Int32
     entry SpeedTrapCamera EA::Reflection::Text
@@ -1061,7 +1061,7 @@ class gameplay in vault db reserve 5667 {
     entry RestartActivity GCollectionKey
     entry SpawnPoint GCollectionKey
     entry SecondSkill EA::Reflection::Text
-    entry 0xDEC0D85E GCollectionKey
+    entry FixedBagSpawn GCollectionKey
     entry IntroNIS EA::Reflection::Text
     entry StartPercent EA::Reflection::Float
     entry RegionName EA::Reflection::Text
@@ -1083,7 +1083,7 @@ class gameplay in vault db reserve 5667 {
     entry DriftTriggerType EA::Reflection::Text
     entry InitiallyUnlocked EA::Reflection::Bool
     entry ZoneBenchmarkTime EA::Reflection::Float
-    entry 0xEB52A9BA EA::Reflection::Text
+    entry InstructionString EA::Reflection::Text
     entry ShortcutType GRace::ShortcutType
     entry DoPhotofinish EA::Reflection::Bool
     entry HotArea GCollectionKey
@@ -1123,11 +1123,11 @@ class gameplay in vault db reserve 5667 {
     entry EvadeTime EA::Reflection::Int32
     entry RandomSpawnTriggers GCollectionKey[65535]
     entry CornerMarker GRace::CornerMarker
-    entry 0xFE60E2FE EA::Reflection::Int32
+    entry InitialThreatLevel EA::Reflection::Int32
     entry MidNIS EA::Reflection::Text
     entry BossRace EA::Reflection::Bool
     entry aiaction EA::Reflection::Text
-    entry 0xFF78E592 GCollectionKey[65535]
+    entry WantedEventRequirements GCollectionKey[65535]
     entry ReputationRequired EA::Reflection::Int32
     entry Triggers GCollectionKey[65535]
 }
@@ -1215,7 +1215,7 @@ class simsurface in vault db reserve 71 layoutsize 255 {
     layout LATERAL_GRIP EA::Reflection::Float
     layout GROUND_FRICTION EA::Reflection::Float
     layout DRIVE_GRIP EA::Reflection::Float
-    layout RSNMCHUNK_FERESNAMES EA::Reflection::UInt32
+    layout Aud_Skid_Type EA::Reflection::UInt32
     layout WheelEffectFrequency EA::Reflection::UInt16
     layout WheelEffectIntensity EA::Reflection::UInt8
     entry FFB_SKID FFBWaveRecord[4]
@@ -1669,7 +1669,7 @@ class aud_moment_strm in vault db reserve 63 layoutsize 14 {
     entry p_brk_code Csis::Type_P_Breaker_Code
     entry IsPositioned EA::Reflection::Bool
     entry p_brk_type Csis::Type_P_Breaker_Type
-    entry 0xEF59EC8E eSFXAudio_en_index
+    entry soundfx_index eSFXAudio_en_index
 }
 class cameradriftrace in vault db reserve 1 layoutsize 105 {
     layout CollectionName EA::Reflection::Text

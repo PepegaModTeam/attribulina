@@ -93,9 +93,9 @@ class world in vault db reserve 1 {
     entry ANIM_BANK_NIS_BUFFER EA::Reflection::Int32
 }
 class milestones in vault db reserve 39 {
-    entry 0x0E9A8B1492433E52 EA::Reflection::Float
+    entry ReputationAward EA::Reflection::Float
     entry RapSheetRanks EA::Reflection::Float[15]
-    entry 0xC750CB4E01DFE121 EA::Reflection::Float[15]
+    entry MilestoneLevels EA::Reflection::Float[15]
     entry MilestoneType EA::Reflection::Int32
     entry CollectionName EA::Reflection::Text
 }
@@ -205,7 +205,7 @@ class speechtune in vault db reserve 1 {
     entry MinHealthForCommentary EA::Reflection::Float
     entry 0x6B21B1953598E14C EA::Reflection::Float
     entry CacheDisplayCoords Attrib::Types::Vector2
-    entry 0x917A09E4CC6395D2 EA::Reflection::Int32
+    entry HavocFor911 EA::Reflection::Int32
     entry CollisionMinClosingVelSq EA::Reflection::Float
     entry MinIntensityTrafficSmash EA::Reflection::Float
     entry MinHavocForSuspectBehavior EA::Reflection::Int32
@@ -806,7 +806,7 @@ class gameplay in vault db reserve 3085 {
     entry Dimensions Attrib::Types::Vector3
     entry BossRaces GCollectionKey[65535]
     entry disengagetrigger GCollectionKey
-    entry 0xBF7AEE52DA5ECABD EA::Reflection::Bool
+    entry RankPlayersByCash EA::Reflection::Bool
     entry DoCountdown EA::Reflection::Bool
     entry MilestoneName EA::Reflection::Text
     entry Region EA::Reflection::Text
@@ -1125,7 +1125,7 @@ class simsurface in vault db reserve 65 {
     entry WheelEffectIntensity EA::Reflection::Float
     entry MATERIAL_STRENGTH EA::Reflection::Float
     entry CollectionName EA::Reflection::Text
-    entry 0xFDC838B5D751600A EA::Reflection::UInt32
+    entry Aud_Skid_Type EA::Reflection::UInt32
 }
 class inputspecs in vault db reserve 2 layoutsize 33 {
     layout CONTROL_CONFIG Attrib::StringKey

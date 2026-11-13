@@ -1370,6 +1370,6 @@ class simsurface in vault db reserve 65 layoutsize 251 {
     entry Aud_RoadNoise_TransON FXROADNOISE_TRANSITION
     entry FFB_ROLL FFBWaveRecord[4]
     entry Aud_RoadNoise_TransOFF FXROADNOISE_TRANSITION
-    entry RSNMCHUNK_FERESNAMES EA::Reflection::UInt32
+    entry Aud_Skid_Type EA::Reflection::UInt32
     entry CAMERA_NOISE EA::Reflection::Float[2]
 }

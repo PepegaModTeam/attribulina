@@ -177,6 +177,7 @@ namespace attrib
 		// Owners (Children lists), templates, state graphs.
 		const uint32_t kChildrenKey = StringHash32(kChildren), kTemplateKey = StringHash32(kTemplate);
 		const uint32_t kTemplateRef = StringHash32("templateref"), kStateRef = StringHash32("stateref");
+		const uint32_t kHandlerOwner = StringHash32("handler_owner");
 		for (Collection* c : cls_->collections)
 		{
 			const Endian e = EndianOf(*c);
@@ -195,7 +196,16 @@ namespace attrib
 					stateTemplates_[c] = act;
 				}
 			if (const Attribute* sr = c->find(kStateRef); sr && IsKeyType(*sr) && sr->count)
-				if (Collection* st = db.findCollection(cls_->key, KeyAt(db, *sr, 0, e))) handlers_[st].push_back(c);
+				if (Collection* st = db.findCollection(cls_->key, KeyAt(db, *sr, 0, e)))
+				{
+					handlers_[st].push_back(c);
+					if (const Attribute* ho = c->find(kHandlerOwner); ho && IsKeyType(*ho) && ho->count)
+						if (Collection* owner = db.findCollection(cls_->key, KeyAt(db, *ho, 0, e)))
+						{
+							handlerOwners_[c] = owner;
+							ownsHandlers_.insert(owner);
+						}
+				}
 		}
 		auto byName = [&](Collection* a, Collection* b)
 		{
@@ -421,6 +431,55 @@ namespace attrib
 	{
 		auto it = handlers_.find(state);
 		return it == handlers_.end() ? std::vector<Collection*>{} : it->second;
+	}
+
+	Collection* GameplayModel::handlerOwner(const Collection* handler) const
+	{
+		auto it = handlerOwners_.find(handler);
+		return it == handlerOwners_.end() ? nullptr : it->second;
+	}
+
+	bool GameplayModel::handlerCountsFor(const Collection* handler, const Collection* activity) const
+	{
+		const Collection* owner = handlerOwner(handler);
+		if (!owner || !activity) return false;
+		std::unordered_set<const Collection*> seen;
+		for (const Collection* t = activity; t && seen.insert(t).second; t = t->parent)
+			if (t == owner) return true;
+		// An element of the same CollectionName (another vault's copy of it).
+		auto nameOf = [](const Collection* c)
+		{
+			const Attribute* a = c->resolve(StringHash32(kCollectionName));
+			return a && IsTextType(*a) && a->count ? TextAt(*a, 0) : std::string();
+		};
+		const std::string n = nameOf(activity);
+		return !n.empty() && n == nameOf(owner);
+	}
+
+	std::vector<Collection*> GameplayModel::handlersOf(const Collection* state, const Collection* activity) const
+	{
+		std::vector<Collection*> out;
+		for (Collection* h : handlersOf(state))
+			if (handlerCountsFor(h, activity)) out.push_back(h);
+		return out;
+	}
+
+	std::vector<Collection*> GameplayModel::graphActivities() const
+	{
+		std::vector<Collection*> out;
+		std::unordered_set<const Collection*> in;
+		auto add = [&](Collection* c)
+		{
+			if (c && in.insert(c).second && !allStatesOf(c).empty()) out.push_back(c);
+		};
+		for (Collection* t : templates_) add(t);
+		for (const Collection* o : ownsHandlers_) add(const_cast<Collection*>(o));
+		const KeyNames& names = db_.names();
+		std::sort(out.begin(), out.end(), [&](const Collection* a, const Collection* b)
+		{
+			return Lower(names.format(a->key)) < Lower(names.format(b->key));
+		});
+		return out;
 	}
 
 	// ------------------------------------------------------------------ edits ---

@@ -982,7 +982,7 @@ class simsurface in vault db reserve 71 layoutsize 255 {
     layout WORLD_FRICTION EA::Reflection::Float
     layout DRIVE_GRIP EA::Reflection::Float
     layout LATERAL_GRIP EA::Reflection::Float
-    layout RSNMCHUNK_FERESNAMES EA::Reflection::UInt32
+    layout Aud_Skid_Type EA::Reflection::UInt32
     layout STICK EA::Reflection::Float
     layout WheelEffectFrequency EA::Reflection::UInt16
     layout WheelEffectIntensity EA::Reflection::UInt8

@@ -176,13 +176,15 @@ namespace app
 		{
 			cachedSize_ = size_t(-1);
 		}
-		// Another document: what was undone in the last one doesn't apply.
+		// Another document: what was undone in the last one doesn't apply, and
+		// what ImGui keeps of the last one's text doesn't reach it (draw).
 		void resetHistory()
 		{
 			undo_.clear();
 			redo_.clear();
 			shadowSet_ = false;
 			pendingSet_.reset();
+			newDocument_ = true;
 		}
 
 		struct Palette
@@ -250,6 +252,7 @@ namespace app
 		std::vector<Snapshot> undo_, redo_;
 		std::string shadow_; // the text as last seen: tells typing from outside changes
 		bool shadowSet_ = false;
+		bool newDocument_ = false; // resetHistory since the last draw
 		double lastEdit_ = -1e9;
 		size_t lastEditCursor_ = 0, frameCursor_ = 0;
 		std::optional<Snapshot> pendingSet_; // for the callback to put in place

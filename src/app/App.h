@@ -20,6 +20,7 @@
 
 #include "imgui.h"
 
+#include <algorithm>
 #include <deque>
 #include <functional>
 #include <map>
@@ -266,6 +267,11 @@ namespace app
 		{
 			return selected_;
 		}
+		// How many search hits are picked (Ctrl+click, Shift+click).
+		int searchHitsPicked() const
+		{
+			return int(std::count(searchPicked_.begin(), searchPicked_.end(), true));
+		}
 		const std::deque<LogLine>& log() const
 		{
 			return log_;
@@ -303,6 +309,11 @@ namespace app
 		// activity template, one of its states or a message handler).
 		void openStateGraphBuilder(attrib::Collection* c);
 		// State Graph Builder state, for tests.
+		// Whether the State Graph Builder window is open.
+		bool& stateGraphBuilderOpen()
+		{
+			return showSequence_;
+		}
 		attrib::Collection* sequenceActivity() const
 		{
 			return sbActivity_;
@@ -823,6 +834,8 @@ namespace app
 		void drawSearch();
 		void openSearch();
 		void findReferences(uint32_t classKey, uint32_t key);
+		// Opens the class's node in the Explorer's Classes tree and scrolls to it.
+		void revealClass(attrib::ClassDef* cls);
 		void runSearch();
 
 		// Deferred actions so menus/context menus can open modals.
@@ -857,6 +870,12 @@ namespace app
 		DisplayPrefs prefs_;
 		std::vector<std::shared_ptr<const attrib::TypeSchema>> schemas_;
 		bool walkingHistory_ = false;
+		// The collection the inspector drew last (class and collection key), and
+		// the last of its widgets that had the keyboard (drawInspector).
+		uint64_t inspectorShown_ = 0;
+		ImGuiID inspectorEditId_ = 0;
+		// The collection the inspector draws this frame (null between frames).
+		attrib::Collection* inspected_ = nullptr;
 		PendingEdit pendingEdit_;
 		std::string iniPath_;
 		std::vector<bool> recentThere_; // per recent file, checked when the File menu opens
@@ -904,6 +923,8 @@ namespace app
 		SearchQuery searchQuery_;
 		std::string searchText_, searchClassFilter_;
 		SearchResult searchResult_;
+		std::vector<bool> searchPicked_; // hits picked (Ctrl+click, Shift+click, Ctrl+A), by index
+		int searchAnchor_ = -1;          // the last hit clicked, where a Shift+click range starts
 		double searchMs_ = 0;
 		bool searchRan_ = false;
 		// A field to bring into view in the inspector (a search hit).
@@ -1086,6 +1107,7 @@ namespace app
 		int explorerTabRequest_ = 0;              // 1 Classes, 2 Gameplay: bring to front once
 		int revealIn_ = 0;                        // the tree reveal_ is for (1 Classes, 2 Gameplay)
 		bool scrollToSelection_ = false;
+		const attrib::ClassDef* scrollToClass_ = nullptr; // revealClass, once drawn
 		Pending pending_ = Pending::None;
 		attrib::Collection* pendingTarget_ = nullptr;
 		attrib::ClassDef* pendingClass_ = nullptr;
@@ -1102,6 +1124,7 @@ namespace app
 		attrib::Collection* sbHandler_ = nullptr;
 		const attrib::Collection* sbSourceFor_ = nullptr; // the handler sbSource_ was loaded from
 		std::string sbSource_, sbLoaded_;                  // edited text, and as decompiled
+		std::string sbActivityFilter_;                     // the Activity list's filter
 		std::string sbDisassembly_;
 		std::vector<std::string> sbWarnings_;
 		std::string sbStatus_;

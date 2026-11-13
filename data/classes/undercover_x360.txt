@@ -2756,7 +2756,7 @@ class shader_parameters in vault db reserve 85 {
     entry uv_scroll Attrib::Types::Vector4
     entry AO_factors Attrib::Types::Vector4
     entry specular_power EA::Reflection::Float
-    entry PresetrideGarages Attrib::Types::Vector4
+    entry fresnel_values2 Attrib::Types::Vector4
     entry dirt_specular_intensity EA::Reflection::Float
     entry character_diffuse_desat EA::Reflection::Float
     entry specular_power1 EA::Reflection::Float
@@ -2880,7 +2880,7 @@ class simsurface in vault db reserve 113 {
     entry CollisionSweetenerSFX Attrib::RefSpec
     entry FFB_SLIP FFBWaveRecord[4]
     entry MATERIAL_STRENGTH EA::Reflection::Float
-    entry RACECOURSE_MINI_NOS RUMBLEFX
+    entry RumbleFX_ID RUMBLEFX
     entry FFB_ROLL FFBWaveRecord[4]
     entry RollFX_ID ROLLFX_LOOP
     entry RugosityFrequency EA::Reflection::Float

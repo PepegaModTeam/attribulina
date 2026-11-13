@@ -20,6 +20,29 @@ namespace attrib
 		if (added && indexed64_) index64_.try_emplace(StringHash64(it->second), &it->second);
 	}
 
+	void KeyNames::addFromData(std::string_view name)
+	{
+		if (name.empty())
+			return;
+		const uint32_t h = hash_(name);
+		if (!fromData_.insert(h).second)
+			return;
+		auto [it, added] = names_.try_emplace(h, name);
+		if (added || it->second == name)
+		{
+			if (added && indexed64_) index64_.try_emplace(StringHash64(it->second), &it->second);
+			return;
+		}
+		if (indexed64_)
+		{
+			index64_.erase(StringHash64(it->second));
+			it->second = std::string(name);
+			index64_.try_emplace(StringHash64(it->second), &it->second);
+		}
+		else
+			it->second = std::string(name);
+	}
+
 	const std::string* KeyNames::find64(uint64_t hash) const
 	{
 		if (!indexed64_)

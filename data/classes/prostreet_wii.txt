@@ -2406,7 +2406,7 @@ class simsurface in vault db reserve 99 {
     entry PercentChanceToCatch EA::Reflection::Float
     entry FFB_SLIP FFBWaveRecord[4]
     entry MATERIAL_STRENGTH EA::Reflection::Float
-    entry RACECOURSE_MINI_NOS RUMBLEFX
+    entry RumbleFX_ID RUMBLEFX
     entry FFB_ROLL FFBWaveRecord[4]
     entry RollFX_ID ROLLFX_LOOP
     entry RugosityFrequency EA::Reflection::Float

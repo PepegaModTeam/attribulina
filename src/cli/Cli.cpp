@@ -311,7 +311,8 @@ which decides how values read; lines that fail come out as comments.
 					if (bin) db->binNames().loadFile(f);
 				};
 				names(ToUtf8(dataDir_ / "attrib_keys.txt"), true);
-				for (const std::string& f : filesIn(dataDir_ / "bin_keys")) db->binNames().loadFile(f);
+				// bStringHash names, merged from every game's list (scripts/merge_bin_keys.py).
+				if (std::error_code ec; fs::exists(dataDir_ / "bin_keys.txt", ec)) db->binNames().loadFile(ToUtf8(dataDir_ / "bin_keys.txt"));
 				if (const std::string uk = userKeysFile(); !uk.empty()) names(uk, true);
 				for (const std::string& f : filesIn(dataDir_ / "messages"))
 					for (const MessageDef& m : LoadMessages(f)) db->names().add(m.name);

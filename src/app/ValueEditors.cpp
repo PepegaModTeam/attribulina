@@ -1300,10 +1300,23 @@ namespace app
 			uint8_t* p = b.bytes.data() + off;
 			PtrSlot* s = b.ptrAt(off + 4);
 			const uint32_t size = load32(p, env.endian);
+			// Opening the builder isn't an edit: it works on an inherited value too.
+			auto builderButton = [&]
+			{
+				if (!env.openScript) return;
+				ImGui::SameLine();
+				// Only inside a disabled block (an inherited value): ImGui asserts otherwise.
+				const bool reenable = (GImGui->CurrentItemFlags & ImGuiItemFlags_Disabled) != 0;
+				if (reenable) ImGui::BeginDisabledOverrideReenable();
+				if (ImGui::SmallButton("State Graph Builder")) env.openScript();
+				if (ImGui::IsItemHovered()) ImGui::SetTooltip("Edit this handler's Lua there; compiling it writes the bytecode");
+				if (reenable) ImGui::EndDisabledOverrideReenable();
+			};
 			if (!s || !s->data)
 			{
 				ImGui::AlignTextToFramePadding();
 				ImGui::TextDisabled("empty");
+				builderButton(); // a new handler's: write its code there
 				return false;
 			}
 			BlobView& v = ViewOf(*s->data);
@@ -1317,11 +1330,7 @@ namespace app
 									v.lua ? ", compiled Lua" : "");
 			else
 				ImGui::TextDisabled("%zu bytes%s%s", have, stored.c_str(), v.lua ? ", compiled Lua" : "");
-			if (env.openScript && v.lua)
-			{
-				ImGui::SameLine();
-				if (ImGui::SmallButton("State Graph Builder")) env.openScript();
-			}
+			if (v.lua || v.raw.empty()) builderButton(); // compiled Lua, or nothing yet
 			if (!v.error.empty()) ImGui::TextColored(ImVec4(1.0f, 0.42f, 0.38f, 1.0f), "%s", v.error.c_str());
 			if (!ImGui::TreeNodeEx("contents", ImGuiTreeNodeFlags_SpanAvailWidth)) return false;
 			bool changed = false;

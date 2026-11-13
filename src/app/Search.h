@@ -1,7 +1,7 @@
 #pragma once
 
-// Search over a whole database: values, field names, and what references a
-// collection or a class. It runs synchronously; the Search panel calls it when
+// Search over a whole database: values, field names, class and collection
+// names, and what references a collection or a class. It runs synchronously; the Search panel calls it when
 // the user asks, never per frame. Only values a collection sets itself are
 // searched (inherited ones are found at the collection that sets them).
 
@@ -16,7 +16,7 @@ namespace app
 
 	enum class SearchMode
 	{
-		Values, Fields, References
+		Values, Fields, References, Names
 	};
 
 	// The hash a 0x... query stands for when it is matched against text and
@@ -34,12 +34,15 @@ namespace app
 		// collection's own name and its parent count as values of it: hits with
 		// `where` "(name)" and "parent" (the parent only when the text names it
 		// whole). A name nobody knows is its hash, "0x" and 8 hex digits.
-		// Fields: part of a field name. References: unused (see refClass).
+		// Fields: part of a field name. Names: part of a class's or a
+		// collection's name, or 0x... for its key (an unnamed one shows as
+		// that); empty with inClass, every collection of that class.
+		// References: unused (see refClass).
 		std::string text;
-		// Values and Fields: what a 0x... query is the hash of (SearchHash).
+		// Values, Fields and Names: what a 0x... query is the hash of (SearchHash).
 		SearchHash hexHash = SearchHash::StringHash32;
 		// Values: the whole value must equal the text instead of containing it.
-		// Fields: the whole field name must match.
+		// Fields and Names: the whole name must match.
 		bool wholeValue = false;
 		// Only collections of this class (0 = every class).
 		uint32_t inClass = 0;
@@ -52,15 +55,19 @@ namespace app
 
 	struct SearchHit
 	{
-		uint32_t classKey = 0, key = 0; // the collection the hit is in
+		// The collection the hit is in; key 0 is the class itself (Names).
+		uint32_t classKey = 0, key = 0;
 		// The field holding the value; 0 when the hit is the collection itself
 		// (References: a child of the target).
 		uint32_t field = 0;
 		// Field name with the element and member path ("Checkpoint[3].mPosition"),
 		// "parent" for a child of the target (or of a collection a Values query
-		// names), "(name)" for a collection whose own name matched.
+		// names), "(name)" for a collection whose own name matched. Names:
+		// "(class)" or "(collection)".
 		std::string where;
-		std::string value; // the value as the inspector would summarize it
+		// The value as the inspector would summarize it. Names: a class's count
+		// of collections, a collection's parent ("" at the root).
+		std::string value;
 	};
 
 	struct SearchResult

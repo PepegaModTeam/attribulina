@@ -3,10 +3,10 @@ game carbon_ps2
 title "Carbon, PS2 demo"
 version "0x9D112D3EEB4C5396"
 class nis_triggers in vault db reserve 7 {
-    entry 0x55E82147 Attrib::RefSpec[50]
-    entry 0x630957C1 Attrib::RefSpec[50]
-    entry 0xBF2BFFA4 Attrib::RefSpec[50]
-    entry 0xEC68AC93 Attrib::RefSpec[65535]
+    entry arrest_list Attrib::RefSpec[50]
+    entry race_end_list Attrib::RefSpec[50]
+    entry race_start_list Attrib::RefSpec[50]
+    entry pip_list Attrib::RefSpec[65535]
 }
 class chassis in vault db reserve 222 {
     layout SPRING_PROGRESSION AxlePair
@@ -247,9 +247,9 @@ class audioimpact in vault db reserve 186 {
 }
 class nis_trigger_race_start in vault db reserve 11 {
     entry platform ePLATFORM_CLASS
-    entry 0x4B3F90E6 EA::Reflection::Bool
+    entry second_leg EA::Reflection::Bool
     entry max_num_cars eCAR_COUNT_CATEGORY
-    entry 0x847E029F EA::Reflection::Text
+    entry linked_countdown EA::Reflection::Text
     entry linked_countdown_camera EA::Reflection::Int8
     entry race_type GRace::Type[65535]
     entry scene_name EA::Reflection::Text
@@ -299,7 +299,7 @@ class smackable in vault db reserve 320 layoutsize 36 {
 class nis_trigger_arrest in vault db reserve 9 {
     entry heat_level EA::Reflection::UInt8[11]
     entry platform ePLATFORM_CLASS
-    entry 0xEA3D49A5 EA::Reflection::Text
+    entry arrest_name EA::Reflection::Text
 }
 class infractions in vault db reserve 11 {
     layout amount EA::Reflection::UInt32
@@ -788,7 +788,7 @@ class pvehicle in vault db reserve 237 layoutsize 50 {
 class gameplay in vault db reserve 4620 {
     layout CollectionName EA::Reflection::Text
     layout message_id EA::Reflection::UInt32
-    entry 0x00149270 EA::Reflection::Bool
+    entry IsUsingSections EA::Reflection::Bool
     entry GoalAddPrevBest EA::Reflection::Float
     entry TargetBronze EA::Reflection::Float
     entry PursuitLevel EA::Reflection::Int32
@@ -1535,7 +1535,7 @@ class simsurface in vault db reserve 68 layoutsize 251 {
     entry Aud_RoadNoise_TransON FXROADNOISE_TRANSITION
     entry FFB_ROLL FFBWaveRecord[4]
     entry Aud_RoadNoise_TransOFF FXROADNOISE_TRANSITION
-    entry RSNMCHUNK_FERESNAMES EA::Reflection::UInt32
+    entry Aud_Skid_Type EA::Reflection::UInt32
     entry CAMERA_NOISE EA::Reflection::Float[2]
 }
 class partoptions in vault db reserve 4 {
