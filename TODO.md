@@ -2,6 +2,7 @@
 
 - check and verify against the missed platforms (PS3 mainly) and extend Nitro support
 - better app icon (this one currently is a placeholder)
+- mini/installer variant - for installing amod/nfsms exclusively
 
 ## Future plans
 
