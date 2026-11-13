@@ -137,7 +137,12 @@ namespace attrib
 				haveExp = true;
 				const uint32_t count = r.u32(p);
 				// 16-byte entries, or Most Wanted's 20 with a name offset before
-				// the size. Every export lies in DatN, which tells them apart.
+				// the size. Every export lies in DatN, which tells them apart, and
+				// no export is empty: read as 16-byte entries, a 20-byte table's
+				// first size is its name offset, 0. A Most Wanted vault holding
+				// one collection whose export is larger than DatN's offset fit
+				// the 16-byte reading otherwise (a mod's pursuit vaults, 100
+				// bytes at 0x58).
 				auto read = [&](uint32_t size)
 				{
 					v.exports.clear();
@@ -146,6 +151,7 @@ namespace attrib
 					{
 						const uint32_t e = p + 4 + i * size;
 						ExportEntry x{ r.u32(e), r.u32(e + 4), r.u32(e + size - 8), r.u32(e + size - 4) };
+						if (x.size == 0) return false;
 						if (size == 20 && r.u32(e + 8) != 0) return false; // a named export: never seen
 						if (v.datSize ? x.offset < v.datOffset || uint64_t(x.offset) + x.size > uint64_t(v.datOffset) + v.datSize
 							: uint64_t(x.offset) + x.size > v.vlt.size())

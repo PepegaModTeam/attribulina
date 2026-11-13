@@ -4,6 +4,7 @@
 #include "Hash.h"
 #include "Pack.h"
 #include "RawVault.h"
+#include "VaultLib.h"
 
 #include <algorithm>
 #include <cctype>
@@ -22,17 +23,17 @@ namespace attrib
 		using P = Platform;
 
 		// Most Wanted (its own vaults and its early demos'), Pro Street, Carbon,
-		// Undercover (PC, 360, and its Wii and PS2 version) and World (its final PC
-		// build, its 2009 and 2010 betas and the builds between) are edited for real
-		// so far.
+		// Undercover (PC, 360, and its Wii and PS2 version), World (its final PC
+		// build, its 2009 and 2010 betas and the builds between) and Nitro (Wii)
+		// are edited for real so far.
 		// To add a game or platform: its type schema (scripts/gen_schema.py,
 		// data/schema/<game>_<platform>.txt with the game and platforms in its
 		// header), the hand pointer layouts its types need (TypeLayouts.cpp),
 		// round-trip tests for its packs, its NFS-VltEd words for nfsms
 		// (scripts/nfsms/gen_words.py writes data/nfsms/<game>_pc.txt; nfsms runs on
 		// each supported platform, and tests/test_nfsms.cpp checks every word leads
-		// to the same member on each), its Vers values below, then list the platform
-		// in `supported`. The Game and Platform prompt lists every game already.
+		// to the same member on each; Nitro has none, as NFS-VltEd never read it),
+		// its Vers values below, then list the platform in `supported`. The Game and Platform prompt lists every game already.
 		// Pro Street's PS3 files, Carbon's Xbox files, and Undercover's PS2 and PS3
 		// files haven't been seen. Carbon's retail 360 files carry its PS2's and
 		// GameCube's Vers value and the PC's layouts; a demo made after release has
@@ -53,9 +54,10 @@ namespace attrib
 			// (IsWorldBetaVersion).
 			{Game::World, "world", "World", {P::PC}, {P::PC}},
 			// Nitro (2009) is the Wii's Undercover extended, with many types of its
-			// own. Its Wii files read and write (nitro_wii.txt), but it isn't listed:
-			// NFS-VltEd never read it, so nfsms has no words for it.
-			{Game::Nitro, "nitro", "Nitro", {}, {P::Wii}},
+			// own. Its Wii files read and write byte for byte (nitro_wii.txt). nfsms
+			// doesn't run on it (nfsms::Incompatibility): NFS-VltEd never read it, so
+			// it has no words for it. The user listed it without nfsms (2026-11-13).
+			{Game::Nitro, "nitro", "Nitro", {P::Wii}, {P::Wii}},
 		};
 
 		const std::vector<PlatformInfo> kPlatforms = {
@@ -189,6 +191,9 @@ namespace attrib
 			std::unordered_set<uint32_t> classes; // the classes in it
 			bool keys64 = false;            // no Vers chunk, and StringHash64 keys (early Most Wanted demos)
 			bool mostWantedLayout = false;  // Most Wanted's exports (RawVault::mostWantedLayout)
+			// The first vault's bin opens its StrE with VaultLib's mark: World's
+			// Vers then says nothing, since VaultLib writes it into every game's files.
+			bool vaultLib = false;
 		};
 
 		Clues ReadClues(ByteSpan data)
@@ -211,6 +216,9 @@ namespace attrib
 				}
 			}
 			if (!c.endian) return c;
+			const Bytes& bin = pf.vaults.front().bin;
+			c.vaultLib = bin.size() >= 8 + vaultlib::kMark.size() && load32(bin.data(), *c.endian) == FourCC("StrE") &&
+				std::string_view(reinterpret_cast<const char*>(bin.data() + 8), vaultlib::kMark.size()) == vaultlib::kMark;
 			bool seenDep = false;
 			for (size_t off = 0; off + 8 <= vlt.size();)
 			{
@@ -392,6 +400,10 @@ namespace attrib
 			// A known Vers value whose files lack the class it needs (another
 			// tool's save): its game, for the reason.
 			Game versWithoutClass = Game::Unknown;
+			// World's Vers in a pack VaultLib marked, with no attributes.bin read
+			// to check its classes: OGVI's Most Wanted gameplay.bin alone read as
+			// certain World.
+			bool versFromVaultLib = false;
 			if (c.version)
 			{
 				std::vector<Target> hits;
@@ -399,6 +411,12 @@ namespace attrib
 				for (const KnownVersion& k : kKnownVersions)
 				{
 					if (k.value != *c.version || k.endian != *c.endian) continue;
+					if (k.game == Game::World && c.vaultLib && !c.typeTable)
+					{
+						versWithoutClass = Game::World;
+						versFromVaultLib = true;
+						continue;
+					}
 					// A class or the bool width that tells platforms apart, when
 					// attributes.bin was read.
 					if (k.classKey && c.typeTable)
@@ -450,7 +468,11 @@ namespace attrib
 			// timeofdaylighting class (the Xbox's, the GameCube's and the PS2's lack
 			// it; the 360's has it, and the 360 is big-endian).
 			// The early demos (64-bit keys) are the PS2's (4-byte bools) and the Xbox's.
-			if (c.endian && !c.version && c.typeTable && c.boolSize)
+			// VaultLib's saves of them (World's Vers over Most Wanted's own exports)
+			// go the same way: no other game's files lay their exports out so with
+			// World's Vers.
+			const bool vaultLibMostWanted = versWithoutClass == Game::World && c.mostWantedLayout;
+			if (c.endian && (!c.version || vaultLibMostWanted) && c.typeTable && c.boolSize)
 			{
 				static const uint32_t kTimeOfDayLighting = StringHash32("timeofdaylighting");
 				const bool big = *c.endian == Endian::Big, wide = c.boolSize == 4;
@@ -460,7 +482,9 @@ namespace attrib
 					: P::Xbox;
 				d.target = { Game::MostWanted, p };
 				d.certain = true;
-				d.reason = std::string("no Vers chunk, as in Most Wanted's vaults; ") +
+				d.reason = (c.version ? "Vers " + Hex64(*c.version) + " is World's, which VaultLib writes into every game's files, "
+					"and its exports are laid out as Most Wanted's; "
+					: std::string("no Vers chunk, as in Most Wanted's vaults; ")) +
 					(c.keys64 ? "64-bit keys, as in its early demos; " : "") + (big ? "big-endian; " : "little-endian; ") +
 					(wide ? "4-byte bools" : "1-byte bools");
 				if (!wide && !big && !c.keys64)
@@ -480,7 +504,10 @@ namespace attrib
 			}
 			else
 			{
-				if (versWithoutClass != Game::Unknown)
+				if (versFromVaultLib)
+					why.push_back("Vers " + Hex64(*c.version) + " is World's, but VaultLib (OGVI, the community Attribulator) saved the file "
+						"and writes World's into every game's files, and without attributes.bin no class says which game it is");
+				else if (versWithoutClass != Game::Unknown)
 					why.push_back("Vers " + Hex64(*c.version) + " is " + InfoOf(versWithoutClass).name + "'s, but attributes.bin lacks a class every " +
 						InfoOf(versWithoutClass).name + " build has, so another tool may have written it");
 				else
@@ -522,6 +549,7 @@ namespace attrib
 				g = hintedGame;
 				why.push_back("the folder is named " + gameWhere);
 			}
+			if (g == Game::Unknown && versFromVaultLib) g = Game::World; // nothing says otherwise
 			if (g == Game::Unknown) g = Game::ProStreet;
 			size_t choices = 0;
 			const Platform p = GuessPlatform(g, c, hintedPlatform, &choices);

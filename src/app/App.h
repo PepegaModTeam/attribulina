@@ -842,7 +842,7 @@ namespace app
 		enum class Pending
 		{
 			None, NewChild, Rename, Delete, ConfirmClose, ConfirmCloseAll, ConfirmReplace, About,
-			GameplayNew, GameplayDuplicate, GameplayDelete, NewState, NewHandler, MoveToVault,
+			GameplayNew, GameplayDuplicate, GameplayDelete, NewState, NewHandler, DeleteHandler, MoveToVault,
 			ApplyScript, ExportChanges, ExportFields, NfsmsSetup, ChooseTarget, DeleteClass,
 			NewVault, RenameVault, DeleteVault, NewEventVault, UnloadPack
 		};

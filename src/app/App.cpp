@@ -3673,6 +3673,7 @@ namespace app
 			case Pending::GameplayDelete: id = "Delete Element"; break;
 			case Pending::NewState: id = "New State"; break;
 			case Pending::NewHandler: id = "New Handler"; break;
+			case Pending::DeleteHandler: id = "Delete Handler"; break;
 			case Pending::ApplyScript: id = "Apply Script"; break;
 			case Pending::ExportChanges: id = "Export Changes"; break;
 			case Pending::ExportFields: id = exportNfsms_ ? "Add Class to nfsms Script" : "Add Class to Script"; break;

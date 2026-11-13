@@ -457,6 +457,17 @@ namespace app
 									  ImGuiSelectableFlags_SpanAllColumns))
 					sbHandler_ = hd;
 				linkClicks(hd);
+				if (ImGui::BeginPopupContextItem())
+				{
+					ImGui::TextDisabled("%s", names.format(hd->key).c_str());
+					ImGui::Separator();
+					if (ImGui::MenuItem("Edit Code", nullptr, hd == sbHandler_)) sbHandler_ = hd;
+					if (ImGui::MenuItem("Open")) select(hd, true);
+					if (ImGui::MenuItem("Open in New Tab")) openInNewTab(hd, false);
+					ImGui::Separator();
+					if (ImGui::MenuItem("Delete Handler...")) request(Pending::DeleteHandler, hd);
+					ImGui::EndPopup();
+				}
 				ImGui::TableSetColumnIndex(1);
 				std::string to;
 				for (uint32_t k : KeyList(*db_, *hd, "transitionlist"))
@@ -892,6 +903,95 @@ namespace app
 			ImGui::EndDisabled();
 			ImGui::SameLine();
 			if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape)) done();
+			ImGui::EndPopup();
+		}
+
+		// From a handler's menu in the list. A template's handler (basicrace's,
+		// shown in lapknockout) runs in every activity under the template, so
+		// the prompt says which lose it.
+		if (begin("Delete Handler"))
+		{
+			Collection* hd = pendingTarget_;
+			if (!hd)
+			{
+				done(); // gone meanwhile (an undo)
+				ImGui::EndPopup();
+				return;
+			}
+			const std::string name = names.format(hd->key);
+			ImGui::Text("Delete handler %s?", name.c_str());
+			const Collection* st = db_->findCollection(gp, KeyField(*db_, *hd, "stateref"));
+			ImGui::TextDisabled("It answers %s in state %s.", names.format(KeyField(*db_, *hd, "message_id")).c_str(),
+								st ? stateShortName(st).c_str() : "?");
+			const Collection* owner = m.handlerOwner(hd);
+			std::vector<const Collection*> others;
+			for (const Collection* a : m.graphActivities())
+				if (a != owner && m.handlerCountsFor(hd, a)) others.push_back(a);
+			std::string list;
+			for (size_t i = 0; i < others.size() && i < 8; ++i) list += (i ? ", " : "") + names.format(others[i]->key);
+			if (others.size() > 8) list += " and " + std::to_string(others.size() - 8) + " more";
+			if (owner && sbActivity_ && owner != sbActivity_)
+			{
+				bool inherited = false;
+				for (const Collection* t = sbActivity_->parent; t && !inherited; t = t->parent) inherited = t == owner;
+				if (inherited)
+				{
+					ImGui::TextColored(kWarn, "This is %s's handler, which %s inherits from it.", names.format(owner->key).c_str(),
+									   names.format(sbActivity_->key).c_str());
+					ImGui::TextColored(kWarn, "Deleting it takes it from %s and from every activity under it.", names.format(owner->key).c_str());
+				}
+				else
+				{
+					ImGui::TextColored(kWarn, "This is %s's handler, which %s runs as it shares its CollectionName.",
+									   names.format(owner->key).c_str(), names.format(sbActivity_->key).c_str());
+				}
+			}
+			else if (!others.empty())
+			{
+				ImGui::TextColored(kWarn, "Activities under %s run it too, as their template's handler.",
+								   owner ? names.format(owner->key).c_str() : "its owner");
+			}
+			if (!others.empty()) ImGui::TextColored(kWarn, "%zu other activities lose it too: %s", others.size(), list.c_str());
+			// DeleteGameplayElement refuses a collection others are made from.
+			const std::vector<Collection*> subtree = GameplaySubtree(m, *hd);
+			std::string blocker;
+			for (const Collection* x : subtree)
+				for (const Collection* kid : x->children)
+					if (blocker.empty() && std::find(subtree.begin(), subtree.end(), kid) == subtree.end())
+						blocker = names.format(kid->key);
+			if (!blocker.empty())
+				ImGui::TextColored(kError, "%s is made from it (its template). Delete or move that first.", blocker.c_str());
+			else
+				ImGui::TextDisabled("It is taken out of its owner's Children. Other references to it are not changed.");
+			ImGui::BeginDisabled(!blocker.empty());
+			bool del = ImGui::Button("Delete");
+			ImGui::EndDisabled();
+			ImGui::SameLine();
+			const bool cancel = ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape);
+			if (blocker.empty() && ConfirmKey()) del = true; // Enter deletes, Escape cancels
+			if (del)
+			{
+				try
+				{
+					Collection* listOwner = m.owner(hd);
+					nameAction("Delete handler " + name);
+					markDirty(hd);
+					for (Collection* x : subtree) forgetCollection(x, listOwner);
+					DeleteGameplayElement(*db_, m, *hd);
+					if (listOwner) markDirty(listOwner);
+					structureChanged(); // rebuilds gameplay_: m is gone after this
+					log(LogLevel::Info, "Deleted handler " + name + (others.empty() ? "" : "; " + std::to_string(others.size()) + " other activities ran it"));
+				}
+				catch (const std::exception& ex)
+				{
+					log(LogLevel::Error, ex.what());
+				}
+				done();
+			}
+			else if (cancel)
+			{
+				done();
+			}
 			ImGui::EndPopup();
 		}
 	}
