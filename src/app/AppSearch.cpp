@@ -283,12 +283,18 @@ namespace app
 					if (gone) ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
 					const bool isPicked = pickedHits[size_t(i)];
 					const ImGuiIO& io = ImGui::GetIO();
+					// The row is pressed as the mouse button goes down (SelectOnClick), so
+					// a click is decided by the keys held then, and a press without a click
+					// is the keyboard's. Pressed on the release, as by default, a Ctrl+click
+					// toggled the pick as the button went down and then read as Ctrl+Enter
+					// and opened a background tab (the user's report).
 					const bool pressed = ImGui::Selectable(label.c_str(), isPicked || (c && c == selected_),
-														   ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap);
+														   ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap |
+															   ImGuiSelectableFlags_SelectOnClick);
 					const bool clicked = ImGui::IsItemClicked(ImGuiMouseButton_Left);
 					if (pressed && !io.KeyCtrl && !io.KeyShift)
 					{
-						// A plain click picks it alone and opens it.
+						// A plain click or Enter picks it alone and opens it.
 						pickedHits.assign(r.hits.size(), false);
 						pickedHits[size_t(i)] = true;
 						searchAnchor_ = i;
@@ -308,7 +314,7 @@ namespace app
 						pickedHits[size_t(i)] = !isPicked;
 						searchAnchor_ = i;
 					}
-					else if (pressed && io.KeyCtrl && c)
+					else if (pressed && !clicked && io.KeyCtrl && c)
 					{
 						// Ctrl+Enter: a background tab.
 						open = size_t(i);

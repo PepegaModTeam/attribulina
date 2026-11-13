@@ -6165,21 +6165,31 @@ TEST("ui: search: Names lists classes and collections; hits picked with Ctrl+cli
     const test::ProbeItem* first = probe.find("vehicle/240sx_draghpfall", "Search");
     CHECK(first);
     if (!first) return;
-    // A click opens one; Ctrl+click picks another without opening it.
+    // A click opens one; Ctrl+click picks another without opening it, in this
+    // tab or another (the user's report: Ctrl+click opened a background tab).
     ClickItem(imgui, a, *first);
     imgui.run(a, 2);
     CHECK_EQ(a.searchHitsPicked(), 1);
     CHECK(a.selection() == one);
+    const size_t tabs = a.tabs().size();
     const test::ProbeItem* second = probe.find("vehicle/350z_draghpfall", "Search");
     CHECK(second);
     if (!second) return;
+    // The keys go down a frame before the click, as a hand does: ImGui puts off
+    // a mouse move queued after a key, and a row that takes overlap (these do)
+    // isn't pressed on the frame the mouse comes onto it.
     ImGuiIO& io = ImGui::GetIO();
-    io.AddKeyEvent(ImGuiMod_Ctrl, true);
-    ClickItem(imgui, a, *second);
-    io.AddKeyEvent(ImGuiMod_Ctrl, false);
-    imgui.run(a, 2);
+    auto clickWith = [&](std::initializer_list<ImGuiKey> mods, const test::ProbeItem& it) {
+        for (ImGuiKey m : mods) io.AddKeyEvent(m, true);
+        imgui.run(a, 1);
+        ClickItem(imgui, a, it);
+        for (ImGuiKey m : mods) io.AddKeyEvent(m, false);
+        imgui.run(a, 2);
+    };
+    clickWith({ImGuiMod_Ctrl}, *second);
     CHECK_EQ(a.searchHitsPicked(), 2);
     CHECK(a.selection() == one);
+    CHECK_EQ(a.tabs().size(), tabs);
     Rightclick(imgui, a, probe.find("vehicle/350z_draghpfall", "Search"));
     clickOn("Copy 2 Names", "##Popup");
     imgui.run(a, 1);
@@ -6196,14 +6206,25 @@ TEST("ui: search: Names lists classes and collections; hits picked with Ctrl+cli
     std::vector<test::ProbeItem> rows;
     for (const auto& it : probe.items)
         if (it.window.find("Search") != std::string::npos && it.label.rfind("vehicle/", 0) == 0) rows.push_back(it);
-    CHECK(rows.size() >= 4);
-    if (rows.size() >= 4) {
-        io.AddKeyEvent(ImGuiMod_Shift, true);
-        ClickItem(imgui, a, rows[3]);
-        io.AddKeyEvent(ImGuiMod_Shift, false);
-        imgui.run(a, 2);
+    CHECK(rows.size() >= 5);
+    if (rows.size() >= 5) {
+        clickWith({ImGuiMod_Shift}, rows[3]);
         CHECK_EQ(a.searchHitsPicked(), 3);
         CHECK(a.selection() == one);
+        CHECK_EQ(a.tabs().size(), tabs);
+        // Ctrl+Shift+click adds the run from the last one clicked to the picks.
+        clickWith({ImGuiMod_Ctrl, ImGuiMod_Shift}, rows[4]);
+        CHECK_EQ(a.searchHitsPicked(), 4);
+        CHECK(a.selection() == one);
+        CHECK_EQ(a.tabs().size(), tabs);
+        // Ctrl+Enter on the hit the keyboard is on opens it in a background tab.
+        // A click hides ImGui's keyboard cursor, and Enter waits for an arrow key.
+        imgui.key(a, ImGuiKey_DownArrow);
+        imgui.key(a, ImGuiMod_Ctrl | ImGuiKey_Enter);
+        imgui.run(a, 2);
+        CHECK_EQ(a.tabs().size(), tabs + 1);
+        CHECK(a.selection() == one);
+        CHECK_EQ(a.searchHitsPicked(), 4);
     }
     // Ctrl+A picks every hit; Escape none.
     imgui.key(a, ImGuiMod_Ctrl | ImGuiKey_A);
