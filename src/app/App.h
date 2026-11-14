@@ -5,6 +5,7 @@
 
 #include "CodeEditor.h"
 #include "Host.h"
+#include "ScriptSetup.h"
 #include "ValueEditors.h"
 
 #include "Search.h"
@@ -16,6 +17,7 @@
 #include "core/MemoryFile.h"
 #include "core/Database.h"
 #include "core/Gameplay.h"
+#include "core/LogFile.h"
 #include "core/Nfsms.h"
 #include "core/Script.h"
 
@@ -293,6 +295,12 @@ namespace app
 		const std::deque<LogLine>& log() const
 		{
 			return log_;
+		}
+		// attribulina.log in the user's folder, which the Log is written to
+		// as well (empty when setup had no settings file, as in tests).
+		const std::string& logFilePath() const
+		{
+			return logFile_.path();
 		}
 		bool hasUnsavedChanges() const;
 		ViewOptions& viewOptions()
@@ -849,7 +857,6 @@ namespace app
 		void markNfsmsLines();
 		void drawNfsmsEditor(const std::string& file);
 		std::string gameFolder() const;
-		void releaseSetupImages();
 		// While a script runs: its changes are the script's, not the user's.
 		void beginScriptRun();
 		void endScriptRun();
@@ -885,6 +892,7 @@ namespace app
 		std::deque<LogLine> log_;
 		uint64_t logVersion_ = 0, logShown_ = ~0ull; // log_ changes; the version logText_ is of
 		size_t logDropped_ = 0;                     // bytes of logText_ the cap dropped since it was built
+		attrib::LogFile logFile_;                   // the Log as it is written (setup)
 		std::string logText_;                       // log_ as one text, for the Log panel
 		std::vector<uint8_t> logLevels_;            // per line: 0 info, 1 warning, 2 error
 		LogView logView_;
@@ -1040,14 +1048,7 @@ namespace app
 		std::string nfsmsRunFile_;   // the script the last run's line numbers count in ("" the window's)
 		std::string nfsmsClosing_;   // an included tab with unsaved changes the user is closing
 		bool nfsmsConvertAsk_ = false; // To Mod Script would replace unsaved text in the Script panel
-		struct SetupImage
-		{
-			std::string path;
-			ImTextureData* tex = nullptr;
-			int w = 0, h = 0;
-		};
-		std::vector<SetupImage> setupImages_;
-		std::vector<ImTextureData*> retiredTextures_;
+		SetupImages setupImages_;     // the nfsms setup prompt's pictures
 		ImVec2 setupSize_;           // the setup prompt's size last frame
 		bool setupResized_ = false;  // it changed: centre it again
 

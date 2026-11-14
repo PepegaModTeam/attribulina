@@ -7,6 +7,7 @@
 #include "core/Gameplay.h"
 #include "core/GenHeader.h"
 #include "core/Hash.h"
+#include "core/Install.h"
 #include "core/Nfsms.h"
 #include "core/Script.h"
 #include "core/VaultLib.h"
@@ -337,29 +338,7 @@ which decides how values read; lines that fail come out as comments.
 					err_ << "attribcli: " << path << " doesn't say which game and platform it is from (" << detection_.reason << "); reading it as "
 					<< t.name() << " (" << t.id() << "). --target names another.\n";
 				db->setTarget(t);
-				if (fs::is_directory(p, ec))
-				{
-					for (const FolderFile& f : FolderPacks(path))
-					{
-						if (!f.skipped.empty()) continue;
-						LoadedPack& pk = db->loadPack(f.path);
-						// OGVI's save of a World event vault, beside attributes.bin: saved
-						// to gc.vaults as the game's event vault file, its own file removed.
-						if (!f.saveAs.empty())
-						{
-							vaultlib::MoveToEventVaultFile(pk, f.saveAs);
-							movedFrom_.push_back(f.path);
-						}
-					}
-				}
-				else
-				{
-					if (!fs::exists(p, ec)) throw std::runtime_error("no file or folder " + path);
-					const std::optional<std::string> attrs = DatabaseFileFor(path);
-					std::error_code e2;
-					if (attrs && !fs::equivalent(FromUtf8(*attrs), p, e2)) db->loadPack(*attrs);
-					db->loadPack(path);
-				}
+				install::LoadPacks(*db, path, movedFrom_);
 				for (const auto& pk : db->packs())
 					for (const std::string& w : PackWarnings(*pk)) err_ << "warning: " << w << "\n";
 				return db;
@@ -442,27 +421,8 @@ which decides how values read; lines that fail come out as comments.
 
 			void report(const std::string& source, const sc::ApplyReport& r)
 			{
-				for (const sc::Message& m : r.messages)
-				{
-					if (m.level == sc::Message::Level::Echo)
-					{
-						out_ << m.text << "\n"; // what the script printed
-						continue;
-					}
-					// A line of an included script: that file and line.
-					if (!m.file.empty())
-					{
-						err_ << m.file;
-						if (m.fileLine) err_ << ":" << m.fileLine;
-					}
-					else
-					{
-						err_ << source;
-						if (m.pos.line) err_ << ":" << m.pos.line << ":" << m.pos.col;
-					}
-					err_ << ": " << (m.level == sc::Message::Level::Error ? "error" : m.level == sc::Message::Level::Warning ? "warning" : "note")
-						<< ": " << m.text << "\n";
-				}
+				// What the script printed goes to the output, the rest to errors.
+				for (const sc::Message& m : r.messages) (m.level == sc::Message::Level::Echo ? out_ : err_) << install::MessageLine(source, m) << "\n";
 			}
 
 			// The editor's user_keys.txt: in its user folder, else beside the program.
@@ -476,28 +436,7 @@ which decides how values read; lines that fail come out as comments.
 			// hashes, so they go to user_keys.txt, as names typed in the editor do.
 			void rememberNames(const std::vector<std::string>& names)
 			{
-				const std::string path = userKeysFile();
-				if (names.empty() || path.empty()) return;
-				const fs::path file = FromUtf8(path);
-				std::set<std::string> known;
-				bool newline = false; // a file edited by hand may end without one
-				{
-					std::ifstream in(file, std::ios::binary);
-					for (std::string l; std::getline(in, l);)
-					{
-						newline = in.eof() && !l.empty();
-						if (!l.empty() && l.back() == '\r') l.pop_back();
-						known.insert(l);
-					}
-				}
-				std::ofstream out(file, std::ios::binary | std::ios::app);
-				for (const std::string& n : names)
-					if (known.insert(n).second)
-					{
-						if (newline) out << "\n";
-						newline = false;
-						out << n << "\n";
-					}
+				install::RememberNames(userKeysFile(), names);
 			}
 
 			std::map<std::string, std::string> optionValues(const Args& a)
@@ -623,23 +562,15 @@ which decides how values read; lines that fail come out as comments.
 
 			// Writes the database's dirty packs (with a .lzc's twin) and removes
 			// `removed`, as apply and repair save: --dry-run, --out and --no-backup.
-			int saveChanged(Database& dbRef, std::vector<std::string> removed, const Args& a)
+			// The memory files beside the packs update their copies of them unless
+			// --no-memory-files (core/Install.h, SaveChanges).
+			int saveChanged(Database& db, std::vector<std::string> removed, const Args& a)
 			{
-				Database* db = &dbRef;
-				std::vector<LoadedPack*> dirty;
-				for (const auto& pk : db->packs())
-					if (pk->dirty) dirty.push_back(pk.get());
-				// A file made again after its vault was deleted stays.
-				std::erase_if(removed, [&](const std::string& f)
-				{
-					return std::any_of(db->packs().begin(), db->packs().end(), [&](const auto& pk) { return pk->path == f; });
-				});
-				std::sort(removed.begin(), removed.end());
-				removed.erase(std::unique(removed.begin(), removed.end()), removed.end());
+				const install::Changes changes = install::ChangesOf(db, std::move(removed));
 				const bool memoryFiles = !a.has("--no-memory-files");
 				if (a.has("--dry-run"))
 				{
-					for (const LoadedPack* p : dirty)
+					for (const LoadedPack* p : changes.packs)
 					{
 						out_ << "would write " << p->path << "\n";
 						std::vector<std::string> files{ p->path };
@@ -648,117 +579,25 @@ which decides how values read; lines that fail come out as comments.
 							for (const MemoryFileCopy& c : MemoryFileCopiesOf(f))
 								out_ << (memoryFiles ? "would update " : "would leave ") << ToUtf8(FromUtf8(c.memoryFile).filename()) << "'s copy of " << c.gamePath << "\n";
 					}
-					for (const std::string& f : removed) out_ << "would remove " << f << "\n";
-					if (dirty.empty() && removed.empty()) out_ << "nothing would change\n";
+					for (const std::string& f : changes.removed) out_ << "would remove " << f << "\n";
+					if (changes.empty()) out_ << "nothing would change\n";
 					return 0;
 				}
-				const std::string outDir = a.get("--out");
-				if (!outDir.empty())
+				install::SaveSettings st;
+				st.backup = !a.has("--no-backup");
+				st.memoryFiles = memoryFiles;
+				st.outDir = a.get("--out");
+				install::SaveChanges(db, changes, st, [&](const install::SaveNote& n)
 				{
-					std::error_code ec;
-					fs::create_directories(FromUtf8(outDir), ec);
-				}
-				std::vector<SavedFile> saved;
-				for (LoadedPack* p : dirty)
-				{
-					const std::string target = outDir.empty() ? p->path : ToUtf8(FromUtf8(outDir) / FromUtf8(p->path).filename());
-					const std::optional<std::string> twin = PackTwin(target);
-					if (outDir.empty() && !a.has("--no-backup"))
+					switch (n.kind)
 					{
-						std::vector<std::string> files{ target };
-						if (twin) files.push_back(*twin);
-						for (const std::string& f : files)
-						{
-							std::error_code ec;
-							const fs::path t = FromUtf8(f);
-							fs::path bak = t;
-							bak += ".bak";
-							if (fs::exists(t, ec) && !fs::exists(bak, ec))
-							{
-								fs::copy_file(t, bak, ec);
-								if (!ec) err_ << "kept the original as " << ToUtf8(bak) << "\n";
-							}
-						}
+						case install::SaveNote::Kind::Backup: err_ << n.text << "\n"; break;
+						case install::SaveNote::Kind::MemoryFileLeft: err_ << "attribcli: warning: " << n.text << " (--no-memory-files)\n"; break;
+						default: out_ << n.text << "\n"; break;
 					}
-					// A new event vault file's folder may not be there yet.
-					if (std::error_code ec; !fs::exists(FromUtf8(target).parent_path(), ec)) fs::create_directories(FromUtf8(target).parent_path(), ec);
-					const std::string source = p->path; // SavePack moves it to `target`
-					for (SavedFile& f : SavePack(*db, *p, target))
-					{
-						// With --out, the memory files that count are the ones the game
-						// has beside the original.
-						if (!outDir.empty()) f.path = ToUtf8(FromUtf8(source).parent_path() / FromUtf8(f.path).filename());
-						saved.push_back(std::move(f));
-					}
-					out_ << "saved " << target << (twin ? " and " + ToUtf8(FromUtf8(*twin).filename()) : std::string()) << "\n";
-				}
-				for (const std::string& f : removed)
-				{
-					std::error_code ec;
-					const fs::path t = FromUtf8(f);
-					if (!outDir.empty() || !fs::exists(t, ec))
-					{
-						if (!outDir.empty()) out_ << "deleted the vault of " << f << " (left as it is: --out writes elsewhere)\n";
-						continue;
-					}
-					fs::path bak = t;
-					bak += ".bak";
-					if (!a.has("--no-backup") && !fs::exists(bak, ec))
-					{
-						fs::rename(t, bak, ec);
-						if (!ec) out_ << "removed " << f << ", kept as " << ToUtf8(bak) << "\n";
-					}
-					else
-					{
-						fs::remove(t, ec);
-						if (!ec) out_ << "removed " << f << "\n";
-					}
-					if (ec) throw Failed{ "could not remove " + f + ": " + ec.message() };
-				}
-				saveMemoryFiles(saved, outDir.empty() ? removed : std::vector<std::string>(), outDir, memoryFiles, a.has("--no-backup"));
-				if (dirty.empty() && removed.empty()) out_ << "nothing changed\n";
+				});
+				if (changes.empty()) out_ << "nothing changed\n";
 				return 0;
-			}
-
-			// The memory files beside the saved packs (core/MemoryFile.h): their
-			// copies take the saved bytes, and those of removed files go. Into
-			// `outDir` when given; with `update` off, a warning for each copy that
-			// stays old.
-			void saveMemoryFiles(const std::vector<SavedFile>& saved, const std::vector<std::string>& removed,
-				const std::string& outDir, bool update, bool noBackup)
-			{
-				if (!update)
-				{
-					for (const SavedFile& s : saved)
-						for (const MemoryFileCopy& c : MemoryFileCopiesOf(s.path))
-							if (outDir.empty() ? !c.same : true)
-								err_ << "attribcli: warning: " << ToUtf8(FromUtf8(c.memoryFile).filename()) << " holds another copy of " << c.gamePath
-									<< ", which the game reads in place of the file; it is left as it is (--no-memory-files)\n";
-					return;
-				}
-				for (MemoryFileUpdate u : PlanMemoryFileUpdates(saved, removed))
-				{
-					const std::string from = u.path;
-					if (!outDir.empty()) u.path = ToUtf8(FromUtf8(outDir) / FromUtf8(u.path).filename());
-					if (outDir.empty() && !noBackup)
-					{
-						std::error_code ec;
-						const fs::path t = FromUtf8(u.path);
-						fs::path bak = t;
-						bak += ".bak";
-						if (fs::exists(t, ec) && !fs::exists(bak, ec))
-						{
-							fs::copy_file(t, bak, ec);
-							if (!ec) err_ << "kept the original as " << ToUtf8(bak) << "\n";
-						}
-					}
-					SaveMemoryFileUpdate(u);
-					out_ << "updated " << u.path;
-					if (!outDir.empty()) out_ << " (from " << from << ")";
-					for (size_t i = 0; i < u.updated.size(); ++i) out_ << (i ? ", " : ": its copy of ") << u.updated[i];
-					for (size_t i = 0; i < u.dropped.size(); ++i) out_ << (i ? ", " : u.updated.empty() ? ": dropped its copy of " : "; dropped its copy of ") << u.dropped[i];
-					out_ << "\n";
-				}
 			}
 
 			// Opens a database and saves what loading repaired: files another tool

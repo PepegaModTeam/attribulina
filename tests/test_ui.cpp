@@ -592,6 +592,65 @@ TEST("ui: favourites, colour choices, open panels and the window placement persi
     fs::remove_all(dir);
 }
 
+TEST("ui: the Log goes to attribulina.log beside the settings as it is written; the session before stays as attribulina.previous.log") {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() / "attribulina_logfile_test";
+    fs::remove_all(dir);
+    fs::create_directories(dir);
+    const std::string ini = (dir / "attribulina.ini").string();
+    auto text = [](const fs::path& p) {
+        std::ifstream in(p, std::ios::binary);
+        return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    };
+    // Each line of the Log is in the file, after its time, with its level.
+    auto holdsLog = [&](const app::App& a, const std::string& t) {
+        bool all = true, error = false;
+        for (const app::LogLine& l : a.log()) {
+            const std::string level = l.level == app::LogLevel::Error ? "error: " : l.level == app::LogLevel::Warning ? "warning: " : "";
+            all &= t.find(level + l.text + "\n") != std::string::npos;
+            error |= l.level == app::LogLevel::Error;
+        }
+        return all && error;
+    };
+    std::string first;
+    {
+        platform::HeadlessImGui imgui;
+        platform::HeadlessHost host;
+        app::App a(host);
+        a.setup(1.0f, ini);
+        CHECK_EQ(fs::path(a.logFilePath()), dir / "attribulina.log");
+        imgui.run(a, 1);
+        CHECK(!a.open((dir / "no such pack.bin").string()));
+        imgui.run(a, 1);
+        // Written while the editor runs, not when it closes.
+        first = text(dir / "attribulina.log");
+        CHECK(first.rfind("Attribulina", 0) == 0);
+        CHECK(first.find("The Log is also written to " + a.logFilePath()) != std::string::npos);
+        CHECK(holdsLog(a, first));
+        CHECK(!fs::exists(dir / "attribulina.previous.log"));
+    }
+    {
+        platform::HeadlessImGui imgui;
+        platform::HeadlessHost host;
+        app::App a(host);
+        a.setup(1.0f, ini);
+        CHECK(!a.open((dir / "another missing pack.bin").string()));
+        CHECK_EQ(text(dir / "attribulina.previous.log"), first);
+        const std::string second = text(dir / "attribulina.log");
+        CHECK(holdsLog(a, second));
+        CHECK(second.find("no such pack") == std::string::npos);
+    }
+    // Without a settings file (tests) nothing is written.
+    {
+        platform::HeadlessImGui imgui;
+        platform::HeadlessHost host;
+        app::App a(host);
+        a.setup(1.0f, "");
+        CHECK(a.logFilePath().empty());
+    }
+    fs::remove_all(dir);
+}
+
 TEST("ui: favourites are kept per database folder, and one the database lacks can still be removed") {
     namespace fs = std::filesystem;
     const fs::path dir = fs::temp_directory_path() / "attribulina_favorites_test";

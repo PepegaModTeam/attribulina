@@ -4,6 +4,7 @@
 #include "core/Edit.h"
 #include "core/Folder.h"
 #include "core/Hash.h"
+#include "core/LogFile.h"
 #include "core/VaultLib.h"
 #include "core/Writer.h"
 #include "core/Version.h"
@@ -148,14 +149,6 @@ namespace app
 		// dangling filename.
 		if (ImGui::GetCurrentContext())
 		{
-			// Setup pictures (nfsms) the renderer may still hold.
-			releaseSetupImages();
-			for (ImTextureData* t : retiredTextures_)
-			{
-				ImGui::UnregisterUserTexture(t);
-				IM_DELETE(t);
-			}
-			retiredTextures_.clear();
 			ImGuiIO& io = ImGui::GetIO();
 			if (io.IniFilename) ImGui::SaveIniSettingsToDisk(io.IniFilename);
 			io.IniFilename = nullptr;
@@ -170,6 +163,12 @@ namespace app
 		io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_DockingEnable;
 		iniPath_ = iniPath;
 		io.IniFilename = iniPath_.empty() ? nullptr : iniPath_.c_str();
+		// The Log goes to attribulina.log beside the settings as well, line by
+		// line, so it is there after the editor closes or crashes. The session
+		// before is kept as attribulina.previous.log; a second window writes
+		// attribulina (2).log.
+		if (!iniPath_.empty() && logFile_.open(ToUtf8(FromUtf8(iniPath_).parent_path() / "attribulina.log"), true))
+			logFile_.writeRaw(std::string(Version::GetAppVersionString()) + ", " + LocalTimestamp());
 
 		ImGuiSettingsHandler h;
 		h.TypeName = "Attribulina";
@@ -285,6 +284,7 @@ namespace app
 		else
 			log(LogLevel::Info, "Settings and your names go to " + ToUtf8(userDir) +
 				". To keep them beside the program, put an attribulina.ini there.");
+		if (logFile_.isOpen()) log(LogLevel::Info, "The Log is also written to " + logFile_.path() + ".");
 
 		// Key names: attrib_keys.txt beside the program, else in its data folder.
 		for (const fs::path& p : { exe / "attrib_keys.txt", exe / "data" / "attrib_keys.txt" })
@@ -433,6 +433,7 @@ namespace app
 
 	void App::log(LogLevel level, std::string text)
 	{
+		logFile_.write(level == LogLevel::Error ? "error" : level == LogLevel::Warning ? "warning" : "", text);
 		log_.push_back({ level, std::move(text) });
 		while (log_.size() > 2000)
 		{

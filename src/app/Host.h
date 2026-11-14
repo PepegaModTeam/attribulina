@@ -50,6 +50,17 @@ namespace app
 		{
 			return false;
 		}
+		// Opens a file in the program the system gives its kind (the mod
+		// installer's log). False when it couldn't.
+		virtual bool openPath(const std::string& path)
+		{
+			(void)path;
+			return false;
+		}
+		virtual bool canOpenPaths() const
+		{
+			return false;
+		}
 		// Decodes a picture (PNG, JPEG, BMP, ...) to 8-bit RGBA, top row first.
 		// False when it can't, or the host has no decoder (nfsms setups then
 		// show the file name).

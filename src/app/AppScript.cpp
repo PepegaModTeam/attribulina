@@ -742,77 +742,7 @@ namespace app
 				ImGui::Spacing();
 				ImGui::SeparatorText("Options");
 			}
-			for (const sc::OptionDef* o : options)
-			{
-				ImGui::PushID(o->id.c_str());
-				std::string& v = scriptOptions_[o->id];
-				const std::string label = o->label.empty() ? o->id : o->label;
-				switch (o->type)
-				{
-					case sc::OptionDef::Type::Bool:
-					{
-						bool on = v == "true";
-						if (Checkbox(label.c_str(), &on)) v = on ? "true" : "false";
-						break;
-					}
-					case sc::OptionDef::Type::Number:
-					{
-						double d = std::strtod(v.c_str(), nullptr);
-						ImGui::SetNextItemWidth(em * 10);
-						if (ImGui::InputDouble(label.c_str(), &d, 0, 0, "%.6g"))
-						{
-							if (o->min) d = std::max(d, *o->min);
-							if (o->max) d = std::min(d, *o->max);
-							char b[64];
-							std::snprintf(b, sizeof(b), "%.9g", d);
-							v = b;
-						}
-						break;
-					}
-					case sc::OptionDef::Type::Integer:
-					{
-						int i = std::atoi(v.c_str());
-						ImGui::SetNextItemWidth(em * 10);
-						if (ImGui::InputInt(label.c_str(), &i))
-						{
-							if (o->min) i = std::max(i, int(std::ceil(*o->min)));
-							if (o->max) i = std::min(i, int(std::floor(*o->max)));
-							v = std::to_string(i);
-						}
-						break;
-					}
-					case sc::OptionDef::Type::Choice:
-					{
-						ImGui::SetNextItemWidth(em * 14);
-						if (ImGui::BeginCombo(label.c_str(), v.c_str()))
-						{
-							for (const std::string& c : o->choices)
-								if (ImGui::Selectable(c.c_str(), c == v)) v = c;
-							ImGui::EndCombo();
-						}
-						break;
-					}
-					case sc::OptionDef::Type::Text:
-						ImGui::SetNextItemWidth(em * 18);
-						ImGui::InputText(label.c_str(), &v);
-						break;
-				}
-				if (!o->help.empty())
-				{
-					ImGui::SameLine();
-					ImGui::TextDisabled("(?)");
-					if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", o->help.c_str());
-				}
-				if ((o->min || o->max) && (o->type == sc::OptionDef::Type::Number || o->type == sc::OptionDef::Type::Integer))
-				{
-					ImGui::SameLine();
-					ImGui::TextDisabled("%s", (o->min && o->max ? std::to_string(*o->min).substr(0, 8) + " to " + std::to_string(*o->max).substr(0, 8)
-											   : o->min ? "at least " + std::to_string(*o->min).substr(0, 8)
-											   : "at most " + std::to_string(*o->max).substr(0, 8))
-										.c_str());
-				}
-				ImGui::PopID();
-			}
+			DrawScriptOptions(options, scriptOptions_);
 			ImGui::Spacing();
 			Checkbox("Stop when a value isn't what the script expects", &scriptStrict_);
 			if (ImGui::IsItemHovered())

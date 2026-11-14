@@ -5,6 +5,8 @@
 
 #include "app/App.h"
 
+#include <functional>
+
 namespace platform
 {
 
@@ -47,6 +49,17 @@ namespace platform
 		{
 			return true;
 		}
+		// Paths opened in the system's programs are recorded, not opened.
+		std::vector<std::string> openedPaths;
+		bool openPath(const std::string& path) override
+		{
+			openedPaths.push_back(path);
+			return true;
+		}
+		bool canOpenPaths() const override
+		{
+			return true;
+		}
 		// Pictures (nfsms setups): with this on, any file that is there decodes
 		// as a small grey picture; off, none does, as with no decoder.
 		bool decodeImages = false;
@@ -62,19 +75,27 @@ namespace platform
 		HeadlessImGui(const HeadlessImGui&) = delete;
 		HeadlessImGui& operator=(const HeadlessImGui&) = delete;
 
+		// What draws one frame: the editor's App::frame(), or another program's
+		// (the mod installer's).
+		using Frame = std::function<void()>;
+
 		// Runs `frames` complete frames of the app. With a frame hook, it is
 		// called after each frame (tests use it to inspect the frame's widgets).
 		void run(app::App& app, int frames);
+		void run(const Frame& frame, int frames);
 
 		// Input for the next frames.
 		void mouseMove(float x, float y);
 		void mouseButton(int button, bool down);
 		// Clicks at (x, y): move, press, release, one frame each.
 		void click(app::App& app, float x, float y, int button = 0);
+		void click(const Frame& frame, float x, float y, int button = 0);
 		// Types text into the focused widget, then runs a frame.
 		void type(app::App& app, const char* utf8);
+		void type(const Frame& frame, const char* utf8);
 		// Presses and releases a key chord (ImGuiKey | ImGuiMod_*), one frame each.
 		void key(app::App& app, int chord);
+		void key(const Frame& frame, int chord);
 
 		// Called before NewFrame and after Render of every frame.
 		void (*beforeFrame)() = nullptr;

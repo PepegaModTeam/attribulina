@@ -82,21 +82,33 @@ namespace platform
 
 	void HeadlessImGui::click(app::App& app, float x, float y, int button)
 	{
+		click([&]() { app.frame(); }, x, y, button);
+	}
+	void HeadlessImGui::click(const Frame& frame, float x, float y, int button)
+	{
 		mouseMove(x, y);
-		run(app, 1);
+		run(frame, 1);
 		mouseButton(button, true);
-		run(app, 1);
+		run(frame, 1);
 		mouseButton(button, false);
-		run(app, 1);
+		run(frame, 1);
 	}
 
 	void HeadlessImGui::type(app::App& app, const char* utf8)
 	{
+		type([&]() { app.frame(); }, utf8);
+	}
+	void HeadlessImGui::type(const Frame& frame, const char* utf8)
+	{
 		ImGui::GetIO().AddInputCharactersUTF8(utf8);
-		run(app, 1);
+		run(frame, 1);
 	}
 
 	void HeadlessImGui::key(app::App& app, int chord)
+	{
+		key([&]() { app.frame(); }, chord);
+	}
+	void HeadlessImGui::key(const Frame& frame, int chord)
 	{
 		ImGuiIO& io = ImGui::GetIO();
 		const ImGuiKey k = ImGuiKey(chord & ~ImGuiMod_Mask_);
@@ -104,14 +116,18 @@ namespace platform
 		for (ImGuiKey m : mods)
 			if (chord & m) io.AddKeyEvent(m, true);
 		io.AddKeyEvent(k, true);
-		run(app, 1);
+		run(frame, 1);
 		io.AddKeyEvent(k, false);
 		for (ImGuiKey m : mods)
 			if (chord & m) io.AddKeyEvent(m, false);
-		run(app, 1);
+		run(frame, 1);
 	}
 
 	void HeadlessImGui::run(app::App& app, int frames)
+	{
+		run([&]() { app.frame(); }, frames);
+	}
+	void HeadlessImGui::run(const Frame& frame, int frames)
 	{
 		for (int i = 0; i < frames; ++i)
 		{
@@ -124,7 +140,7 @@ namespace platform
 			}
 			ImGui_ImplNullRender_NewFrame();
 			ImGui::NewFrame();
-			app.frame();
+			frame();
 			ImGui::Render();
 			render();
 			if (afterFrame) afterFrame();

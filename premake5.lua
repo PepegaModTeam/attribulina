@@ -117,11 +117,36 @@ project "Attribulina"
         resincludedirs { "res" }
         files { "res/attribulina.rc", "res/attribulina.ico" }
         files { "src/platform/win32/**.h", "src/platform/win32/**.cpp", "src/platform/win32/**.rc" }
+        removefiles { "src/platform/win32/installer/**" } -- the mod installer's own main
         defines { "UNICODE", "_UNICODE" }
         links { "d3d11", "dxgi", "d3dcompiler", "dwmapi", "user32", "gdi32", "ole32", "shell32", "uuid", "comdlg32", "imm32", "windowscodecs" }
         entrypoint "wWinMainCRTStartup"
         -- data/ (key names, type schemas) next to the exe, where the editor
         -- looks for it. Build events run in the project directory (build/).
+        postbuildcommands { '{COPYDIR} "../data" "%{cfg.buildtarget.directory}data"'  }
+    filter "system:not windows"
+        -- Placeholder until the Vulkan/Wayland host exists.
+        kind "None"
+    filter {}
+
+-- The mod installer: installs one mod into a game, step by step
+-- (src/installer/Installer.h, doc/installer.md). It shares the editor's UI
+-- library and Win32 host, with a main of its own.
+project "ModInstaller"
+    kind "WindowedApp"
+    targetname "AttribulinaModInstaller"
+    warnings "Extra"
+    includedirs { "src", "include", "external/imgui", "external/imgui/backends", "external/imgui/misc/cpp" }
+    files { "src/installer/**.h", "src/installer/**.cpp" }
+    links { "attribui", "attribcore", "lua50", "lua51", "lzcompress", "imgui" }
+    filter "system:windows"
+        resincludedirs { "res" }
+        files { "res/attribulina.rc", "res/attribulina.ico" }
+        files { "src/platform/win32/Win32Host.*", "src/platform/win32/D3D11Device.*", "src/platform/win32/installer/**.cpp" }
+        defines { "UNICODE", "_UNICODE" }
+        links { "d3d11", "dxgi", "d3dcompiler", "dwmapi", "user32", "gdi32", "ole32", "shell32", "uuid", "comdlg32", "imm32", "windowscodecs" }
+        entrypoint "wWinMainCRTStartup"
+        -- data/ next to the exe, where it looks for it.
         postbuildcommands { '{COPYDIR} "../data" "%{cfg.buildtarget.directory}data"'  }
     filter "system:not windows"
         -- Placeholder until the Vulkan/Wayland host exists.
@@ -140,6 +165,7 @@ project "attribcli"
     filter {}
     links { "attribcore", "lua50", "lua51", "lzcompress" }
     filter "system:windows"
+        links { "shell32", "ole32" } -- the per-user folder (src/core/UserFolder.cpp)
         -- data/ next to the exe, where it looks for it.
          postbuildcommands { '{COPYDIR} "../data" "%{cfg.buildtarget.directory}data"' }
 
@@ -154,6 +180,7 @@ project "attribtests"
         "tests/**.h", "tests/**.cpp",
         "src/app/**.h", "src/app/**.cpp",
         "src/platform/headless/**.h", "src/platform/headless/**.cpp",
+        "src/installer/**.h", "src/installer/**.cpp",
         "src/cli/Cli.h", "src/cli/Cli.cpp",
         "external/imgui/*.h", "external/imgui/*.cpp",
         "external/imgui/misc/cpp/imgui_stdlib.*",
@@ -163,4 +190,7 @@ project "attribtests"
         warnings "Off"
     filter {}
     links { "attribcore", "lua50", "lua51", "lzcompress" }
+    filter "system:windows"
+        links { "shell32", "ole32" }
+    filter {}
     debugdir "."
