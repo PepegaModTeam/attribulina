@@ -14,6 +14,7 @@
 #include "core/Game.h"
 #include "core/Gameplay.h"
 #include "core/Hash.h"
+#include "core/MemoryFile.h"
 #include "core/Nfsms.h"
 #include "core/Script.h"
 #include "core/Values.h"
@@ -560,6 +561,8 @@ TEST("ui: favourites, colour choices, open panels and the window placement persi
         a->setDetectTarget(false);
         a->setArraysPastLimit(true);
         a->setSaveOnlyChanged(true);
+        CHECK(a->updateMemoryFiles()); // on by default
+        a->setUpdateMemoryFiles(false);
         imgui.run(*a, 2);
         // The app saves the ini and detaches from it before the ImGui context
         // goes, so DestroyContext() can't save through a stale filename.
@@ -575,6 +578,7 @@ TEST("ui: favourites, colour choices, open panels and the window placement persi
         a.setDetectTarget(true);
         CHECK(a.arraysPastLimit());
         CHECK(a.saveOnlyChanged());
+        CHECK(!a.updateMemoryFiles());
         CHECK(a.open(ProStreetDir() + "/ATTRIBUTES.BIN"));
         Collection* sun = a.database()->findCollection(StringHash32("pvehicle"), StringHash32("default"));
         CHECK(a.isFavorite(sun));
@@ -4665,6 +4669,96 @@ TEST("ui: Save All writes every pack, changed or not, unless File > Save Only Ch
     for (const auto& c : probe.conflicts) std::printf("        ID conflict: %s\n", c.c_str());
     CHECK(probe.conflicts.empty());
     fs::remove_all(tmp);
+}
+
+TEST("ui: Save All updates the game's memory files' copies of the packs; File > Update Memory Files turns it off") {
+    namespace fs = std::filesystem;
+    const fs::path root = fs::temp_directory_path() / "attribulina_ui_memory";
+    const fs::path global = root / "GLOBAL";
+    fs::remove_all(root);
+    fs::create_directories(global);
+    for (const char* f : {"ATTRIBUTES.BIN", "FE_ATTRIB.BIN"}) fs::copy_file(fs::path(ProStreetDir()) / f, global / f);
+    for (const auto& e : fs::directory_iterator(test::DataPath("attrib/memoryfiles/pc/prostreet"))) fs::copy_file(e.path(), global / e.path().filename());
+    const fs::path memory = global / "GlobalMemoryFile.bin";
+    const Bytes original = ReadFile(memory.string());
+    const uint32_t attributes = GameFileHash("GLOBAL\\ATTRIBUTES.BIN");
+    auto copy = [&]() { return ReadMemoryFile(ReadFile(memory.string()))->find(attributes)->bytes; };
+    auto logged = [](const app::App& a, const std::string& text, size_t from = 0) {
+        for (size_t i = from; i < a.log().size(); ++i)
+            if (a.log()[i].text.find(text) != std::string::npos) return true;
+        return false;
+    };
+    platform::HeadlessImGui imgui;
+    imgui.beforeFrame = ProbeBefore;
+    imgui.afterFrame = ProbeAfter;
+    test::UiProbe& probe = test::UiProbe::get();
+    probe.conflicts.clear();
+    platform::HeadlessHost host;
+    app::App a(host);
+    a.setup(1.0f, "");
+    a.setUserKeysPath("");
+    CHECK(a.updateMemoryFiles());
+    CHECK(a.open(global.string()));
+    CHECK_EQ(a.database()->packs().size(), size_t(2)); // the memory files aren't packs
+    CHECK(logged(a, "GlobalMemoryFile.bin holds a copy of GLOBAL\\ATTRIBUTES.BIN, which the game reads in place of the file. Saving the pack updates it."));
+    imgui.run(a, 2);
+    auto fileMenu = [&](const char* label) {
+        const test::ProbeItem* file = probe.find("File");
+        CHECK(file);
+        if (!file) return;
+        ClickItem(imgui, a, *file);
+        imgui.run(a, 1);
+        const test::ProbeItem* item = probe.find(label);
+        CHECK(item);
+        if (item) ClickItem(imgui, a, *item);
+        imgui.run(a, 2);
+        if (ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId)) {
+            imgui.key(a, ImGuiKey_Escape);
+            imgui.run(a, 2);
+        }
+    };
+
+    // Nothing changed: Save All writes the packs, and the memory file stays.
+    fileMenu("Save All");
+    CHECK(ReadFile(memory.string()) == original);
+    CHECK(!fs::exists(global / "GlobalMemoryFile.bin.bak"));
+    // A change: the copy is the saved pack, once, and the original is kept.
+    CHECK(a.runConsole("edit audio_revlimiter/default { total_frames_short = 9 }"));
+    imgui.run(a, 1);
+    size_t from = a.log().size();
+    fileMenu("Save All");
+    CHECK(!a.hasUnsavedChanges());
+    const Bytes saved = ReadFile((global / "ATTRIBUTES.BIN").string());
+    CHECK(saved != ReadFile(ProStreetDir() + "/ATTRIBUTES.BIN"));
+    CHECK(copy() == saved);
+    CHECK(ReadFile((global / "GlobalMemoryFile.bin.bak").string()) == original);
+    CHECK(logged(a, "its copy of GLOBAL\\ATTRIBUTES.BIN is the saved file now", from));
+    // Off: the memory file stays, and the Log says the game reads the old copy.
+    fileMenu("Update Memory Files");
+    CHECK(!a.updateMemoryFiles());
+    const Bytes kept = ReadFile(memory.string());
+    CHECK(a.runConsole("edit audio_revlimiter/default { total_frames_short = 10 }"));
+    imgui.run(a, 1);
+    from = a.log().size();
+    fileMenu("Save All");
+    CHECK(ReadFile(memory.string()) == kept);
+    CHECK(copy() != ReadFile((global / "ATTRIBUTES.BIN").string()));
+    CHECK(logged(a, "GlobalMemoryFile.bin still holds the old copy of GLOBAL\\ATTRIBUTES.BIN", from));
+    // Opening it again says the copy differs.
+    a.closeAll();
+    imgui.run(a, 1);
+    CHECK(a.open(global.string()));
+    CHECK(logged(a, "holds another copy of GLOBAL\\ATTRIBUTES.BIN than the file"));
+    imgui.run(a, 2);
+    // On again: saving brings the copy back in line.
+    fileMenu("Update Memory Files");
+    CHECK(a.updateMemoryFiles());
+    fileMenu("Save All");
+    CHECK(copy() == ReadFile((global / "ATTRIBUTES.BIN").string()));
+    CHECK_EQ(Errors(a), size_t(0));
+    for (const auto& c : probe.conflicts) std::printf("        ID conflict: %s\n", c.c_str());
+    CHECK(probe.conflicts.empty());
+    fs::remove_all(root);
 }
 
 TEST("ui: an early Most Wanted demo (64-bit keys): an edit to a reference undoes and redoes, and the names stay") {

@@ -1031,14 +1031,17 @@ namespace attrib
 		return std::string(out.begin(), out.end());
 	}
 
-	void SavePack(const Database& db, LoadedPack& pack, const std::string& path)
+	std::vector<SavedFile> SavePack(const Database& db, LoadedPack& pack, const std::string& path)
 	{
+		std::vector<SavedFile> saved;
 		const Bytes data = WritePack(db, pack);
-		ReplaceFile(path, pack.compression ? Compress(*pack.compression, data) : data);
+		saved.push_back({ path, pack.compression ? Compress(*pack.compression, data) : data });
+		ReplaceFile(path, saved.back().bytes);
 		if (const std::optional<std::string> twin = PackTwin(path))
 		{
 			if (Lower(*twin).ends_with(".bin"))
 			{
+				saved.push_back({ *twin, data });
 				ReplaceFile(*twin, data);
 			}
 			else
@@ -1052,11 +1055,13 @@ namespace attrib
 				catch (const std::exception&)
 				{
 				}
-				ReplaceFile(*twin, Compress(kind, data));
+				saved.push_back({ *twin, Compress(kind, data) });
+				ReplaceFile(*twin, saved.back().bytes);
 			}
 		}
 		pack.path = path;
 		pack.dirty = false;
+		return saved;
 	}
 
 } // namespace attrib

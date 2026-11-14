@@ -69,6 +69,11 @@ apply:
   --compress <kind> save gameplay.lzc with jdlz (as retail), huff, raww (stored)
                     or rfpk (EA RefPack, which only Undercover's code reads)
   --no-backup       don't keep the first original as <file>.bak
+  --no-memory-files leave the game's memory files as they are. By default a
+                    memory file beside a saved pack (GlobalMemoryFile.bin, which
+                    holds attributes.bin) gets the saved pack as its copy, since
+                    the game reads the copy in place of the file; with --out the
+                    updated memory file is written there too
   --vlted           read nfsms scripts as NFS-VltEd 4.6 does (doc/nfsms.md,
                     "NFS-VltEd compatible"): its value widths and quirks
 
@@ -92,8 +97,8 @@ Attribulator or OGVI saved (VaultLib): each vault takes its game's header back,
 a class too short for its fields its size, array pads the game's values, and
 OGVI's World event vaults go back to gc.vaults as the game's event files (the
 files it put beside attributes.bin are removed). What can't be undone is a
-warning. Only repaired packs are written; --out, --dry-run and --no-backup work
-as for apply.
+warning. Only repaired packs are written; --out, --dry-run, --no-backup and
+--no-memory-files work as for apply.
 
 convert: an nfsms script (and the scripts it includes) as a mod script. Its
 setup becomes options and `if` blocks. It is tried on a copy of the database,
@@ -511,7 +516,7 @@ which decides how values read; lines that fail come out as comments.
 
 			int apply(const std::vector<std::string>& in)
 			{
-				const Args a = Parse(in, { "-e", "--set", "--out", "--compress" }, { "--dry-run", "--strict", "--no-backup", "--vlted" });
+				const Args a = Parse(in, { "-e", "--set", "--out", "--compress" }, { "--dry-run", "--strict", "--no-backup", "--vlted", "--no-memory-files" });
 				if (a.positional.empty()) throw Failed{ "apply needs a database" };
 				std::optional<LzKind> compress;
 				if (a.has("--compress") && !(compress = ParseLzKind(a.get("--compress"))))
@@ -631,9 +636,18 @@ which decides how values read; lines that fail come out as comments.
 				});
 				std::sort(removed.begin(), removed.end());
 				removed.erase(std::unique(removed.begin(), removed.end()), removed.end());
+				const bool memoryFiles = !a.has("--no-memory-files");
 				if (a.has("--dry-run"))
 				{
-					for (const LoadedPack* p : dirty) out_ << "would write " << p->path << "\n";
+					for (const LoadedPack* p : dirty)
+					{
+						out_ << "would write " << p->path << "\n";
+						std::vector<std::string> files{ p->path };
+						if (const std::optional<std::string> twin = PackTwin(p->path)) files.push_back(*twin);
+						for (const std::string& f : files)
+							for (const MemoryFileCopy& c : MemoryFileCopiesOf(f))
+								out_ << (memoryFiles ? "would update " : "would leave ") << ToUtf8(FromUtf8(c.memoryFile).filename()) << "'s copy of " << c.gamePath << "\n";
+					}
 					for (const std::string& f : removed) out_ << "would remove " << f << "\n";
 					if (dirty.empty() && removed.empty()) out_ << "nothing would change\n";
 					return 0;
@@ -644,6 +658,7 @@ which decides how values read; lines that fail come out as comments.
 					std::error_code ec;
 					fs::create_directories(FromUtf8(outDir), ec);
 				}
+				std::vector<SavedFile> saved;
 				for (LoadedPack* p : dirty)
 				{
 					const std::string target = outDir.empty() ? p->path : ToUtf8(FromUtf8(outDir) / FromUtf8(p->path).filename());
@@ -667,7 +682,14 @@ which decides how values read; lines that fail come out as comments.
 					}
 					// A new event vault file's folder may not be there yet.
 					if (std::error_code ec; !fs::exists(FromUtf8(target).parent_path(), ec)) fs::create_directories(FromUtf8(target).parent_path(), ec);
-					SavePack(*db, *p, target);
+					const std::string source = p->path; // SavePack moves it to `target`
+					for (SavedFile& f : SavePack(*db, *p, target))
+					{
+						// With --out, the memory files that count are the ones the game
+						// has beside the original.
+						if (!outDir.empty()) f.path = ToUtf8(FromUtf8(source).parent_path() / FromUtf8(f.path).filename());
+						saved.push_back(std::move(f));
+					}
 					out_ << "saved " << target << (twin ? " and " + ToUtf8(FromUtf8(*twin).filename()) : std::string()) << "\n";
 				}
 				for (const std::string& f : removed)
@@ -693,8 +715,50 @@ which decides how values read; lines that fail come out as comments.
 					}
 					if (ec) throw Failed{ "could not remove " + f + ": " + ec.message() };
 				}
+				saveMemoryFiles(saved, outDir.empty() ? removed : std::vector<std::string>(), outDir, memoryFiles, a.has("--no-backup"));
 				if (dirty.empty() && removed.empty()) out_ << "nothing changed\n";
 				return 0;
+			}
+
+			// The memory files beside the saved packs (core/MemoryFile.h): their
+			// copies take the saved bytes, and those of removed files go. Into
+			// `outDir` when given; with `update` off, a warning for each copy that
+			// stays old.
+			void saveMemoryFiles(const std::vector<SavedFile>& saved, const std::vector<std::string>& removed,
+				const std::string& outDir, bool update, bool noBackup)
+			{
+				if (!update)
+				{
+					for (const SavedFile& s : saved)
+						for (const MemoryFileCopy& c : MemoryFileCopiesOf(s.path))
+							if (outDir.empty() ? !c.same : true)
+								err_ << "attribcli: warning: " << ToUtf8(FromUtf8(c.memoryFile).filename()) << " holds another copy of " << c.gamePath
+									<< ", which the game reads in place of the file; it is left as it is (--no-memory-files)\n";
+					return;
+				}
+				for (MemoryFileUpdate u : PlanMemoryFileUpdates(saved, removed))
+				{
+					const std::string from = u.path;
+					if (!outDir.empty()) u.path = ToUtf8(FromUtf8(outDir) / FromUtf8(u.path).filename());
+					if (outDir.empty() && !noBackup)
+					{
+						std::error_code ec;
+						const fs::path t = FromUtf8(u.path);
+						fs::path bak = t;
+						bak += ".bak";
+						if (fs::exists(t, ec) && !fs::exists(bak, ec))
+						{
+							fs::copy_file(t, bak, ec);
+							if (!ec) err_ << "kept the original as " << ToUtf8(bak) << "\n";
+						}
+					}
+					SaveMemoryFileUpdate(u);
+					out_ << "updated " << u.path;
+					if (!outDir.empty()) out_ << " (from " << from << ")";
+					for (size_t i = 0; i < u.updated.size(); ++i) out_ << (i ? ", " : ": its copy of ") << u.updated[i];
+					for (size_t i = 0; i < u.dropped.size(); ++i) out_ << (i ? ", " : u.updated.empty() ? ": dropped its copy of " : "; dropped its copy of ") << u.dropped[i];
+					out_ << "\n";
+				}
 			}
 
 			// Opens a database and saves what loading repaired: files another tool
@@ -702,7 +766,7 @@ which decides how values read; lines that fail come out as comments.
 			// with: core/VaultLib.h), each fix reported as a warning.
 			int repair(const std::vector<std::string>& in)
 			{
-				const Args a = Parse(in, { "--out" }, { "--dry-run", "--no-backup" });
+				const Args a = Parse(in, { "--out" }, { "--dry-run", "--no-backup", "--no-memory-files" });
 				if (a.positional.size() != 1) throw Failed{ "repair takes a database" };
 				movedFrom_.clear();
 				auto db = load(a.positional[0]);

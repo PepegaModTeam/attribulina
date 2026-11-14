@@ -4,6 +4,7 @@
 // PC pack is reproduced byte for byte; doc/vault-format.md lists the rules.
 
 #include "Database.h"
+#include "MemoryFile.h"
 
 namespace attrib
 {
@@ -32,8 +33,9 @@ namespace attrib
 
 	// Writes the pack to `path`, and to its PackTwin() (uncompressed for a .bin,
 	// LZHeader-wrapped for a .lzc), then clears its dirty flag. Each file goes
-	// through a .tmp first.
-	void SavePack(const Database& db, LoadedPack& pack, const std::string& path);
+	// through a .tmp first. Returns the files written with their bytes, for the
+	// memory files holding copies of them (PlanMemoryFileUpdates, MemoryFile.h).
+	std::vector<SavedFile> SavePack(const Database& db, LoadedPack& pack, const std::string& path);
 
 	// The mTableKeyShift the writer uses for a collection: the stored one while
 	// the entry keys are as loaded, otherwise the shift with the shortest worst

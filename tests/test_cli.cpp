@@ -5,10 +5,12 @@
 
 #include "cli/Cli.h"
 #include "core/Compression.h"
+#include "core/MemoryFile.h"
 #include "core/Script.h"
 
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <sstream>
 
 namespace fs = std::filesystem;
@@ -291,4 +293,152 @@ TEST("cli: repair saves what opening repaired in files OGVI saved (VaultLib); Wo
         }
     }
     fs::remove_all(tmp);
+}
+
+TEST("cli: apply updates the copy of a saved pack in the game's memory files; --no-memory-files and --out") {
+    const std::string vanilla = test::DataPath("attrib/databases/pc/prostreet-vanilla");
+    const std::string memories = test::DataPath("attrib/memoryfiles/pc/prostreet");
+    const fs::path root = fs::temp_directory_path() / "attribulina_cli_memory";
+    const fs::path global = root / "GLOBAL";
+    fs::remove_all(root);
+    fs::create_directories(global);
+    for (const char* f : {"ATTRIBUTES.BIN", "FE_ATTRIB.BIN"}) fs::copy_file(fs::path(vanilla) / f, global / f);
+    for (const auto& e : fs::directory_iterator(memories)) fs::copy_file(e.path(), global / e.path().filename());
+    Cli run(root);
+    const fs::path memory = global / "GlobalMemoryFile.bin";
+    const attrib::Bytes original = attrib::ReadFile(memory.string());
+    const uint32_t attributes = attrib::GameFileHash("GLOBAL\\ATTRIBUTES.BIN");
+    auto copyOf = [&](const fs::path& m) { return attrib::ReadMemoryFile(attrib::ReadFile(m.string()))->find(attributes)->bytes; };
+
+    // Opening the folder loads the packs alone.
+    CHECK_EQ(run({"info", global.string()}), 0);
+    CHECK(run.out.find("MemoryFile") == std::string::npos);
+
+    WriteText(root / "mod.amod", "attribulina 1\ngame prostreet_pc\nedit audio_revlimiter/default { total_frames_short = 9 }\n");
+    const std::string mod = (root / "mod.amod").string();
+    CHECK_EQ(run({"apply", global.string(), mod, "--dry-run"}), 0);
+    CHECK(run.out.find("would update GlobalMemoryFile.bin's copy of GLOBAL\\ATTRIBUTES.BIN") != std::string::npos);
+    CHECK(attrib::ReadFile(memory.string()) == original);
+
+    // --out: the packs and the memory file go there; the originals stay.
+    const fs::path out = root / "out";
+    CHECK_EQ(run({"apply", global.string(), mod, "--out", out.string()}), 0);
+    CHECK(run.out.find("updated " + (out / "GlobalMemoryFile.bin").string()) != std::string::npos);
+    CHECK(attrib::ReadFile(memory.string()) == original);
+    CHECK(copyOf(out / "GlobalMemoryFile.bin") == attrib::ReadFile((out / "ATTRIBUTES.BIN").string()));
+    CHECK(!fs::exists(out / "InGameMemoryFile.bin")); // it holds no pack
+
+    // --no-memory-files: the memory file stays, with a warning.
+    const fs::path off = root / "off";
+    CHECK_EQ(run({"apply", global.string(), mod, "--out", off.string(), "--no-memory-files"}), 0);
+    CHECK(!fs::exists(off / "GlobalMemoryFile.bin"));
+    CHECK(run.err.find("GlobalMemoryFile.bin holds another copy of GLOBAL\\ATTRIBUTES.BIN") != std::string::npos);
+
+    // In place: the copy is the saved pack, and the first original is kept.
+    CHECK_EQ(run({"apply", global.string(), mod}), 0);
+    CHECK(run.out.find("updated " + memory.string() + ": its copy of GLOBAL\\ATTRIBUTES.BIN") != std::string::npos);
+    const attrib::Bytes saved = attrib::ReadFile((global / "ATTRIBUTES.BIN").string());
+    CHECK(saved != attrib::ReadFile((fs::path(vanilla) / "ATTRIBUTES.BIN").string()));
+    CHECK(copyOf(memory) == saved);
+    CHECK(fs::exists(global / "GlobalMemoryFile.bin.bak") && attrib::ReadFile((global / "GlobalMemoryFile.bin.bak").string()) == original);
+    const auto before = attrib::ReadMemoryFile(original), after = attrib::ReadMemoryFile(attrib::ReadFile(memory.string()));
+    CHECK_EQ(after->entries.size(), before->entries.size());
+    for (size_t i = 0; i < before->entries.size(); ++i)
+        if (before->entries[i].hash != attributes) CHECK(after->entries[i].bytes == before->entries[i].bytes);
+    // The same edit again saves nothing.
+    const attrib::Bytes now = attrib::ReadFile(memory.string());
+    CHECK_EQ(run({"apply", global.string(), mod}), 0);
+    CHECK(run.out.find("nothing changed") != std::string::npos);
+    CHECK(attrib::ReadFile(memory.string()) == now);
+    // Another value: the copy follows again, and the .bak stays the first original.
+    WriteText(root / "mod2.amod", "attribulina 1\ngame prostreet_pc\nedit audio_revlimiter/default { total_frames_short = 11 }\n");
+    CHECK_EQ(run({"apply", global.string(), (root / "mod2.amod").string()}), 0);
+    CHECK(copyOf(memory) == attrib::ReadFile((global / "ATTRIBUTES.BIN").string()));
+    CHECK(attrib::ReadFile((global / "GlobalMemoryFile.bin.bak").string()) == original);
+    fs::remove_all(root);
+}
+
+TEST("cli: saving a pack changes nothing in the memory files but its copy, in every PC game") {
+    // Every other copy keeps its bytes, FileSize, MemorySize (partial ones stay
+    // partial), Data and place in the table; only the copies after the changed
+    // one move, all by the same multiple of 16. Memory files holding no copy of
+    // the pack aren't written, and the original pack back gives the original
+    // memory file back.
+    const struct {
+        const char* game;
+        const char* db;
+        const char* target;
+        const char* pack;
+    } games[] = {
+        {"mw", "mw-vanilla", "mw_pc", "attributes.bin"},
+        {"carbon", "carbon-vanilla", "carbon_pc", "attributes.bin"},
+        {"prostreet", "prostreet-vanilla", "prostreet_pc", "ATTRIBUTES.BIN"},
+        {"undercover", "undercover-vanilla", "undercover_pc", "ATTRIBUTES.BIN"},
+    };
+    for (const auto& g : games) {
+        const fs::path root = fs::temp_directory_path() / "attribulina_cli_memory_untouched";
+        const fs::path global = root / "GLOBAL";
+        fs::remove_all(root);
+        fs::create_directories(global);
+        fs::copy_file(test::DataPath("attrib/databases/pc/" + std::string(g.db) + "/" + g.pack), global / g.pack);
+        std::map<std::string, attrib::Bytes> before;
+        for (const auto& e : fs::directory_iterator(test::DataPath("attrib/memoryfiles/pc/" + std::string(g.game)))) {
+            fs::copy_file(e.path(), global / e.path().filename());
+            before[e.path().filename().string()] = attrib::ReadFile(e.path().string());
+        }
+        Cli run(root);
+        WriteText(root / "mod.amod", std::string("attribulina 1\ngame ") + g.target + "\ncollection pvehicle/memory_file_check under pvehicle/default\n");
+        CHECK_EQ(run({"apply", global.string(), (root / "mod.amod").string(), "--no-backup"}), 0);
+        const attrib::Bytes pack = attrib::ReadFile((global / g.pack).string());
+        const attrib::Bytes oldPack = attrib::ReadFile(test::DataPath("attrib/databases/pc/" + std::string(g.db) + "/" + g.pack));
+        CHECK(pack.size() > oldPack.size());
+        const uint32_t hash = attrib::GameFileHash(std::string("GLOBAL\\") + g.pack);
+        for (const auto& [name, old] : before) {
+            const attrib::Bytes now = attrib::ReadFile((global / name).string());
+            if (name != "GlobalMemoryFile.bin") {
+                CHECK(now == old); // no copy of the pack: not written
+                continue;
+            }
+            const auto a = attrib::ReadMemoryFile(old), b = attrib::ReadMemoryFile(now);
+            CHECK(a && b);
+            CHECK(std::equal(old.begin(), old.begin() + 16, now.begin())); // header
+            CHECK_EQ(b->entries.size(), a->entries.size());
+            const auto offset = [](const attrib::Bytes& f, size_t i) { return attrib::load32(f.data() + 16 + 20 * i + 4, attrib::Endian::Little); };
+            size_t changed = a->entries.size(), partial = 0;
+            int64_t shift = 0;
+            for (size_t i = 0; i < a->entries.size(); ++i) {
+                const attrib::MemoryFileEntry &x = a->entries[i], &y = b->entries[i];
+                CHECK_EQ(y.hash, x.hash);
+                CHECK_EQ(y.data, x.data);
+                if (x.hash == hash) {
+                    CHECK(y.bytes == pack && y.whole());
+                    changed = i;
+                    const size_t start = offset(old, i);
+                    shift = int64_t((start + pack.size() + 15) / 16 * 16) - int64_t((start + oldPack.size() + 15) / 16 * 16);
+                    CHECK_EQ(offset(now, i), offset(old, i));
+                    continue;
+                }
+                CHECK(y.bytes == x.bytes);
+                CHECK_EQ(y.fileSize, x.fileSize);
+                partial += !x.whole();
+                CHECK_EQ(int64_t(offset(now, i)), int64_t(offset(old, i)) + (i > changed ? shift : 0));
+            }
+            CHECK(changed < a->entries.size());
+            CHECK(partial > 0); // DYNTEX.BIN and the car texture packs: still partial
+            CHECK_EQ(shift % 16, int64_t(0));
+            // Byte for byte: everything before the changed copy is as it was
+            // except the moved copies' Offset fields and the copy's sizes, and
+            // everything after it is the old bytes moved by `shift`.
+            const size_t start = offset(old, changed);
+            for (size_t k = 16 + 20 * a->entries.size(); k < start; ++k) CHECK_EQ(now[k], old[k]);
+            const size_t oldEnd = (start + oldPack.size() + 15) / 16 * 16, newEnd = (start + pack.size() + 15) / 16 * 16;
+            CHECK_EQ(now.size() - newEnd, old.size() - oldEnd);
+            CHECK(std::equal(old.begin() + oldEnd, old.end(), now.begin() + newEnd));
+            // The original pack back: the original memory file.
+            const auto back = attrib::PlanMemoryFileUpdates({{(global / g.pack).string(), oldPack}});
+            CHECK_EQ(back.size(), size_t(1));
+            CHECK(back[0].bytes == old);
+        }
+        fs::remove_all(root);
+    }
 }

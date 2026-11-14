@@ -222,6 +222,7 @@ namespace app
 			else if (k == "DetectGame") self->detectTarget_ = v != "0";
 			else if (k == "ArraysPastLimit") self->arraysPastLimit_ = v == "1";
 			else if (k == "SaveOnlyChanged") self->saveOnlyChanged_ = v == "1";
+			else if (k == "UpdateMemoryFiles") self->updateMemoryFiles_ = v != "0";
 		};
 		h.WriteAllFn = [](ImGuiContext*, ImGuiSettingsHandler* hh, ImGuiTextBuffer* out)
 		{
@@ -232,6 +233,7 @@ namespace app
 			out->appendf("DetectGame=%d\n", self->detectTarget_ ? 1 : 0);
 			out->appendf("ArraysPastLimit=%d\n", self->arraysPastLimit_ ? 1 : 0);
 			out->appendf("SaveOnlyChanged=%d\n", self->saveOnlyChanged_ ? 1 : 0);
+			out->appendf("UpdateMemoryFiles=%d\n", self->updateMemoryFiles_ ? 1 : 0);
 			out->appendf("OpenPanels=%s\n", self->openPanels().c_str());
 			out->appendf("NfsmsFollow=%d\nNfsmsStrict=%d\nNfsmsVltEd=%d\nRecordScript=%d\nRecordNfsms=%d\n", self->nfsmsFollow_ ? 1 : 0,
 				self->nfsmsStrict_ ? 1 : 0, self->nfsmsVltEd_ ? 1 : 0, self->recordAmod_ ? 1 : 0, self->recordNfsms_ ? 1 : 0);
@@ -721,6 +723,7 @@ namespace app
 			if (std::any_of(pk.vaults.begin(), pk.vaults.end(), [](const auto& v) { return v->repaired; }))
 				log(LogLevel::Warning, "Repaired " + path + " as it loaded. It counts as changed, and saving writes it corrected.");
 			checkPackTwin(pk);
+			checkMemoryFiles(pk);
 			structureChanged();
 			recordBase_.reset(); // loading isn't a change to record
 			return true;
@@ -761,6 +764,80 @@ namespace app
 		catch (const std::exception& e)
 		{
 			log(LogLevel::Warning, "Could not compare " + file + " with " + other + ": " + e.what());
+		}
+	}
+
+	void App::checkMemoryFiles(const LoadedPack& pk)
+	{
+		std::vector<std::string> files{ pk.path };
+		if (const std::optional<std::string> twin = PackTwin(pk.path))
+			if (std::error_code ec; fs::exists(FromUtf8(*twin), ec)) files.push_back(*twin);
+		for (const std::string& f : files)
+		{
+			for (const MemoryFileCopy& c : MemoryFileCopiesOf(f))
+			{
+				const std::string memory = ToUtf8(FromUtf8(c.memoryFile).filename());
+				const std::string saving = updateMemoryFiles_ ? "Saving the pack updates it."
+					: "Saving leaves it as it is: File > Update Memory Files is off.";
+				if (c.same)
+					log(LogLevel::Info, memory + " holds a copy of " + c.gamePath + ", which the game reads in place of the file. " + saving);
+				else if (!c.whole)
+					log(LogLevel::Info, memory + " holds the first " + std::to_string(c.size) + " bytes of " + c.gamePath +
+						", which the game reads in place of the file's. " + (updateMemoryFiles_ ? "Saving the pack puts all of it there." : saving));
+				else
+					log(LogLevel::Warning, memory + " holds another copy of " + c.gamePath + " than the file, and the game reads that copy in "
+						"its place: what changed in the file since doesn't show in the game. " + saving);
+			}
+		}
+	}
+
+	bool App::syncMemoryFiles(const std::vector<SavedFile>& saved, const std::vector<std::string>& removed)
+	{
+		if (saved.empty() && removed.empty()) return true;
+		auto name = [](const std::string& p) { return ToUtf8(FromUtf8(p).filename()); };
+		auto join = [](const std::vector<std::string>& v)
+		{
+			std::string out;
+			for (size_t i = 0; i < v.size(); ++i) out += (i ? (i + 1 == v.size() ? " and " : ", ") : "") + v[i];
+			return out;
+		};
+		if (!updateMemoryFiles_)
+		{
+			for (const SavedFile& s : saved)
+				for (const MemoryFileCopy& c : MemoryFileCopiesOf(s.path))
+					if (!c.same)
+						log(LogLevel::Warning, name(c.memoryFile) + " still holds the old copy of " + c.gamePath + ", and the game reads it in "
+							"place of the file you saved. File > Update Memory Files updates it as you save.");
+			return true;
+		}
+		try
+		{
+			for (const MemoryFileUpdate& u : PlanMemoryFileUpdates(saved, removed))
+			{
+				std::error_code ec;
+				const fs::path target = FromUtf8(u.path);
+				fs::path bak = target;
+				bak += ".bak";
+				if (fs::exists(target, ec) && !fs::exists(bak, ec))
+				{
+					fs::copy_file(target, bak, ec);
+					if (!ec) log(LogLevel::Info, "Backed up the original to " + ToUtf8(bak));
+				}
+				SaveMemoryFileUpdate(u);
+				std::string line = "Updated " + u.path;
+				if (u.updated.size() == 1) line += ": its copy of " + u.updated[0] + " is the saved file now (the game reads it in place of the file)";
+				else if (!u.updated.empty()) line += ": its copies of " + join(u.updated) + " are the saved files now (the game reads them in place of the files)";
+				if (!u.dropped.empty()) line += std::string(u.updated.empty() ? ": " : "; ") + "dropped its copy of " + join(u.dropped) + ", whose file was removed";
+				log(LogLevel::Info, line);
+				if (!u.madeWhole.empty())
+					log(LogLevel::Info, name(u.path) + " held only the start of " + join(u.madeWhole) + "; it holds the whole file now");
+			}
+			return true;
+		}
+		catch (const std::exception& e)
+		{
+			log(LogLevel::Error, std::string("Could not update the memory files: ") + e.what());
+			return false;
 		}
 	}
 
@@ -871,7 +948,7 @@ namespace app
 		saveRecent();
 	}
 
-	bool App::savePackAs(LoadedPack& pack, const std::string& path)
+	bool App::savePackAs(LoadedPack& pack, const std::string& path, std::vector<SavedFile>* saved)
 	{
 		try
 		{
@@ -899,7 +976,7 @@ namespace app
 			commitUndo(true); // the step being saved
 			// A new event vault file's folder may not be there yet.
 			if (std::error_code ec; !fs::exists(FromUtf8(path).parent_path(), ec)) fs::create_directories(FromUtf8(path).parent_path(), ec);
-			SavePack(*db_, pack, path);
+			std::vector<SavedFile> written = SavePack(*db_, pack, path);
 			// Undoing back to this step finds the file as it is now.
 			if (undoPos_ >= 0)
 			{
@@ -914,7 +991,12 @@ namespace app
 			else
 				log(LogLevel::Info, "Saved " + path);
 			updateTitle();
-			return true;
+			if (saved)
+			{
+				for (SavedFile& f : written) saved->push_back(std::move(f));
+				return true;
+			}
+			return syncMemoryFiles(written, {});
 		}
 		catch (const std::exception& e)
 		{
@@ -968,7 +1050,14 @@ namespace app
 	{
 		if (!db_) return true;
 		bool ok = true;
-		for (const std::string& f : removedFiles()) ok &= removeFile(f);
+		std::vector<std::string> removed;
+		for (const std::string& f : removedFiles())
+		{
+			const bool gone = removeFile(f);
+			ok &= gone;
+			if (gone) removed.push_back(f);
+		}
+		std::vector<SavedFile> saved;
 		for (const auto& p : db_->packs())
 		{
 			if (!p->dirty)
@@ -985,8 +1074,10 @@ namespace app
 					continue;
 				}
 			}
-			ok &= savePackAs(*p, p->path);
+			ok &= savePackAs(*p, p->path, &saved);
 		}
+		// Each memory file once, with every pack it holds a copy of.
+		ok &= syncMemoryFiles(saved, removed);
 		return ok;
 	}
 
@@ -1842,6 +1933,12 @@ namespace app
 			if (ImGui::IsItemHovered())
 				ImGui::SetTooltip("On: Save All writes only the packs with unsaved changes, and is greyed out while there are none.\n"
 					"Off (the default): it writes every open pack.");
+			if (ImGui::MenuItem("Update Memory Files", nullptr, &updateMemoryFiles_)) ImGui::MarkIniSettingsDirty();
+			if (ImGui::IsItemHovered())
+				ImGui::SetTooltip("On (the default): saving a pack also updates its copy in the game's memory files beside it\n"
+					"(GlobalMemoryFile.bin holds attributes.bin), which the game reads in place of the file.\n"
+					"The first original of each is kept as .bak. Off: they stay as they are, and the game\n"
+					"goes on reading the copies they hold.");
 			LoadedPack* selPack = selected_ && selected_->vault ? selected_->vault->pack : nullptr;
 			if (ImGui::MenuItem("Save Pack As...", nullptr, false, selPack != nullptr))
 			{

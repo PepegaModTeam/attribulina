@@ -13,6 +13,7 @@
 #include "core/Clip.h"
 #include "core/Edit.h"
 #include "core/GenHeader.h"
+#include "core/MemoryFile.h"
 #include "core/Database.h"
 #include "core/Gameplay.h"
 #include "core/Nfsms.h"
@@ -151,13 +152,30 @@ namespace app
 		{
 			saveOnlyChanged_ = on;
 		}
+		// File > Update Memory Files (on by default; UpdateMemoryFiles= in the
+		// .ini): saving a pack also updates the copies of it that the game's
+		// memory files beside it hold (GlobalMemoryFile.bin and the like,
+		// core/MemoryFile.h), which the game reads in place of the file. Save
+		// All rewrites each memory file once, after the packs, and keeps its
+		// first original as .bak.
+		bool updateMemoryFiles() const
+		{
+			return updateMemoryFiles_;
+		}
+		void setUpdateMemoryFiles(bool on)
+		{
+			updateMemoryFiles_ = on;
+		}
 		// The colour scheme (View > Theme; Theme= in the .ini, Dark by default).
 		Theme theme() const
 		{
 			return theme_;
 		}
 		void setTheme(Theme t);
-		bool savePackAs(attrib::LoadedPack& pack, const std::string& path);
+		// Saves one pack (and its twin). With `saved`, the files written are
+		// added to it and the memory files are left to the caller (Save All);
+		// without, the memory files holding them are updated at once.
+		bool savePackAs(attrib::LoadedPack& pack, const std::string& path, std::vector<attrib::SavedFile>* saved = nullptr);
 		// Files of packs the database no longer has (World event vault files
 		// whose vault was deleted): Save All removes them.
 		std::vector<std::string> removedFiles() const;
@@ -619,6 +637,12 @@ namespace app
 		bool openFile(const std::string& path);
 		bool openFolder(const std::string& path);
 		void checkPackTwin(attrib::LoadedPack& pk);
+		// Logs the memory files beside a pack that hold a copy of it (or of its
+		// twin), and whether the copy is the file.
+		void checkMemoryFiles(const attrib::LoadedPack& pk);
+		// Updates the memory files holding copies of `saved` and `removed` files
+		// (File > Update Memory Files), or warns about the copies when it's off.
+		bool syncMemoryFiles(const std::vector<attrib::SavedFile>& saved, const std::vector<std::string>& removed);
 		std::string recentPath() const;
 		void loadRecent();
 		void saveRecent();
@@ -913,6 +937,7 @@ namespace app
 		bool detectTarget_ = true;
 		bool arraysPastLimit_ = false;
 		bool saveOnlyChanged_ = false;
+		bool updateMemoryFiles_ = true;
 		attrib::Target lastTarget_;          // chosen last this run
 		attrib::Detection targetDetection_;  // what the prompt's files say
 		attrib::Target targetChoice_;        // what the prompt has chosen
