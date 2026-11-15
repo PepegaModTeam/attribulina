@@ -13,9 +13,13 @@
 // ends with how the installation went. Every run also writes a timestamped
 // log file into the folder the program runs in. Each mod installed goes on
 // the game's list of installed mods (core/ModList.h, attribulina_mods.txt
-// in GLOBAL), and installing one the list has already asks first; Advanced
-// Options turns that off and shows the list. Platform independent: a Host
-// (app/Host.h) gives the window and the dialogs. doc/installer.md.
+// in GLOBAL) with the trace of what it changed (core/ModTrace.h), and
+// installing one the list has already asks first. A mod that changes what
+// mods on the list changed stops before anything is written and asks:
+// uninstall those first, or install over them. Advanced Options turns the
+// list off and shows it, and its window uninstalls a mod or takes it off the
+// list. Platform independent: a Host (app/Host.h) gives the window and the
+// dialogs. doc/installer.md.
 
 #include "app/CodeEditor.h"
 #include "app/Host.h"
@@ -24,6 +28,7 @@
 
 #include "core/Install.h"
 #include "core/LogFile.h"
+#include "core/ModTrace.h"
 
 #include <atomic>
 #include <deque>
@@ -80,6 +85,15 @@ namespace installer
 		std::vector<std::string> logDirs;
 	};
 
+	// A mod on the list that changes some of what the mod being installed
+	// changes. `uninstall`: the user's tick, uninstall it first.
+	struct Conflict
+	{
+		attrib::InstalledMod mod;
+		std::string text; // "changes 3 things Shifted 1.2 changed: ..."
+		bool uninstall = true;
+	};
+
 	class Installer
 	{
 	public:
@@ -113,6 +127,19 @@ namespace installer
 		// Runs the mod and saves what it changed (in the background).
 		void install();
 		bool canInstall() const;
+		// When installing stopped at mods on the list that change the same
+		// things: those, with the user's ticks. Uninstalling the ticked ones
+		// first, or installing over all of them, runs the mod again.
+		std::vector<Conflict>& conflicts()
+		{
+			return conflicts_;
+		}
+		const std::string& conflictError() const
+		{
+			return conflictError_;
+		}
+		void uninstallTickedAndInstall();
+		void installOverConflicts();
 		// Starts over with another mod, the game's folder kept. Once a mod is
 		// installed (or failed to), the steps before are locked, and this is
 		// the only way back: they show what was installed.
@@ -173,6 +200,7 @@ namespace installer
 			// doesn't read (modsError says why).
 			std::optional<attrib::ModList> mods;
 			std::string modsError;
+			std::vector<attrib::TracedMod> traced; // the list's mods with their traces
 		};
 		const FoundGame& game() const
 		{
@@ -214,12 +242,33 @@ namespace installer
 		{
 			showMods_ = true;
 		}
+		// The window's commands, on the game's list (game().traced). Uninstall
+		// sets back what the mod changed in the database (in the background)
+		// and saves; forget takes it off the list and changes nothing else.
+		bool canUninstall(size_t index) const;
+		void uninstallMod(size_t index);
+		void forgetMod(size_t index);
+		// How the last of those went, for the window.
+		const std::string& modsMessage() const
+		{
+			return modsMessage_;
+		}
+		Level modsMessageLevel() const
+		{
+			return modsMessageLevel_;
+		}
 		struct Result
 		{
 			Outcome outcome = Outcome::None;
 			std::string headline, detail;
 			std::vector<std::string> files; // written and removed, from the game's folder
 			std::optional<attrib::ModList> mods; // the list, the mod added
+			std::vector<attrib::TracedMod> traced;
+			// Outcome None with these: it stopped before writing anything, as
+			// mods on the list change the same things (or uninstalling the ones
+			// ticked failed: conflictError).
+			std::vector<Conflict> conflicts;
+			std::string conflictError;
 		};
 		const Result& result() const
 		{
@@ -246,7 +295,22 @@ namespace installer
 	private:
 		enum class Work : uint8_t
 		{
-			None, Loading, Installing
+			None, Loading, Installing, Uninstalling
+		};
+		// What installing does first: the mods on the list to uninstall, and
+		// whether it goes over the conflicts it finds.
+		struct Plan
+		{
+			std::vector<attrib::InstalledMod> uninstall;
+			bool overConflicts = false;
+			std::vector<Conflict> conflicts; // as they were shown, for when uninstalling fails
+		};
+		struct ModsDone
+		{
+			std::optional<attrib::ModList> mods;
+			std::vector<attrib::TracedMod> traced;
+			std::string message;
+			Level level = Level::Info;
 		};
 
 		// A line for the Log and the log file. `levelInText`: the text names its
@@ -265,11 +329,15 @@ namespace installer
 		std::unique_ptr<attrib::Database> loadDatabase(const attrib::install::GameFolder& f, const attrib::Target& target,
 			std::vector<std::string>& movedFrom, FoundGame* found);
 		void loadGameJob(const attrib::install::GameFolder& f, std::optional<attrib::Target> target);
-		void installJob(const attrib::install::Mod& mod, const attrib::install::ModSettings& settings, const FoundGame& game, bool track);
-		// On the worker: the mod onto the game's list (r.mods), with how it went
-		// and the files it changed (full paths).
-		void recordInstall(const attrib::install::Mod& mod, const attrib::install::ModSettings& settings, const FoundGame& game,
-			const std::string& result, const std::vector<std::string>& files, Result& r);
+		void startInstall(Plan plan);
+		void installJob(const attrib::install::Mod& mod, const attrib::install::ModSettings& settings, const FoundGame& game, bool track,
+			const Plan& plan);
+		// The mod's entry on the list, before it is installed: all but how it went and its files.
+		attrib::InstalledMod entryFor(const attrib::install::Mod& mod, const attrib::install::ModSettings& settings) const;
+		// On the worker: `u` onto the game's list (r.mods, r.traced).
+		void writeList(const FoundGame& game, const attrib::ModListUpdate& u, Result& r);
+		void uninstallJob(const FoundGame& game, const attrib::InstalledMod& which);
+		void reloadIfStale(const FoundGame& game); // on the worker
 		void resetOptions();
 		void loadSettings();
 		void saveSettings();
@@ -280,6 +348,7 @@ namespace installer
 		void drawGamePage();
 		void drawOptionsPage();
 		void drawInstallPage();
+		void drawConflicts();
 		void drawStatus();
 		void drawLog(float height);
 		void drawButtons();
@@ -302,6 +371,14 @@ namespace installer
 		std::string modProblem_, modWarning_;
 		std::string installedNote_;
 		bool installAnyway_ = false;
+		std::vector<Conflict> conflicts_;
+		std::string conflictError_;
+		std::string modsMessage_;
+		Level modsMessageLevel_ = Level::Info;
+		enum class Confirm : uint8_t
+		{
+			None, Uninstall, Forget
+		} confirm_ = Confirm::None;
 		bool trackMods_ = true;
 		bool showMods_ = false;
 		app::ModListView modsView_;
@@ -324,6 +401,7 @@ namespace installer
 		std::string status_;
 		std::optional<FoundGame> gameDone_;  // what the worker left for harvest()
 		std::optional<Result> installDone_;
+		std::optional<ModsDone> modsDone_;
 
 		// The worker's while busy_, the window's otherwise.
 		std::atomic<bool> busy_{ false };

@@ -8,6 +8,7 @@
 #include "core/Hash.h"
 #include "core/MemoryFile.h"
 #include "core/ModList.h"
+#include "core/ModTrace.h"
 #include "core/Script.h"
 
 #include <filesystem>
@@ -500,5 +501,53 @@ TEST("cli: apply puts each script file on the game's list of installed mods once
     const auto outList = attrib::ReadModList(out.string());
     CHECK(outList && outList->mods.size() == 4);
     CHECK(list()->mods.size() == 3);
+    fs::remove_all(root);
+}
+
+TEST("cli: apply traces each mod and warns when one changes what a listed mod changed; mods lists them; uninstall sets one back from its trace") {
+    const std::string vanilla = test::DataPath("attrib/databases/pc/prostreet-vanilla");
+    const fs::path root = fs::temp_directory_path() / "attribulina_cli_uninstall";
+    const fs::path global = root / "GLOBAL";
+    fs::remove_all(root);
+    fs::create_directories(global);
+    for (const char* f : {"ATTRIBUTES.BIN", "FE_ATTRIB.BIN"}) fs::copy_file(fs::path(vanilla) / f, global / f);
+    for (const auto& e : fs::directory_iterator(test::DataPath("attrib/memoryfiles/pc/prostreet"))) fs::copy_file(e.path(), global / e.path().filename());
+    const attrib::Bytes attributes = attrib::ReadFile((global / "ATTRIBUTES.BIN").string());
+    const attrib::Bytes memory = attrib::ReadFile((global / "GlobalMemoryFile.bin").string());
+    Cli run(root);
+    WriteText(root / "tune.amod", "attribulina 1\ntitle \"Tune\"\nversion \"1\"\nedit audio_revlimiter/default { total_frames_short = 7\n total_frames_long = 8 }\n");
+    WriteText(root / "other.amod", "attribulina 1\ntitle \"Other\"\nedit audio_revlimiter/default { total_frames_short = 30 }\n");
+    CHECK_EQ(run({"apply", global.string(), (root / "tune.amod").string()}), 0);
+    CHECK_EQ(run({"apply", global.string(), (root / "other.amod").string()}), 0);
+    CHECK(run.err.find("attribcli: warning: Other changes 1 thing Tune 1 changed: audio_revlimiter/default total_frames_short") != std::string::npos);
+    auto list = attrib::ReadModList(global.string());
+    CHECK(list && list->mods.size() == 2 && !list->mods[0].trace.empty() && !list->mods[1].trace.empty());
+
+    CHECK_EQ(run({"mods", global.string()}), 0);
+    CHECK(run.out.find("1. Tune 1, installed ") != std::string::npos);
+    CHECK(run.out.find("2. Other, installed ") != std::string::npos);
+    CHECK(run.out.find("   uninstalling sets back 2 values of 1 collection (attribulina_traces\\") != std::string::npos);
+
+    // Tune goes; Other's value stays, and its trace now leads back to the game's.
+    CHECK_EQ(run({"uninstall", global.string(), "tune"}), 0);
+    CHECK(run.out.find("uninstalled Tune 1: ") != std::string::npos);
+    CHECK(run.out.find("took Tune 1 off " + attrib::ModListPath(global.string())) != std::string::npos);
+    list = attrib::ReadModList(global.string());
+    CHECK(list && list->mods.size() == 1 && list->mods[0].title == "Other");
+    CHECK_EQ(run({"get", global.string(), "audio_revlimiter/default", "total_frames_short"}), 0);
+    CHECK(run.out.find("total_frames_short = 30") != std::string::npos);
+
+    // A dry run changes nothing; one not on the list is an error.
+    CHECK_EQ(run({"uninstall", global.string(), "1", "--dry-run"}), 0);
+    CHECK(run.out.find("would take Other off ") != std::string::npos);
+    CHECK(attrib::ReadModList(global.string())->mods.size() == 1);
+    CHECK(run({"uninstall", global.string(), "Nothing"}) != 0);
+    CHECK(run.err.find("no mod on the list is Nothing") != std::string::npos);
+
+    // The last one gone: the game's files byte for byte.
+    CHECK_EQ(run({"uninstall", global.string(), "1"}), 0);
+    CHECK(attrib::ReadModList(global.string())->mods.empty());
+    CHECK(attrib::ReadFile((global / "ATTRIBUTES.BIN").string()) == attributes);
+    CHECK(attrib::ReadFile((global / "GlobalMemoryFile.bin").string()) == memory);
     fs::remove_all(root);
 }

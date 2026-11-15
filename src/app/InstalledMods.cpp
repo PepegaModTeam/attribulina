@@ -21,16 +21,11 @@ namespace app
 		}
 	} // namespace
 
-	void ModListView::draw(const attrib::ModList* list, const std::vector<InstalledMod>& pending, float height)
+	void ModListView::draw(const std::vector<attrib::TracedMod>& rows, bool listed, float height)
 	{
-		std::vector<const InstalledMod*> rows;
-		if (list)
-			for (const InstalledMod& m : list->mods) rows.push_back(&m);
-		const size_t saved = rows.size();
-		for (const InstalledMod& m : pending) rows.push_back(&m);
 		if (rows.empty())
 		{
-			ImGui::TextDisabled("%s", list ? "The list has no mods." : "No mods are listed: there is no list in this folder.");
+			ImGui::TextDisabled("%s", listed ? "The list has no mods." : "No mods are listed: there is no list in this folder.");
 			return;
 		}
 		if (picked_ >= int(rows.size())) picked_ = -1;
@@ -52,11 +47,11 @@ namespace app
 			ImGui::TableHeadersRow();
 			for (size_t i = 0; i < rows.size(); ++i)
 			{
-				const InstalledMod& m = *rows[i];
+				const InstalledMod& m = rows[i].mod;
 				ImGui::PushID(int(i));
 				ImGui::TableNextRow();
 				ImGui::TableNextColumn();
-				const std::string label = m.name() + (i >= saved ? " (not saved yet)" : "");
+				const std::string label = m.name() + (rows[i].pending() ? " (not saved yet)" : "");
 				if (ImGui::Selectable(label.c_str(), picked_ == int(i), ImGuiSelectableFlags_SpanAllColumns))
 					picked_ = picked_ == int(i) ? -1 : int(i);
 				if (ImGui::IsItemHovered() && !m.script.empty()) ImGui::SetTooltip("%s", m.script.c_str());
@@ -76,7 +71,8 @@ namespace app
 		{
 			return;
 		}
-		const InstalledMod& m = *rows[size_t(picked_)];
+		const attrib::TracedMod& row = rows[size_t(picked_)];
+		const InstalledMod& m = row.mod;
 		ImGui::BeginChild("##picked", ImVec2(0, std::max(em * 4, avail - tableHeight - ImGui::GetStyle().ItemSpacing.y)), ImGuiChildFlags_Borders);
 		ImGui::PushTextWrapPos(0.0f);
 		ImGui::TextUnformatted(m.name().c_str());
@@ -97,6 +93,21 @@ namespace app
 			std::string opts;
 			for (const auto& [k, v] : m.options) opts += (opts.empty() ? "" : ", ") + k + " = " + v;
 			Row("Options", opts);
+		}
+		ImGui::Spacing();
+		if (row.trace)
+		{
+			if (describedTrace_ != row.trace)
+			{
+				describedTrace_ = row.trace;
+				described_ = attrib::DescribePlaces(attrib::PlacesOf(*row.trace));
+			}
+			Row("Trace", row.pending() ? std::string("written when the changes are saved") : m.trace);
+			ImGui::TextDisabled("What uninstalling sets back: %s.", described_.c_str());
+		}
+		else
+		{
+			ImGui::TextColored(ImVec4(1.0f, 0.72f, 0.25f, 1.0f), "It can't be uninstalled: %s.", row.problem.c_str());
 		}
 		if (!m.files.empty())
 		{

@@ -1374,9 +1374,14 @@ namespace app
 		modList_.reset();
 		modListFor_.clear();
 		modListError_.clear();
-		pendingMods_.clear();
+		modTraced_.clear();
+		pendingList_ = {};
 		modDraft_.reset();
+		modBefore_.reset();
 		modsView_.forget();
+		modsMessage_.clear();
+		modClashes_.clear();
+		modClashesWaiting_ = false;
 		designer_.editing = 0;
 		cut_.clear();
 		cutText_.clear();
@@ -2049,6 +2054,14 @@ namespace app
 				if (auto p = host_.openFileDialog("Key names (one per line)", { {"Text files", "*.txt"}, {"All files", "*.*"} }))
 					loadKeyNames(*p);
 			}
+			if (ImGui::MenuItem("Open User Folder", nullptr, false, host_.canOpenPaths()))
+			{
+				const std::string folder = host_.userFolder();
+				if (!host_.openPath(folder)) log(LogLevel::Warning, "Couldn't open " + folder);
+			}
+			if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+				ImGui::SetTooltip("%s", ("Where Attribulina keeps its settings, the names you added (user_keys.txt), your Lua\n"
+					"functions and the last session's log:\n" + host_.userFolder()).c_str());
 			ImGui::Separator();
 			if (ImGui::MenuItem("Close All", nullptr, false, db_ != nullptr))
 			{
@@ -3812,6 +3825,9 @@ namespace app
 			case Pending::DeleteVault: id = "Delete Vault"; break;
 			case Pending::NewEventVault: id = "New Event Vault File"; break;
 			case Pending::UnloadPack: id = "Unload File"; break;
+			case Pending::UninstallMod: id = "Uninstall Mod"; break;
+			case Pending::ForgetMod: id = "Remove Mod from List"; break;
+			case Pending::ModConflicts: id = "Mod Conflicts"; break;
 			case Pending::None: break;
 		}
 		if (id && !ImGui::IsPopupOpen(id)) ImGui::OpenPopup(id);
@@ -4009,6 +4025,7 @@ namespace app
 		drawSequenceModals();
 		drawEditModals();
 		drawVaultModals();
+		drawModsModals();
 		drawScriptModals();
 		drawNfsmsModals();
 

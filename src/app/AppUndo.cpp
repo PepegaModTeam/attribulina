@@ -51,7 +51,7 @@ namespace app
 		if (!db_ || db_->packs().empty()) return;
 		UndoState first;
 		first.label = "Open";
-		first.mods = pendingMods_;
+		first.mods = pendingList_;
 		for (const auto& pk : db_->packs())
 		{
 			// A pack as read is its file; one changed since needs writing.
@@ -174,7 +174,7 @@ namespace app
 		}
 		next.label = std::move(label);
 		next.touched = std::move(touched);
-		next.mods = pendingMods_;
+		next.mods = pendingList_;
 		next.script = script;
 		next.selBefore = undoSelBefore_;
 		next.selAfter = IdOf(selected_);
@@ -270,7 +270,7 @@ namespace app
 		db_ = std::move(fresh);
 		arrayTails_.clear();
 		undoPos_ = pos;
-		pendingMods_ = to.mods; // a mod applied in a step undone goes with it
+		pendingList_ = to.mods; // a mod installed or uninstalled in a step undone goes with it
 		structureChanged();
 		undoChanged_ = undoAll_ = undoScript_ = false;
 		undoPacks_.clear();

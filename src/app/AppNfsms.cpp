@@ -217,7 +217,12 @@ namespace app
 
 	bool App::runNfsms(int firstLine, int lastLine, bool asMod)
 	{
-		if (!asMod) modDraft_.reset(); // the window's own Run: a script being written
+		if (!asMod)
+		{
+			// The window's own Run: a script being written, never traced.
+			modDraft_.reset();
+			modBefore_.reset();
+		}
 		if (!db_ || db_->packs().empty())
 		{
 			nfsmsStatus_ = "Open a database first.";
@@ -299,6 +304,8 @@ namespace app
 			};
 			nameAction(firstLine ? "Run nfsms line " + std::to_string(firstLine) + (lastLine > firstLine ? "-" + std::to_string(lastLine) : "")
 					   : "Run " + s.source);
+			// A mod from File > Run nfsms Script, run whole: its trace starts here.
+			if (firstLine == 0 && modDraft_ && modDraft_->nfsms) takeModBefore();
 			beginScriptRun();
 			r = ns::Run(*db_, s, st);
 			endScriptRun();
@@ -308,6 +315,7 @@ namespace app
 		}
 		if (firstLine == 0 && changed && modDraft_ && modDraft_->nfsms) modApplied(r, {}, &st.choices);
 		modDraft_.reset();
+		modBefore_.reset();
 		nfsmsMessages_ = r.messages;
 		for (const sc::Message& m : r.messages)
 			log(m.level == sc::Message::Level::Error ? LogLevel::Error : m.level == sc::Message::Level::Warning ? LogLevel::Warning : LogLevel::Info,

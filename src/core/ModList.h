@@ -23,7 +23,12 @@
 //       result "installed"
 //       option "Loud" "on"
 //       file "GLOBAL\ATTRIBUTES.BIN"
+//       trace "attribulina_traces\2026-11-14 153012 Shifted 1.2.amod"
 //   end
+//
+// `trace` names the file that holds what installing it changed in the
+// database, from the list's folder (core/ModTrace.h): uninstalling the mod
+// and checking another against it read it.
 //
 // A text in quotes doubles a quote inside it (""), so Windows paths keep
 // their backslashes as they are.
@@ -58,11 +63,19 @@ namespace attrib
 		// The files it changed: from the folder above the list's (the game's),
 		// with \ between folders, as the game names them: GLOBAL\ATTRIBUTES.BIN.
 		std::vector<std::string> files;
+		// Its trace (core/ModTrace.h), from the list's folder with \ between
+		// folders: attribulina_traces\<file>.amod. "": none was kept (installed
+		// before Attribulina kept them, or it couldn't be written).
+		std::string trace;
 		// Lines this version doesn't know (a later one's), kept as they are.
 		std::vector<std::string> unknown;
 
 		std::string name() const; // the title, else the script's file name
+		std::string nameAndVersion() const; // "Shifted 1.2"
 	};
+	// The same installation: what the list says of it matches (a list read
+	// again, after another program wrote it, has it as another object).
+	bool SameEntry(const InstalledMod& a, const InstalledMod& b);
 
 	struct ModList
 	{

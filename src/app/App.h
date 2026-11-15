@@ -308,18 +308,36 @@ namespace app
 
 		// The game's list of installed mods (core/ModList.h, AppMods.cpp):
 		// attribulina_mods.txt in the database's folder, read as the database
-		// opens (none when the folder has no file). File > Apply Script and
-		// File > Run nfsms Script add the mod they apply to pendingMods(), and
-		// Save All writes those to the list, unless File > Keep a List of
-		// Installed Mods is off (TrackMods= in the ini). The Script panels'
-		// own Apply and Run don't count: those are scripts being written.
+		// opens with the mods' traces (core/ModTrace.h; none when the folder
+		// has no file). File > Apply Script and File > Run nfsms Script are
+		// installing: the mod they apply goes into pendingList() with its
+		// trace, and one that changes what a mod on the list changed asks
+		// whether to uninstall that one. The Installed Mods panel uninstalls a
+		// mod (an undo step) or takes it off the list. Save All writes the
+		// changes to the list, a new mod only while File > Keep a List of
+		// Installed Mods is on (TrackMods= in the ini). The Script panels'
+		// own Apply and Run, a run of nfsms lines and edits by hand are never
+		// traced: those are scripts being written, not mods installed.
 		const std::optional<attrib::ModList>& modList() const
 		{
 			return modList_;
 		}
-		const std::vector<attrib::InstalledMod>& pendingMods() const
+		const attrib::ModListUpdate& pendingList() const
 		{
-			return pendingMods_;
+			return pendingList_;
+		}
+		// The list's mods as Save All leaves them: the file's, then the ones
+		// applied since (TracedMod::pending).
+		std::vector<attrib::TracedMod> modRows() const;
+		// Uninstalls those rows of modRows() (tried on a copy first: false and
+		// nothing changed when a trace doesn't apply, modsMessage() says why).
+		bool uninstallMods(const std::vector<size_t>& rows);
+		// Takes a row off the list at once (one not saved yet: off what Save
+		// All adds), the database as it is.
+		bool forgetMod(size_t row);
+		const std::string& modsMessage() const
+		{
+			return modsMessage_;
 		}
 		bool& trackMods()
 		{
@@ -802,10 +820,14 @@ namespace app
 		// The mod list's entry for the script at `path` (its text as read), to
 		// be completed once it applies; nothing when tracking is off.
 		void draftMod(const std::string& path, const std::string& text, bool nfsms, const attrib::script::Script& meta);
-		// The draft applied: onto pendingMods_ with the options, how it went
-		// and the files `r` changed.
+		// Before the draft runs for real: a copy of the database as it is, for its trace.
+		void takeModBefore();
+		// The draft applied: onto pendingList_ with the options, how it went,
+		// the files `r` changed and its trace; mods on the list that change
+		// the same things open the Mod Conflicts prompt.
 		void modApplied(const attrib::script::ApplyReport& r, const std::map<std::string, std::string>& options,
 			const attrib::nfsms::Choices* choices);
+		void drawModsModals();
 		// The list's note on installing the draft again ("" when it isn't there).
 		std::string draftNote() const;
 		void writePendingMods(); // Save All
@@ -916,7 +938,7 @@ namespace app
 			None, NewChild, Rename, Delete, ConfirmClose, ConfirmCloseAll, ConfirmReplace, About,
 			GameplayNew, GameplayDuplicate, GameplayDelete, NewState, NewHandler, DeleteHandler, MoveToVault,
 			ApplyScript, ExportChanges, ExportFields, NfsmsSetup, ChooseTarget, DeleteClass,
-			NewVault, RenameVault, DeleteVault, NewEventVault, UnloadPack
+			NewVault, RenameVault, DeleteVault, NewEventVault, UnloadPack, UninstallMod, ForgetMod, ModConflicts
 		};
 		void request(Pending p, attrib::Collection* target = nullptr);
 		void requestNew(attrib::ClassDef* cls, attrib::Collection* parent);
@@ -991,9 +1013,26 @@ namespace app
 		bool trackMods_ = true, showMods_ = false;
 		std::optional<attrib::ModList> modList_;
 		std::string modListFor_, modListError_; // the folder it was read from; why it didn't read
-		std::vector<attrib::InstalledMod> pendingMods_;
+		std::vector<attrib::TracedMod> modTraced_; // modList_'s mods with their traces
+		attrib::ModListUpdate pendingList_;        // what Save All does to the list
 		std::optional<attrib::InstalledMod> modDraft_;
+		std::unique_ptr<attrib::Database> modBefore_; // the database before the draft ran
 		ModListView modsView_;
+		std::string modsMessage_;
+		bool modsMessageError_ = false;
+		// The Uninstall Mod and Remove Mod from List prompts' row, as it was then.
+		int modsPick_ = -1;
+		attrib::InstalledMod modsPickEntry_;
+		// The Mod Conflicts prompt: the mod just applied and the ones it clashes with.
+		struct ModClash
+		{
+			attrib::InstalledMod mod;
+			std::string text;
+			bool uninstall = true;
+		};
+		std::vector<ModClash> modClashes_;
+		std::string modClashFor_;
+		bool modClashesWaiting_ = false; // opens once the prompt that applied it has closed
 		attrib::Target lastTarget_;          // chosen last this run
 		attrib::Detection targetDetection_;  // what the prompt's files say
 		attrib::Target targetChoice_;        // what the prompt has chosen
@@ -1121,7 +1160,7 @@ namespace app
 			std::vector<std::shared_ptr<const attrib::Bytes>> packs; // per path; unchanged ones shared
 			std::vector<std::optional<attrib::LzKind>> compression; // per pack: how saving compresses it
 			std::set<uint64_t> touched;                             // class << 32 | key of what it edited
-			std::vector<attrib::InstalledMod> mods;                 // pendingMods_ then: applied, not saved
+			attrib::ModListUpdate mods;                             // pendingList_ then: installed and uninstalled, not saved
 			bool script = false;                                    // a script run (not recorded)
 			std::pair<uint32_t, uint32_t> selBefore{}, selAfter{};  // the collection being edited, before and after
 		};

@@ -6669,9 +6669,9 @@ TEST("ui: installed mods: the folder's list opens with it; File > Apply Script a
     imgui.run(a, 2);
     ClickItem(imgui, a, probe.find("Apply", "Apply Script"));
     imgui.run(a, 2);
-    CHECK_EQ(a.pendingMods().size(), size_t(1));
-    if (!a.pendingMods().empty()) {
-        const InstalledMod& m = a.pendingMods()[0];
+    CHECK_EQ(a.pendingList().add.size(), size_t(1));
+    if (!a.pendingList().add.empty()) {
+        const InstalledMod& m = a.pendingList().add[0].mod;
         CHECK_EQ(m.title, std::string("Louder"));
         CHECK_EQ(m.sha256, Sha256Hex(louder));
         CHECK(m.by.rfind("Attribulina ", 0) == 0);
@@ -6679,19 +6679,19 @@ TEST("ui: installed mods: the folder's list opens with it; File > Apply Script a
     }
     // Undone, it goes; redone, it comes back.
     CHECK(a.undo());
-    CHECK(a.pendingMods().empty());
+    CHECK(a.pendingList().add.empty());
     CHECK(a.redo());
-    CHECK_EQ(a.pendingMods().size(), size_t(1));
+    CHECK_EQ(a.pendingList().add.size(), size_t(1));
 
     // An nfsms script from a file, named by its # amod block.
     host.nextOpenFile = (root / "long.nfsms").string();
     ClickItem(imgui, a, probe.find("File"));
     ClickItem(imgui, a, probe.find("Run nfsms Script..."));
     imgui.run(a, 2);
-    CHECK_EQ(a.pendingMods().size(), size_t(2));
-    if (a.pendingMods().size() == 2) {
-        CHECK_EQ(a.pendingMods()[1].title, std::string("Long"));
-        CHECK(a.pendingMods()[1].nfsms);
+    CHECK_EQ(a.pendingList().add.size(), size_t(2));
+    if (a.pendingList().add.size() == 2) {
+        CHECK_EQ(a.pendingList().add[1].mod.title, std::string("Long"));
+        CHECK(a.pendingList().add[1].mod.nfsms);
     }
     // The Script panels' own Apply and Run are scripts being written: not listed.
     a.setScriptText("attribulina 1\ntitle \"Draft\"\nedit audio_revlimiter/default { total_frames_short = 10 }\n");
@@ -6703,7 +6703,7 @@ TEST("ui: installed mods: the folder's list opens with it; File > Apply Script a
     imgui.run(a, 2);
     CHECK(a.runNfsms(0, 0));
     imgui.run(a, 1);
-    CHECK_EQ(a.pendingMods().size(), size_t(2));
+    CHECK_EQ(a.pendingList().add.size(), size_t(2));
 
     // The panel lists the file's mods and the ones not saved yet.
     a.showInstalledMods() = true;
@@ -6714,7 +6714,7 @@ TEST("ui: installed mods: the folder's list opens with it; File > Apply Script a
 
     // Saved: onto the list, in the order applied.
     CHECK(a.saveAll());
-    CHECK(a.pendingMods().empty());
+    CHECK(a.pendingList().add.empty());
     auto list = ReadModList(global.string());
     CHECK(list && list->mods.size() == 3);
     if (list && list->mods.size() == 3) {
@@ -6744,7 +6744,7 @@ TEST("ui: installed mods: the folder's list opens with it; File > Apply Script a
     imgui.run(a, 2);
     ClickItem(imgui, a, probe.find("Apply", "Apply Script"));
     imgui.run(a, 2);
-    CHECK(a.pendingMods().empty());
+    CHECK(a.pendingList().add.empty());
     CHECK(a.saveAll());
     list = ReadModList(global.string());
     CHECK(list && list->mods.size() == 3);
@@ -6753,6 +6753,141 @@ TEST("ui: installed mods: the folder's list opens with it; File > Apply Script a
     a.closeAll();
     CHECK(!a.modList());
     imgui.run(a, 2);
+    for (const auto& c : probe.conflicts) std::printf("        ID conflict: %s\n", c.c_str());
+    CHECK(probe.conflicts.empty());
+    fs::remove_all(root);
+}
+
+TEST("ui: File > Open User Folder opens the folder the settings are in") {
+    platform::HeadlessImGui imgui;
+    imgui.beforeFrame = ProbeBefore;
+    imgui.afterFrame = ProbeAfter;
+    test::UiProbe& probe = test::UiProbe::get();
+    platform::HeadlessHost host;
+    host.userDir = (std::filesystem::temp_directory_path() / "attribulina_ui_userfolder").string();
+    app::App a(host);
+    a.setup(1.0f, "");
+    imgui.run(a, 2);
+    ClickItem(imgui, a, probe.find("File"));
+    ClickItem(imgui, a, probe.find("Open User Folder"));
+    imgui.run(a, 1);
+    CHECK_EQ(host.openedPaths.size(), size_t(1));
+    if (!host.openedPaths.empty()) CHECK_EQ(host.openedPaths[0], host.userDir);
+}
+
+TEST("ui: installed mods: a mod that changes what one on the list changed asks; the panel uninstalls a mod as an undo step, and Save All writes it") {
+    namespace fs = std::filesystem;
+    platform::HeadlessImGui imgui;
+    imgui.beforeFrame = ProbeBefore;
+    imgui.afterFrame = ProbeAfter;
+    test::UiProbe& probe = test::UiProbe::get();
+    probe.conflicts.clear();
+    const fs::path root = fs::temp_directory_path() / "attribulina_ui_uninstall";
+    fs::remove_all(root);
+    const fs::path global = root / "GLOBAL";
+    fs::create_directories(global);
+    for (const char* f : {"ATTRIBUTES.BIN", "FE_ATTRIB.BIN"}) fs::copy_file(fs::path(ProStreetDir()) / f, global / f);
+    const Bytes vanilla = ReadFile((global / "ATTRIBUTES.BIN").string());
+    std::ofstream(root / "engine.amod", std::ios::binary)
+        << "attribulina 1\ntitle \"Engine\"\nversion \"1\"\nedit audio_revlimiter/default { total_frames_short = 20\n total_frames_long = 21 }\n";
+    std::ofstream(root / "sound.amod", std::ios::binary)
+        << "attribulina 1\ntitle \"Sound\"\nversion \"1\"\nedit audio_revlimiter/default { total_frames_short = 30 }\n";
+
+    platform::HeadlessHost host;
+    app::App a(host);
+    a.setup(1.0f, "");
+    a.setUserKeysPath("");
+    CHECK(a.open(global.string()));
+    imgui.run(a, 2);
+    auto value = [&](const char* field) {
+        Collection* c = a.database()->findCollection(StringHash32("audio_revlimiter"), StringHash32("default"));
+        const Attribute* at = c ? c->find(StringHash32(field)) : nullptr;
+        return at ? load32(at->data.bytes.data(), Endian::Little) : 0u;
+    };
+    const uint32_t longWas = value("total_frames_long");
+    auto apply = [&](const fs::path& mod) {
+        host.nextOpenFile = mod.string();
+        ClickItem(imgui, a, probe.find("File"));
+        ClickItem(imgui, a, probe.find("Apply Script..."));
+        imgui.run(a, 2);
+        ClickItem(imgui, a, probe.find("Apply", "Apply Script"));
+        imgui.run(a, 2);
+    };
+    apply(root / "engine.amod");
+    CHECK_EQ(a.pendingList().add.size(), size_t(1));
+    CHECK(!a.pendingList().add.empty() && a.pendingList().add[0].trace);
+    CHECK(a.saveAll());
+    auto list = ReadModList(global.string());
+    CHECK(list && list->mods.size() == 1 && !list->mods[0].trace.empty());
+    const std::string engineTrace = list && !list->mods.empty() ? list->mods[0].trace : std::string();
+    CHECK(fs::exists(TracePath(global.string(), engineTrace)));
+
+    // Sound changes Engine's value: the prompt asks, Engine ticked.
+    apply(root / "sound.amod");
+    imgui.run(a, 2);
+    CHECK(probe.find("Uninstall Engine 1", "Mod Conflicts"));
+    CHECK(probe.find("Keep Them Installed", "Mod Conflicts"));
+    ClickItem(imgui, a, probe.find("Uninstall the Ticked Mods", "Mod Conflicts"));
+    imgui.run(a, 2);
+    CHECK_EQ(value("total_frames_short"), 30u);
+    CHECK_EQ(value("total_frames_long"), longWas);
+    CHECK_EQ(a.pendingList().remove.size(), size_t(1));
+    CHECK_EQ(a.pendingList().add.size(), size_t(1));
+    CHECK(a.modsMessage().find("Uninstalled Engine 1: ") == 0);
+    // An undo step: undone, Engine is back, and so is its place on the list.
+    CHECK(a.undo());
+    CHECK_EQ(value("total_frames_long"), 21u);
+    CHECK(a.pendingList().remove.empty());
+    CHECK(a.redo());
+    CHECK_EQ(value("total_frames_long"), longWas);
+    CHECK(a.saveAll());
+    list = ReadModList(global.string());
+    CHECK(list && list->mods.size() == 1 && list->mods[0].title == "Sound");
+    CHECK(!fs::exists(TracePath(global.string(), engineTrace)));
+
+    // The panel uninstalls Sound: the database is the game's again once saved.
+    a.showInstalledMods() = true;
+    imgui.run(a, 2);
+    ClickItem(imgui, a, probe.find("Sound", "Installed Mods"));
+    imgui.run(a, 1);
+    ClickItem(imgui, a, probe.find("Uninstall...", "Installed Mods"));
+    imgui.run(a, 2);
+    ClickItem(imgui, a, probe.find("Uninstall", "Uninstall Mod"));
+    imgui.run(a, 2);
+    CHECK(a.modsMessage().find("Uninstalled Sound 1: ") == 0);
+    CHECK(a.saveAll());
+    CHECK(ReadFile((global / "ATTRIBUTES.BIN").string()) == vanilla);
+    list = ReadModList(global.string());
+    CHECK(list && list->mods.empty());
+
+    // One without a trace can only be taken off the list, at once.
+    {
+        ModList old;
+        InstalledMod m;
+        m.title = "Old";
+        old.mods.push_back(m);
+        WriteModList(global.string(), old);
+    }
+    a.readModList();
+    imgui.run(a, 2);
+    ClickItem(imgui, a, probe.find("Old", "Installed Mods"));
+    imgui.run(a, 1);
+    ClickItem(imgui, a, probe.find("Uninstall...", "Installed Mods")); // greyed out
+    imgui.run(a, 2);
+    CHECK(!probe.find("Uninstall", "Uninstall Mod"));
+    ClickItem(imgui, a, probe.find("Remove from List...", "Installed Mods"));
+    imgui.run(a, 2);
+    ClickItem(imgui, a, probe.find("Remove from List", "Remove Mod from List"));
+    imgui.run(a, 2);
+    CHECK(a.modsMessage().find("Took Old off the list.") == 0);
+    list = ReadModList(global.string());
+    CHECK(list && list->mods.empty());
+
+    // Lines run by hand are never traced or listed.
+    a.setNfsmsText("version 4.6\ngame PS\nupdate_field audio_revlimiter default total_frames_long 77\n", "");
+    CHECK(a.runNfsms(0, 0));
+    imgui.run(a, 1);
+    CHECK(a.pendingList().empty());
     for (const auto& c : probe.conflicts) std::printf("        ID conflict: %s\n", c.c_str());
     CHECK(probe.conflicts.empty());
     fs::remove_all(root);

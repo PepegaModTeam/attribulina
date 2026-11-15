@@ -8,7 +8,10 @@
 #include "core/Hash.h"
 #include "core/Install.h"
 #include "core/ModList.h"
+#include "core/ModTrace.h"
 #include "core/Nfsms.h"
+#include "core/Script.h"
+#include "core/Writer.h"
 
 #include <filesystem>
 #include <fstream>
@@ -26,6 +29,64 @@ std::string ReadText(const fs::path& p) {
     std::ostringstream s;
     s << in.rdbuf();
     return s.str();
+}
+
+namespace sc = attrib::script;
+
+std::unique_ptr<Database> LoadProStreet() {
+    auto db = std::make_unique<Database>();
+    db->addTypeSchema(TypeSchema::Load(test::DataPath("data/schema/prostreet_pc.txt")));
+    db->names().loadFile(test::DataPath("data/attrib_keys.txt"));
+    for (const char* f : {"ATTRIBUTES.BIN", "cars_vault.BIN", "FE_ATTRIB.BIN"})
+        db->loadPack(test::DataPath(std::string("attrib/databases/pc/prostreet-vanilla/") + f));
+    return db;
+}
+
+std::string Messages(const sc::ApplyReport& r) {
+    std::string s;
+    for (const sc::Message& m : r.messages) s += std::to_string(m.pos.line) + ": " + m.text + "\n";
+    return s;
+}
+
+// Installs `text` into `db` as the mod `title`, traced as the installer traces it.
+TracedMod InstallTraced(Database& db, const std::string& title, const std::string& text) {
+    auto before = sc::CloneDatabase(db);
+    const sc::ApplyReport r = sc::Apply(db, sc::Parse(text, title + ".amod"));
+    if (!r.ok) std::fprintf(stderr, "%s", Messages(r).c_str());
+    CHECK(r.ok);
+    TracedMod t;
+    t.mod.title = title;
+    t.mod.installed = "2026-11-15 10:00:00";
+    t.trace = std::make_shared<const sc::Script>(MakeTrace(*before, db, t.mod));
+    return t;
+}
+
+// Statements that change something.
+size_t Changes(const sc::Script& s) {
+    size_t n = 0;
+    for (const sc::Statement& st : s.statements)
+        n += st.kind != sc::Statement::Kind::Header && st.kind != sc::Statement::Kind::Meta && st.kind != sc::Statement::Kind::Comment;
+    return n;
+}
+
+// An integer value of a collection, own or inherited, of 1, 2 or 4 bytes.
+uint32_t ValueOf(Database& db, const char* cls, const char* name, const char* field) {
+    Collection* c = db.findCollection(StringHash32(cls), StringHash32(name));
+    CHECK(c != nullptr);
+    if (!c) return 0;
+    sc::FieldPath p;
+    p.field = field;
+    Bytes b;
+    const ValueType vt = sc::TypeAt(db, *c, p, &b);
+    if (vt.size == 1 && !b.empty()) return b[0];
+    if (vt.size == 2 && b.size() >= 2) return load16(b.data(), Endian::Little);
+    return b.size() >= 4 ? load32(b.data(), Endian::Little) : 0;
+}
+
+std::map<std::string, Bytes> PackBytes(const Database& db) {
+    std::map<std::string, Bytes> out;
+    for (const auto& pk : db.packs()) out[pk->path] = WritePack(db, *pk);
+    return out;
 }
 
 bool Throws(const std::string& text, const std::string& part) {
@@ -257,3 +318,217 @@ TEST("modlist: // after an nfsms command isn't a comment, and the error says so"
     for (const script::Message& m : r.messages) hinted |= m.text.find("after a command, use #") != std::string::npos;
     CHECK(hinted);
 }
+
+TEST("mod traces: uninstalling the only mod gives the database back, byte for byte") {
+    auto db = LoadProStreet();
+    auto base = sc::CloneDatabase(*db);
+    std::map<std::string, Bytes> original = PackBytes(*db);
+    const TracedMod a = InstallTraced(*db, "Everything",
+                                      "attribulina 2\n"
+                                      "edit audio_revlimiter/default { total_frames_short = 77\n load_for_short = 0.125 }\n"
+                                      "edit car_list/all_cars { append Cars = pvehicle/street if missing }\n"
+                                      "edit collisionsfx_damage/hood { VolMap = [5, 6, 7, 8, 9] }\n"
+                                      "create pvehicle/trace_car from pvehicle/street { HornType = 3 }\n"
+                                      "create pvehicle/trace_kid under pvehicle/trace_car\n"
+                                      "rename car/gtrproto to gtrproto2\n"
+                                      "move pvehicle/street under root\n");
+    const std::string text = sc::Print(*a.trace);
+    CHECK(text.find("title \"Undo Everything\"") != std::string::npos);
+    CHECK(text.find("# The trace of Everything, installed 2026-11-15 10:00:00.") != std::string::npos);
+    CHECK(text.find("delete pvehicle/trace_kid") != std::string::npos);
+    CHECK(text.find("rename car/gtrproto2 to gtrproto") != std::string::npos);
+    CHECK(text.find("    remove Cars = pvehicle/street\n") != std::string::npos);
+    CHECK(text.find("total_frames_short = ") != std::string::npos && text.find(" was 77") != std::string::npos);
+    // It reads back as it was written.
+    CHECK_EQ(sc::Print(sc::Parse(text, "trace.amod")), text);
+
+    const UninstallResult r = Uninstall(*db, {a}, {0});
+    if (!r.ok) std::fprintf(stderr, "%s\n", r.error.c_str());
+    CHECK(r.ok);
+    CHECK(!r.redone);
+    CHECK(r.retraced.empty());
+    CHECK_EQ(r.removed.size(), size_t(1));
+    for (const std::string& n : r.notes) std::fprintf(stderr, "        note: %s\n", n.c_str());
+    CHECK(r.notes.empty());
+    CHECK(r.deleted >= 2 && r.valuesSet >= 3);
+    const sc::Script left = sc::Diff(*base, *db);
+    if (Changes(left)) std::fprintf(stderr, "%s", sc::Print(left).c_str());
+    CHECK_EQ(Changes(left), size_t(0));
+    const std::map<std::string, Bytes> now = PackBytes(*db);
+    for (const auto& [path, bytes] : original) {
+        const bool same = now.count(path) && now.at(path) == bytes;
+        if (!same) std::fprintf(stderr, "        %s differs after uninstalling\n", path.c_str());
+        CHECK(same);
+    }
+    // A collection deleted comes back with its values, though the file may
+    // keep it in another place.
+    const TracedMod gone = InstallTraced(*db, "Delete", "attribulina 2\ndelete emittergroup/terraindriving with children\n");
+    CHECK(sc::Print(*gone.trace).find("collection emittergroup/terraindriving under ") != std::string::npos);
+    CHECK(Uninstall(*db, {gone}, {0}).ok);
+    CHECK_EQ(Changes(sc::Diff(*base, *db)), size_t(0));
+}
+
+TEST("mod traces: what two mods change in common") {
+    auto db = LoadProStreet();
+    const TracedMod a = InstallTraced(*db, "A", "attribulina 2\nedit audio_revlimiter/default { total_frames_short = 77 }\n"
+                                                "edit car_list/all_cars { append Cars = pvehicle/street if missing }\n");
+    const TracedMod b = InstallTraced(*db, "B", "attribulina 2\nedit audio_revlimiter/default { total_frames_long = 5 }\n"
+                                                "edit car_list/all_cars { append Cars = pvehicle/default if missing }\n");
+    const TracedMod c = InstallTraced(*db, "C", "attribulina 2\nedit audio_revlimiter/default { total_frames_short = 5 }\n"
+                                                "create pvehicle/trace_car from pvehicle/street\n");
+    const TracedMod d = InstallTraced(*db, "D", "attribulina 2\nedit pvehicle/trace_car { HornType = 3 }\n");
+    const std::vector<TracedMod> mods{a, b, c};
+    // Another field, and two appends to the same list: apart.
+    CHECK(FindConflicts(PlacesOf(*b.trace), {a}).empty());
+    // The same value.
+    std::vector<ModConflict> found = FindConflicts(PlacesOf(*c.trace), {a, b});
+    CHECK_EQ(found.size(), size_t(1));
+    if (!found.empty()) {
+        CHECK_EQ(found[0].index, size_t(0));
+        CHECK_EQ(found[0].count, size_t(1));
+        CHECK_EQ(ConflictText(found[0], "A"), std::string("changes 1 thing A changed: audio_revlimiter/default total_frames_short"));
+    }
+    // A value of a collection another made.
+    found = FindConflicts(PlacesOf(*d.trace), mods);
+    CHECK_EQ(found.size(), size_t(1));
+    if (!found.empty()) CHECK_EQ(found[0].index, size_t(2));
+
+    ModPlace whole, member, other, cls;
+    whole.cls = member.cls = other.cls = cls.cls = StringHash32("vehicle");
+    whole.key = member.key = other.key = StringHash32("default");
+    whole.field = member.field = other.field = StringHash32("TIRES");
+    member.steps.push_back({"GRIP_SCALE", -1});
+    other.steps.push_back({"STATIC_GRIP", -1});
+    CHECK(Clash(whole, member));
+    CHECK(!Clash(member, other));
+    cls.kind = ModPlace::Kind::Class;
+    CHECK(Clash(cls, member));
+    ModPlace parent = member;
+    parent.kind = ModPlace::Kind::Parent;
+    CHECK(!Clash(parent, member));
+    parent.kind = ModPlace::Kind::Collection;
+    CHECK(Clash(parent, member));
+}
+
+TEST("mod traces: uninstalling a mod a later one changed too does the later one again, and traces it again") {
+    auto db = LoadProStreet();
+    auto base = sc::CloneDatabase(*db);
+    const uint32_t shortWas = ValueOf(*db, "audio_revlimiter", "default", "total_frames_short");
+    const uint32_t longWas = ValueOf(*db, "audio_revlimiter", "default", "total_frames_long");
+    const TracedMod a = InstallTraced(*db, "A", "attribulina 2\nedit audio_revlimiter/default { total_frames_short = 77\n total_frames_long = 66 }\n");
+    const TracedMod b = InstallTraced(*db, "B", "attribulina 2\nedit audio_revlimiter/default { total_frames_short = 55 }\n"
+                                                "edit pvehicle/street { HornType = 3 }\n");
+    const TracedMod apart = InstallTraced(*db, "Apart", "attribulina 2\nedit pvehicle/default { HornType = 2 }\n");
+    std::vector<TracedMod> mods{a, b, apart};
+    UninstallResult r = Uninstall(*db, mods, {0});
+    if (!r.ok) std::fprintf(stderr, "%s\n", r.error.c_str());
+    CHECK(r.ok);
+    CHECK(r.redone);
+    CHECK_EQ(r.retraced.size(), size_t(2)); // B and the one after it
+    CHECK_EQ(ValueOf(*db, "audio_revlimiter", "default", "total_frames_short"), 55u); // B's stays
+    CHECK_EQ(ValueOf(*db, "audio_revlimiter", "default", "total_frames_long"), longWas);
+    CHECK_EQ(ValueOf(*db, "pvehicle", "street", "HornType"), 3u);
+    CHECK_EQ(ValueOf(*db, "pvehicle", "default", "HornType"), 2u);
+    // B's new trace sets the value back to what it was before A.
+    for (const auto& [i, trace] : r.retraced) mods[i].trace = trace;
+    const std::string bText = sc::Print(*mods[1].trace);
+    CHECK(bText.find("total_frames_short = " + std::to_string(shortWas)) != std::string::npos);
+    mods.erase(mods.begin());
+    r = Uninstall(*db, mods, {0, 1});
+    CHECK(r.ok);
+    CHECK(!r.redone);
+    CHECK_EQ(Changes(sc::Diff(*base, *db)), size_t(0));
+}
+
+TEST("mod traces: a mod that builds on another keeps it installed; a value changed since is set back with a note") {
+    auto db = LoadProStreet();
+    const TracedMod a = InstallTraced(*db, "Maker", "attribulina 2\ncreate pvehicle/trace_car from pvehicle/street\n"
+                                                    "edit audio_revlimiter/default { total_frames_short = 77 }\n");
+    const TracedMod b = InstallTraced(*db, "User", "attribulina 2\nedit pvehicle/trace_car { HornType = 3 }\n");
+    auto before = sc::CloneDatabase(*db);
+    UninstallResult r = Uninstall(*db, {a, b}, {0});
+    CHECK(!r.ok);
+    CHECK(r.error.find("User builds on what Maker changed") == 0);
+    // Without the later one: the value changed by hand goes back, with a note.
+    db = std::move(before);
+    CHECK(sc::Apply(*db, sc::Parse("attribulina 1\nedit audio_revlimiter/default { total_frames_short = 12 }\n", "hand.amod")).ok);
+    TracedMod none;
+    none.mod.title = "Old";
+    none.problem = "what it changed wasn't kept when it was installed (it has no trace)";
+    r = Uninstall(*db, {a, b, none}, {0, 1});
+    CHECK(r.ok);
+    bool noted = false, unknown = false;
+    for (const std::string& n : r.notes) {
+        noted |= n.find("Maker: 1 value isn't what it set") == 0;
+        unknown |= n.find("Old was installed after Maker and User") == 0;
+    }
+    CHECK(noted);
+    CHECK(unknown);
+    CHECK(!db->findCollection(StringHash32("pvehicle"), StringHash32("trace_car")));
+    // One without a trace can't be uninstalled.
+    r = Uninstall(*db, {a, b, none}, {2});
+    CHECK(!r.ok);
+    CHECK(r.error.find("Old can't be uninstalled: what it changed wasn't kept") == 0);
+}
+
+TEST("mod traces: the list's traces are written beside it, follow its entries and go with them") {
+    const fs::path dir = fs::temp_directory_path() / "attribulina_mod_traces";
+    fs::remove_all(dir);
+    fs::create_directories(dir);
+    auto db = LoadProStreet();
+    TracedMod a = InstallTraced(*db, "A: the \"first\"", "attribulina 2\nedit audio_revlimiter/default { total_frames_short = 77 }\n");
+    a.mod.version = "1.0";
+    TracedMod b = InstallTraced(*db, "B", "attribulina 2\nedit audio_revlimiter/default { total_frames_short = 55 }\n");
+    ModListUpdate u;
+    u.add.push_back({a.mod, a.trace});
+    u.add.push_back({b.mod, b.trace});
+    u.add.push_back({b.mod, nullptr}); // one without
+    std::vector<std::string> problems;
+    ModList list = UpdateModList(dir.string(), u, &problems);
+    CHECK(problems.empty());
+    CHECK_EQ(list.mods.size(), size_t(3));
+    CHECK_EQ(list.mods[0].trace, std::string("attribulina_traces\\2026-11-15 100000 A_ the _first_ 1.0.amod"));
+    CHECK_EQ(list.mods[1].trace, std::string("attribulina_traces\\2026-11-15 100000 B.amod"));
+    CHECK(list.mods[2].trace.empty());
+    CHECK(fs::exists(dir / kTraceFolder / "2026-11-15 100000 A_ the _first_ 1.0.amod"));
+    auto read = ReadModList(dir.string());
+    CHECK(read && read->mods.size() == 3 && read->mods[0].trace == list.mods[0].trace);
+    std::vector<TracedMod> rows = ReadTraces(dir.string(), *read);
+    CHECK(rows[0].trace && rows[1].trace && !rows[2].trace);
+    CHECK_EQ(sc::Print(*rows[1].trace), sc::Print(*b.trace));
+    CHECK(rows[2].problem.find("no trace") != std::string::npos);
+
+    // In the editor: one more applied, not saved yet, then A uninstalled.
+    ModListUpdate pending;
+    TracedMod c = InstallTraced(*db, "C", "attribulina 2\nedit audio_revlimiter/default { total_frames_short = 33 }\n");
+    pending.add.push_back({c.mod, c.trace});
+    rows = WithUpdate(rows, pending);
+    CHECK_EQ(rows.size(), size_t(4));
+    CHECK(rows[3].pending());
+    UninstallResult r = Uninstall(*db, rows, {0});
+    CHECK(r.ok);
+    CHECK(r.redone);
+    FoldUninstall(pending, rows, r);
+    CHECK_EQ(pending.remove.size(), size_t(1));
+    CHECK_EQ(pending.retrace.size(), size_t(1)); // B, on the file
+    CHECK_EQ(pending.add.size(), size_t(1));     // C, with its new trace
+    CHECK(pending.add[0].trace != c.trace);
+    rows = WithUpdate(ReadTraces(dir.string(), *read), pending);
+    CHECK_EQ(rows.size(), size_t(3));
+    CHECK_EQ(rows[0].mod.title, std::string("B"));
+    // Uninstalling the one not saved yet takes it out of what saving adds.
+    r = Uninstall(*db, rows, {2});
+    CHECK(r.ok);
+    FoldUninstall(pending, rows, r);
+    CHECK(pending.add.empty());
+    list = UpdateModList(dir.string(), pending, &problems);
+    CHECK(problems.empty());
+    CHECK_EQ(list.mods.size(), size_t(2));
+    CHECK(!fs::exists(dir / kTraceFolder / "2026-11-15 100000 A_ the _first_ 1.0.amod"));
+    rows = ReadTraces(dir.string(), list);
+    CHECK(rows[0].trace);
+    if (rows[0].trace) CHECK(sc::Print(*rows[0].trace) != sc::Print(*b.trace)); // rewritten
+    fs::remove_all(dir);
+}
+
+

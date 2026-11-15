@@ -232,6 +232,7 @@ namespace app
 	bool App::requestApplyScript(const std::string& text, const std::string& source, const std::string& folder)
 	{
 		modDraft_.reset(); // File > Apply Script drafts one after this
+		modBefore_.reset();
 		try
 		{
 			// The included scripts too, for their options.
@@ -765,6 +766,7 @@ namespace app
 			{
 				pendingScript_.reset();
 				modDraft_.reset();
+				modBefore_.reset();
 				done();
 			}
 			else if (apply)
@@ -772,6 +774,7 @@ namespace app
 				sc::ApplySettings st;
 				st.options = scriptOptions_;
 				st.strict = scriptStrict_;
+				takeModBefore(); // a mod from File > Apply Script: its trace starts here
 				const sc::ApplyReport r = applyScript(s, st, false);
 				if (r.ok)
 				{
@@ -789,6 +792,7 @@ namespace app
 					scriptApplyError_.clear();
 					for (const sc::Message& m : r.messages)
 						if (m.level == sc::Message::Level::Error) scriptApplyError_ = MessageText(s.source, m, s.folder);
+					modBefore_.reset();
 					if (scriptApplyError_.empty()) scriptApplyError_ = "The script stopped.";
 					scriptApplyError_ += "\nNothing was changed.";
 					scriptMessages_ = r.messages;

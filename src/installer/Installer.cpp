@@ -283,12 +283,14 @@ namespace installer
 		if (worker_.joinable()) worker_.join();
 		std::optional<FoundGame> game;
 		std::optional<Result> result;
+		std::optional<ModsDone> mods;
 		{
 			std::lock_guard lock(m_);
 			game.swap(gameDone_);
 			result.swap(installDone_);
+			mods.swap(modsDone_);
 		}
-		if (game || result) work_ = Work::None;
+		if (game || result || mods) work_ = Work::None;
 		if (game)
 		{
 			game_ = std::move(*game);
@@ -299,11 +301,30 @@ namespace installer
 		{
 			result_ = std::move(*result);
 			outcome_ = result_.outcome;
+			conflicts_ = result_.conflicts;
+			conflictError_ = result_.conflictError;
 			if (result_.mods)
 			{
 				game_.mods = result_.mods;
+				game_.traced = result_.traced;
 				game_.modsError.clear();
 				modsView_.forget();
+			}
+		}
+		if (mods)
+		{
+			modsMessage_ = mods->message;
+			modsMessageLevel_ = mods->level;
+			if (mods->mods)
+			{
+				game_.mods = std::move(mods->mods);
+				game_.traced = std::move(mods->traced);
+				game_.modsError.clear();
+				modsView_.forget();
+				// The list changed under what the Install step found.
+				conflicts_.clear();
+				conflictError_.clear();
+				if (!finished()) refreshModChecks();
 			}
 		}
 	}
@@ -410,6 +431,8 @@ namespace installer
 		modInput_ = path;
 		outcome_ = Outcome::None;
 		result_ = {};
+		conflicts_.clear();
+		conflictError_.clear();
 		try
 		{
 			auto m = std::make_shared<install::Mod>(install::ReadMod(path));
@@ -466,6 +489,8 @@ namespace installer
 		gameInput_ = folder;
 		outcome_ = Outcome::None;
 		result_ = {};
+		conflicts_.clear();
+		conflictError_.clear();
 		game_ = {};
 		modProblem_.clear();
 		modWarning_.clear();
@@ -504,6 +529,7 @@ namespace installer
 				found.mods = ReadModList(f.global);
 				if (found.mods)
 				{
+					found.traced = ReadTraces(f.global, *found.mods);
 					std::vector<std::string> names;
 					for (const InstalledMod& m : found.mods->mods) names.push_back(m.name() + (m.version.empty() ? "" : " " + m.version));
 					post(Level::Info, ModListPath(f.global) + " lists " + std::to_string(names.size()) + (names.size() == 1 ? " mod" : " mods") +
@@ -537,7 +563,7 @@ namespace installer
 
 	bool Installer::canInstall() const
 	{
-		return mod_ && game_.ok && modProblem_.empty() && (installedNote_.empty() || installAnyway_) && !busy_ && !finished();
+		return mod_ && game_.ok && modProblem_.empty() && (installedNote_.empty() || installAnyway_) && conflicts_.empty() && !busy_ && !finished();
 	}
 
 	bool Installer::finished() const
@@ -565,6 +591,9 @@ namespace installer
 	{
 		if (!canGoTo(s) || s == step_) return;
 		step_ = s;
+		// The options may change: installing finds the conflicts again.
+		conflicts_.clear();
+		conflictError_.clear();
 		switch (s)
 		{
 			case Step::Mod:
@@ -589,6 +618,8 @@ namespace installer
 		if (busy_) return;
 		outcome_ = Outcome::None;
 		result_ = {};
+		conflicts_.clear();
+		conflictError_.clear();
 		mod_.reset();
 		images_.release();
 		modInput_.clear();
@@ -605,8 +636,36 @@ namespace installer
 	void Installer::install()
 	{
 		if (!canInstall()) return;
+		startInstall({});
+	}
+
+	void Installer::uninstallTickedAndInstall()
+	{
+		if (conflicts_.empty() || busy_ || finished()) return;
+		Plan plan;
+		plan.conflicts = conflicts_;
+		for (const Conflict& c : conflicts_)
+			if (c.uninstall) plan.uninstall.push_back(c.mod);
+		if (plan.uninstall.empty()) return;
+		// The ones left ticked off stay, and it goes over them.
+		plan.overConflicts = true;
+		startInstall(std::move(plan));
+	}
+
+	void Installer::installOverConflicts()
+	{
+		if (conflicts_.empty() || busy_ || finished()) return;
+		Plan plan;
+		plan.overConflicts = true;
+		startInstall(std::move(plan));
+	}
+
+	void Installer::startInstall(Plan plan)
+	{
 		outcome_ = Outcome::None;
 		result_ = {};
+		conflicts_.clear();
+		conflictError_.clear();
 		step_ = Step::Install;
 		install::ModSettings st;
 		st.options = options_;
@@ -614,12 +673,55 @@ namespace installer
 		st.gameFolder = game_.folder.game;
 		st.vltEd = true; // nfsms mods are made for NFS-VltEd
 		setStatus(Level::Info, "Installing " + mod_->title + "...");
-		startWork(Work::Installing, [this, mod = mod_, st, game = game_, track = trackMods_]() { installJob(*mod, st, game, track); });
+		startWork(Work::Installing, [this, mod = mod_, st, game = game_, track = trackMods_, plan = std::move(plan)]()
+		{
+			installJob(*mod, st, game, track, plan);
+		});
 	}
 
-	void Installer::installJob(const install::Mod& mod, const install::ModSettings& st, const FoundGame& game, bool track)
+	void Installer::reloadIfStale(const FoundGame& game)
 	{
-		std::vector<std::string> changed; // full paths, for the list of installed mods
+		if (db_ && !dbStale_) return;
+		// A run before changed this one: the files as they are now.
+		std::vector<std::string> moved;
+		db_.reset();
+		db_ = loadDatabase(game.folder, game.target, moved, nullptr);
+		movedFrom_ = std::move(moved);
+		dbStale_ = false;
+	}
+
+	InstalledMod Installer::entryFor(const install::Mod& mod, const install::ModSettings& st) const
+	{
+		InstalledMod m;
+		m.title = mod.titled ? mod.title : std::string();
+		m.author = mod.author;
+		m.version = mod.version;
+		m.script = mod.path;
+		m.sha256 = mod.sha256;
+		m.nfsms = mod.isNfsms;
+		install::CompleteRecord(m, *db_, std::string(kTitle) + " " + Version::GetAppVersionString(),
+			mod.isNfsms ? std::map<std::string, std::string>() : st.options, mod.isNfsms ? &st.choices : nullptr);
+		return m;
+	}
+
+	void Installer::writeList(const FoundGame& game, const ModListUpdate& u, Result& r)
+	{
+		try
+		{
+			std::vector<std::string> problems;
+			r.mods = UpdateModList(game.folder.global, u, &problems);
+			for (const std::string& p : problems) post(Level::Warning, p);
+			r.traced = ReadTraces(game.folder.global, *r.mods);
+		}
+		catch (const std::exception& e)
+		{
+			r.mods.reset();
+			post(Level::Warning, std::string("The list of installed mods wasn't updated: ") + e.what());
+		}
+	}
+
+	void Installer::installJob(const install::Mod& mod, const install::ModSettings& st, const FoundGame& game, bool track, const Plan& plan)
+	{
 		Result r;
 		const std::string source = mod.isNfsms ? mod.nfsms.source : mod.amod.source;
 		post(Level::Info, "Installing " + mod.title + " (" + mod.path + ") into " + game.folder.game);
@@ -633,21 +735,105 @@ namespace installer
 			for (const auto& [id, value] : st.options) post(Level::Info, "  option " + id + " = " + value);
 		}
 		size_t saved = 0;
+		bool wrote = false;
+		InstalledMod entry;
+		ModListUpdate update;
+		std::shared_ptr<const sc::Script> trace;
+		std::vector<std::string> uninstalled;
+		sc::ApplyReport rep;
+		// Stopped before writing anything: nothing more to say than the reason.
+		bool stopped = false;
+		auto stopAt = [&](std::vector<Conflict> found)
+		{
+			stopped = true;
+			r.outcome = Outcome::None;
+			std::string names;
+			for (size_t i = 0; i < found.size(); ++i)
+			{
+				post(Level::Warning, mod.title + " " + found[i].text);
+				names += (i == 0 ? "" : i + 1 == found.size() ? " and " : ", ") + found[i].mod.nameAndVersion();
+			}
+			post(Level::Warning, "Nothing was written. Uninstall " + names + " first, or install " + mod.title + " over " +
+				(found.size() == 1 ? "it." : "them."));
+			setStatus(Level::Warning, mod.title + " changes what " + names + (found.size() == 1 ? " changed" : " changed") +
+				". Nothing was written yet: choose what to do.");
+			r.conflicts = std::move(found);
+		};
 		try
 		{
-			if (!db_ || dbStale_)
-			{
-				// A run before changed this one: the files as they are now.
-				std::vector<std::string> moved;
-				db_.reset();
-				db_ = loadDatabase(game.folder, game.target, moved, nullptr);
-				movedFrom_ = std::move(moved);
-			}
+			reloadIfStale(game);
 			ensureData();
 			dbStale_ = true;
-			const sc::ApplyReport rep = install::RunMod(*db_, mod, st, data_->nfsmsWords);
-			for (const sc::Message& m : rep.messages) post(LevelOf(m.level), install::MessageLine(source, m), m.level != sc::Message::Level::Echo);
-			if (!rep.ok)
+			entry = entryFor(mod, st);
+			std::vector<TracedMod> rows = track ? game.traced : std::vector<TracedMod>{};
+			std::vector<std::string> removed = movedFrom_;
+
+			// The mods ticked to go first.
+			if (!plan.uninstall.empty())
+			{
+				std::vector<size_t> which;
+				for (const InstalledMod& m : plan.uninstall)
+					for (size_t i = 0; i < rows.size(); ++i)
+						if (SameEntry(rows[i].mod, m))
+						{
+							which.push_back(i);
+							uninstalled.push_back(m.nameAndVersion());
+						}
+				std::string names;
+				for (size_t i = 0; i < uninstalled.size(); ++i) names += (i == 0 ? "" : i + 1 == uninstalled.size() ? " and " : ", ") + uninstalled[i];
+				post(Level::Info, "Uninstalling " + names + " first");
+				const UninstallResult u = Uninstall(*db_, rows, which);
+				for (const std::string& n : u.notes) post(Level::Warning, n);
+				if (!u.ok)
+				{
+					stopped = true;
+					r.conflicts = plan.conflicts;
+					r.conflictError = "Uninstalling didn't work, so nothing was written: " + u.error;
+					post(Level::Error, r.conflictError);
+					setStatus(Level::Error, "Uninstalling the ticked mods didn't work. Nothing was written.");
+					std::lock_guard lock(m_);
+					installDone_ = std::move(r);
+					return;
+				}
+				post(Level::Info, "Uninstalled " + names + ": " + u.summary());
+				install::RememberNames(userKeysFile(), u.newNames);
+				removed.insert(removed.end(), u.removedFiles.begin(), u.removedFiles.end());
+				FoldUninstall(update, rows, u);
+				rows = WithUpdate(std::move(rows), update);
+			}
+
+			// What it changes, against the mods on the list (theirs from their traces).
+			const bool check = track && !plan.overConflicts &&
+				std::any_of(rows.begin(), rows.end(), [](const TracedMod& t) { return t.trace != nullptr; });
+			auto conflictsOf = [&](const sc::Script& t)
+			{
+				std::vector<Conflict> out;
+				for (const ModConflict& c : FindConflicts(PlacesOf(t), rows))
+					out.push_back({ rows[c.index].mod, ConflictText(c, rows[c.index].mod.nameAndVersion()), true });
+				return out;
+			};
+			std::unique_ptr<Database> before = track ? sc::CloneDatabase(*db_) : nullptr;
+			const bool copies = mod.isNfsms && CopiesFiles(mod.nfsms);
+			if (check && copies)
+			{
+				// Its files aren't copied until it is known that it goes in.
+				post(Level::Info, "Checking what it changes against the installed mods, without copying its files yet");
+				std::unique_ptr<Database> trial = sc::CloneDatabase(*db_);
+				install::ModSettings dry = st;
+				dry.doFiles = false;
+				const sc::ApplyReport tried = install::RunMod(*trial, mod, dry, data_->nfsmsWords);
+				if (tried.ok)
+					if (std::vector<Conflict> found = conflictsOf(MakeTrace(*before, *trial, entry)); !found.empty()) stopAt(std::move(found));
+			}
+			if (!stopped)
+			{
+				rep = install::RunMod(*db_, mod, st, data_->nfsmsWords);
+				for (const sc::Message& m : rep.messages) post(LevelOf(m.level), install::MessageLine(source, m), m.level != sc::Message::Level::Echo);
+			}
+			if (stopped)
+			{
+			}
+			else if (!rep.ok)
 			{
 				std::string first;
 				for (const sc::Message& m : rep.messages)
@@ -659,18 +845,30 @@ namespace installer
 			}
 			else
 			{
+				if (track) trace = std::make_shared<const sc::Script>(MakeTrace(*before, *db_, entry));
+				before.reset();
+				if (check && !copies)
+					if (std::vector<Conflict> found = conflictsOf(*trace); !found.empty()) stopAt(std::move(found));
+			}
+			if (!stopped && rep.ok)
+			{
 				install::RememberNames(userKeysFile(), rep.newNames);
-				std::vector<std::string> removed = movedFrom_;
 				removed.insert(removed.end(), rep.removedFiles.begin(), rep.removedFiles.end());
 				const install::Changes changes = install::ChangesOf(*db_, std::move(removed));
 				const size_t failed = rep.errors(), warnings = rep.warnings();
 				post(Level::Info, source + ": " + rep.summary() + (failed ? "; " + std::to_string(failed) + " line(s) failed" : "") +
 					(warnings ? " (" + std::to_string(warnings) + " warning(s))" : ""));
-				changed = rep.copiedFiles;
+				for (const std::string& f : install::ChangedFiles(rep))
+				{
+					const std::string name = ModListFileName(f, game.folder.game);
+					if (std::find(entry.files.begin(), entry.files.end(), name) == entry.files.end()) entry.files.push_back(name);
+				}
+				std::sort(entry.files.begin(), entry.files.end());
+				wrote = !rep.copiedFiles.empty();
 				const install::SaveResult res = install::SaveChanges(*db_, changes, {}, [&](const install::SaveNote& n)
 				{
 					saved += n.kind == install::SaveNote::Kind::Saved;
-					changed.insert(changed.end(), n.files.begin(), n.files.end()); // known even when saving fails halfway
+					wrote |= !n.files.empty();
 					post(Level::Info, n.text);
 				});
 				for (const std::string& f : res.written) r.files.push_back(Shown(f, game.folder.game));
@@ -689,68 +887,172 @@ namespace installer
 					r.detail = changes.empty() ? "The game's files already held everything it sets, so no file needed changing."
 						: "The first time a file is changed, its original is kept beside it as a .bak file.";
 				}
+				if (!uninstalled.empty())
+				{
+					std::string names;
+					for (size_t i = 0; i < uninstalled.size(); ++i) names += (i == 0 ? "" : i + 1 == uninstalled.size() ? " and " : ", ") + uninstalled[i];
+					r.detail += "\n" + names + (uninstalled.size() == 1 ? " was" : " were") + " uninstalled first.";
+				}
 				if (warnings) r.detail += "\nThe script gave " + std::to_string(warnings) + (warnings == 1 ? " warning" : " warnings") + "; the Log lists them.";
 				if (track)
-					recordInstall(mod, st, game, failed ? "installed, " + std::to_string(failed) + (failed == 1 ? " line" : " lines") + " failed" : "installed",
-						changed, r);
+				{
+					entry.result = failed ? "installed, " + std::to_string(failed) + (failed == 1 ? " line" : " lines") + " failed" : "installed";
+					update.add.push_back({ entry, trace });
+					writeList(game, update, r);
+					if (r.mods)
+					{
+						const std::string at = r.mods->mods.empty() ? std::string() : r.mods->mods.back().trace;
+						post(Level::Info, "Added " + entry.name() + " to the list of installed mods, " + ModListPath(game.folder.global) +
+							(at.empty() ? std::string() : ", with what it changed in " + TracePath(game.folder.global, at)));
+						r.detail += "\nIt is on the game's list of installed mods (attribulina_mods.txt in GLOBAL), which can uninstall it.";
+					}
+				}
 			}
 		}
 		catch (const std::exception& e)
 		{
 			r.outcome = Outcome::Failed;
+			r.conflicts.clear();
+			stopped = false;
 			r.headline = "The mod wasn't installed.";
 			r.detail = e.what();
 			if (saved) r.detail += "\nSome files were saved before this; the Log lists them, and their originals are kept beside them as .bak files.";
 			else r.detail += "\nNothing was saved: the game's files are as they were.";
 			post(Level::Error, e.what());
 			// Files changed all the same: the list says so.
-			if (track && !changed.empty()) recordInstall(mod, st, game, std::string("saving failed halfway: ") + e.what(), changed, r);
+			if (track && wrote)
+			{
+				entry.result = std::string("saving failed halfway: ") + e.what();
+				update.add.push_back({ entry, trace });
+				writeList(game, update, r);
+			}
 		}
-		const Level level = r.outcome == Outcome::Succeeded ? Level::Success : r.outcome == Outcome::Partly ? Level::Warning : Level::Error;
-		const char* word = r.outcome == Outcome::Succeeded ? "Installation successful" : r.outcome == Outcome::Partly ? "Installation finished with errors"
-			: "Installation failed";
-		post(level, std::string(word) + ": " + r.headline);
-		setStatus(level, std::string(word) + ".");
+		if (!stopped)
+		{
+			const Level level = r.outcome == Outcome::Succeeded ? Level::Success : r.outcome == Outcome::Partly ? Level::Warning : Level::Error;
+			const char* word = r.outcome == Outcome::Succeeded ? "Installation successful" : r.outcome == Outcome::Partly ? "Installation finished with errors"
+				: "Installation failed";
+			post(level, std::string(word) + ": " + r.headline);
+			setStatus(level, std::string(word) + ".");
+		}
 		std::lock_guard lock(m_);
 		installDone_ = std::move(r);
 	}
 
-	void Installer::recordInstall(const install::Mod& mod, const install::ModSettings& st, const FoundGame& game, const std::string& result,
-		const std::vector<std::string>& files, Result& r)
+	// --------------------------------------------------- the list's commands ---
+
+	bool Installer::canUninstall(size_t index) const
 	{
-		InstalledMod m;
-		m.title = mod.titled ? mod.title : std::string();
-		m.author = mod.author;
-		m.version = mod.version;
-		m.script = mod.path;
-		m.sha256 = mod.sha256;
-		m.nfsms = mod.isNfsms;
-		install::CompleteRecord(m, *db_, std::string(kTitle) + " " + Version::GetAppVersionString(),
-			mod.isNfsms ? std::map<std::string, std::string>() : st.options, mod.isNfsms ? &st.choices : nullptr);
-		m.result = result;
-		for (const std::string& f : files)
-		{
-			const std::string name = ModListFileName(f, game.folder.game);
-			if (std::find(m.files.begin(), m.files.end(), name) == m.files.end()) m.files.push_back(name);
-		}
-		std::sort(m.files.begin(), m.files.end());
+		return game_.ok && !busy_ && index < game_.traced.size() && game_.traced[index].trace != nullptr;
+	}
+
+	void Installer::uninstallMod(size_t index)
+	{
+		if (!canUninstall(index)) return;
+		modsMessage_.clear();
+		const InstalledMod which = game_.traced[index].mod;
+		setStatus(Level::Info, "Uninstalling " + which.nameAndVersion() + "...");
+		startWork(Work::Uninstalling, [this, game = game_, which]() { uninstallJob(game, which); });
+	}
+
+	void Installer::uninstallJob(const FoundGame& game, const InstalledMod& which)
+	{
+		ModsDone d;
+		const std::string name = which.nameAndVersion();
+		post(Level::Info, "Uninstalling " + name + " from " + game.folder.game);
+		size_t saved = 0;
 		try
 		{
-			r.mods = AddToModList(game.folder.global, { m });
-			post(Level::Info, "Added " + m.name() + " to the list of installed mods, " + ModListPath(game.folder.global));
-			r.detail += "\nIt is on the game's list of installed mods (attribulina_mods.txt in GLOBAL).";
+			// The list as the file has it now.
+			const std::optional<ModList> list = ReadModList(game.folder.global);
+			if (!list) throw std::runtime_error("the game has no list of installed mods any more");
+			const std::vector<TracedMod> rows = ReadTraces(game.folder.global, *list);
+			size_t at = rows.size();
+			for (size_t i = 0; i < rows.size(); ++i)
+				if (SameEntry(rows[i].mod, which)) at = i;
+			if (at == rows.size()) throw std::runtime_error("it isn't on the list any more");
+			reloadIfStale(game);
+			dbStale_ = true;
+			const UninstallResult u = Uninstall(*db_, rows, { at });
+			for (const std::string& n : u.notes) post(Level::Warning, n);
+			if (!u.ok)
+			{
+				d.message = name + " wasn't uninstalled: " + u.error + " Nothing was written.";
+				d.level = Level::Error;
+				post(Level::Error, d.message);
+			}
+			else
+			{
+				install::RememberNames(userKeysFile(), u.newNames);
+				std::vector<std::string> removed = movedFrom_;
+				removed.insert(removed.end(), u.removedFiles.begin(), u.removedFiles.end());
+				const install::Changes changes = install::ChangesOf(*db_, std::move(removed));
+				install::SaveChanges(*db_, changes, {}, [&](const install::SaveNote& n)
+				{
+					saved += n.kind == install::SaveNote::Kind::Saved;
+					post(Level::Info, n.text);
+				});
+				ModListUpdate up;
+				FoldUninstall(up, rows, u);
+				std::vector<std::string> problems;
+				d.mods = UpdateModList(game.folder.global, up, &problems);
+				for (const std::string& p : problems) post(Level::Warning, p);
+				d.traced = ReadTraces(game.folder.global, *d.mods);
+				d.message = "Uninstalled " + name + ": " + u.summary() + "." +
+					(changes.empty() ? " No file needed changing." : " The files are saved.") +
+					(u.redone ? " The mods installed after it that change the same things were undone and done again, so what they set stays." : "") +
+					" Files it copied into the game's folder stay as they are.";
+				d.level = Level::Success;
+				post(Level::Success, d.message);
+			}
 		}
 		catch (const std::exception& e)
 		{
-			post(Level::Warning, std::string("The mod isn't on the list of installed mods: ") + e.what());
+			d.message = name + " wasn't uninstalled: " + e.what() +
+				(saved ? std::string(" Some files were saved before this; the Log lists them.") : std::string(" Nothing was written."));
+			d.level = Level::Error;
+			post(Level::Error, d.message);
 		}
+		setStatus(d.level, d.message);
+		std::lock_guard lock(m_);
+		modsDone_ = std::move(d);
+	}
+
+	void Installer::forgetMod(size_t index)
+	{
+		if (busy_ || !game_.ok || index >= game_.traced.size()) return;
+		const InstalledMod which = game_.traced[index].mod;
+		ModListUpdate u;
+		u.remove.push_back(which);
+		try
+		{
+			std::vector<std::string> problems;
+			game_.mods = UpdateModList(game_.folder.global, u, &problems);
+			for (const std::string& p : problems) post(Level::Warning, p);
+			game_.traced = ReadTraces(game_.folder.global, *game_.mods);
+			game_.modsError.clear();
+			modsMessage_ = "Took " + which.nameAndVersion() + " off the list. The game's files are as they were.";
+			modsMessageLevel_ = Level::Info;
+			post(Level::Info, modsMessage_);
+		}
+		catch (const std::exception& e)
+		{
+			modsMessage_ = std::string("The list wasn't changed: ") + e.what();
+			modsMessageLevel_ = Level::Error;
+			post(Level::Error, modsMessage_);
+		}
+		modsView_.forget();
+		conflicts_.clear();
+		conflictError_.clear();
+		if (!finished()) refreshModChecks();
 	}
 
 	bool Installer::requestClose()
 	{
-		if (busy_ && work_ == Work::Installing)
+		if (busy_ && (work_ == Work::Installing || work_ == Work::Uninstalling))
 		{
-			setStatus(Level::Warning, "The mod is being installed. Close the window once it's done, or the game's files may be left half written.");
+			setStatus(Level::Warning, std::string(work_ == Work::Installing ? "The mod is being installed" : "A mod is being uninstalled") +
+				". Close the window once it's done, or the game's files may be left half written.");
 			return false;
 		}
 		return true;
@@ -1000,6 +1302,11 @@ namespace installer
 			ImGui::TextDisabled("%s", mod_ ? mod_->title.c_str() : "");
 			return;
 		}
+		if (!conflicts_.empty() && mod_)
+		{
+			drawConflicts();
+			return;
+		}
 		if (outcome_ != Outcome::None)
 		{
 			const Level level = outcome_ == Outcome::Succeeded ? Level::Success : outcome_ == Outcome::Partly ? Level::Warning : Level::Error;
@@ -1068,12 +1375,60 @@ namespace installer
 		ImGui::Spacing();
 		if (!trackMods_) ImGui::TextDisabled("The list of installed mods is off (Advanced Options): the mod isn't added to it.");
 		else if (!game_.modsError.empty()) ImGui::TextDisabled("The list of installed mods doesn't read, so the mod isn't added to it.");
-		else ImGui::TextDisabled("The mod goes on the game's list of installed mods, attribulina_mods.txt in GLOBAL.");
+		else ImGui::TextDisabled("The mod goes on the game's list of installed mods, attribulina_mods.txt in GLOBAL, with a trace of what it "
+			"changes in the database, so it can be uninstalled. If it changes what a mod on the list changed, installing stops before "
+			"writing anything and asks what to do.");
 		if (!installedNote_.empty())
 		{
 			ImGui::Spacing();
 			ImGui::TextColored(kWarn, "%s", "It installs over the same mod, which the list has already (the Game step says more).");
 		}
+	}
+
+	void Installer::drawConflicts()
+	{
+		const ImGuiStyle& style = ImGui::GetStyle();
+		std::string names;
+		for (size_t i = 0; i < conflicts_.size(); ++i)
+			names += (i == 0 ? "" : i + 1 == conflicts_.size() ? " and " : ", ") + conflicts_[i].mod.nameAndVersion();
+		ImGui::PushFont(nullptr, style.FontSizeBase * 1.2f);
+		ImGui::PushStyleColor(ImGuiCol_Text, kWarn);
+		ImGui::TextUnformatted((mod_->title + " changes what " + (conflicts_.size() == 1 ? names : std::to_string(conflicts_.size()) + " installed mods") +
+			" changed").c_str());
+		ImGui::PopStyleColor();
+		ImGui::PopFont();
+		ImGui::Spacing();
+		ImGui::TextUnformatted("Nothing has been written yet. Tick the mods to uninstall first: uninstalling one sets back what it changed in the "
+			"game's database, and files it copied into the game's folder stay. Or install it anyway: where both change the same thing, this "
+			"mod's value is the one that stays, and uninstalling either of them later keeps the other's changes.");
+		ImGui::Spacing();
+		for (size_t i = 0; i < conflicts_.size(); ++i)
+		{
+			Conflict& c = conflicts_[i];
+			ImGui::PushID(int(i));
+			app::Checkbox(("Uninstall " + c.mod.nameAndVersion() + " first").c_str(), &c.uninstall);
+			ImGui::Indent();
+			if (!c.mod.installed.empty()) ImGui::TextDisabled("Installed %s.", c.mod.installed.c_str());
+			ImGui::TextDisabled("%s %s.", mod_->title.c_str(), c.text.c_str());
+			ImGui::Unindent();
+			ImGui::PopID();
+		}
+		if (!conflictError_.empty())
+		{
+			ImGui::Spacing();
+			ImGui::PushStyleColor(ImGuiCol_Text, kError);
+			ImGui::TextUnformatted(conflictError_.c_str());
+			ImGui::PopStyleColor();
+		}
+		ImGui::Spacing();
+		const bool ticked = std::any_of(conflicts_.begin(), conflicts_.end(), [](const Conflict& c) { return c.uninstall; });
+		ImGui::BeginDisabled(!ticked || busy_);
+		if (ImGui::Button("Uninstall the Ticked Mods, Then Install")) uninstallTickedAndInstall();
+		ImGui::EndDisabled();
+		ImGui::SameLine();
+		ImGui::BeginDisabled(busy_);
+		if (ImGui::Button("Install Anyway")) installOverConflicts();
+		ImGui::EndDisabled();
 	}
 
 	void Installer::drawStatus()
@@ -1169,7 +1524,7 @@ namespace installer
 			ImGui::EndDisabled();
 		}
 		ImGui::SameLine();
-		ImGui::BeginDisabled(busy_ && work_ == Work::Installing);
+		ImGui::BeginDisabled(busy_ && (work_ == Work::Installing || work_ == Work::Uninstalling));
 		if (ImGui::Button("Cancel", size)) host_.quit();
 		ImGui::EndDisabled();
 	}
@@ -1184,8 +1539,10 @@ namespace installer
 		bool track = trackMods_;
 		if (app::Checkbox("Keep a list of installed mods", &track)) setTrackMods(track);
 		ImGui::EndDisabled();
-		ImGui::TextDisabled("On (the default), each mod installed goes on the game's list, attribulina_mods.txt in its GLOBAL folder, and a mod "
-			"the list has already asks before it is installed again. The game doesn't read the file.");
+		ImGui::TextDisabled("On (the default), each mod installed goes on the game's list, attribulina_mods.txt in its GLOBAL folder, with "
+			"a trace of what it changed in attribulina_traces beside it. A mod the list has already asks before it is installed again, and "
+			"one that changes what a listed mod changed asks whether to uninstall that one first. The game reads neither. Installed Mods "
+			"uninstalls a mod.");
 		ImGui::Spacing();
 		ImGui::BeginDisabled(!game_.ok || busy_);
 		if (ImGui::Button("Installed Mods..."))
@@ -1206,6 +1563,8 @@ namespace installer
 		{
 			ImGui::OpenPopup(name);
 			modsView_.forget();
+			confirm_ = Confirm::None;
+			modsMessage_.clear();
 		}
 		const ImGuiViewport* vp = ImGui::GetMainViewport();
 		ImGui::SetNextWindowPos(vp->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
@@ -1219,15 +1578,78 @@ namespace installer
 		if (!trackMods_) ImGui::TextColored(kWarn, "%s", "The list is off (Advanced Options): installing doesn't add to it.");
 		ImGui::PopTextWrapPos();
 		ImGui::Spacing();
-		const float button = ImGui::GetFrameHeightWithSpacing() + ImGui::GetStyle().ItemSpacing.y;
+
+		const int picked = modsView_.picked();
+		const bool hasPick = picked >= 0 && size_t(picked) < game_.traced.size();
+		if (!hasPick) confirm_ = Confirm::None;
+		// Below the table: what the last command did, a question, the buttons.
+		const float line = ImGui::GetTextLineHeightWithSpacing();
+		float below = ImGui::GetFrameHeightWithSpacing() + ImGui::GetStyle().ItemSpacing.y;
+		if (!modsMessage_.empty() || (busy_ && work_ == Work::Uninstalling)) below += line * 3;
+		if (confirm_ != Confirm::None) below += line * 3;
 		if (game_.ok && game_.modsError.empty())
-			modsView_.draw(game_.mods ? &*game_.mods : nullptr, {}, std::max(ImGui::GetFontSize() * 6, ImGui::GetContentRegionAvail().y - button));
+			modsView_.draw(game_.traced, game_.mods.has_value(), std::max(ImGui::GetFontSize() * 6, ImGui::GetContentRegionAvail().y - below));
 		ImGui::Spacing();
-		if (ImGui::Button("Close") || ImGui::IsKeyPressed(ImGuiKey_Escape))
+		ImGui::PushTextWrapPos(0.0f);
+		if (busy_ && work_ == Work::Uninstalling) ImGui::TextUnformatted("Uninstalling...");
+		else if (!modsMessage_.empty()) ImGui::TextColored(ColourOf(modsMessageLevel_), "%s", modsMessage_.c_str());
+		const TracedMod* row = hasPick ? &game_.traced[size_t(picked)] : nullptr;
+		if (confirm_ != Confirm::None && row)
+		{
+			const std::string mod = row->mod.nameAndVersion();
+			if (confirm_ == Confirm::Uninstall)
+				ImGui::TextColored(kWarn, "Uninstall %s? This sets back what it changed in the game's database and saves the files "
+					"(each file's first original stays as .bak). Files it copied into the game's folder stay.", mod.c_str());
+			else
+				ImGui::TextColored(kWarn, "Take %s off the list? The game's files stay as they are, and it can't be uninstalled "
+					"from here after.", mod.c_str());
+		}
+		ImGui::PopTextWrapPos();
+		if (confirm_ != Confirm::None && row)
+		{
+			if (ImGui::Button(confirm_ == Confirm::Uninstall ? "Uninstall" : "Remove from List"))
+			{
+				const Confirm what = confirm_;
+				confirm_ = Confirm::None;
+				if (what == Confirm::Uninstall) uninstallMod(size_t(picked));
+				else forgetMod(size_t(picked));
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("Cancel##confirm")) confirm_ = Confirm::None;
+		}
+		else
+		{
+			ImGui::BeginDisabled(!hasPick || !canUninstall(size_t(std::max(picked, 0))));
+			if (ImGui::Button("Uninstall..."))
+			{
+				confirm_ = Confirm::Uninstall;
+				modsMessage_.clear();
+			}
+			ImGui::EndDisabled();
+			if (hasPick && !row->trace && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+				ImGui::SetTooltip("%s", ("It can't be uninstalled: " + row->problem + ".").c_str());
+			ImGui::SameLine();
+			ImGui::BeginDisabled(!hasPick || busy_);
+			if (ImGui::Button("Remove from List..."))
+			{
+				confirm_ = Confirm::Forget;
+				modsMessage_.clear();
+			}
+			ImGui::EndDisabled();
+			if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+				ImGui::SetTooltip("Takes the mod off the list and changes nothing else: for a mod put back by hand (its .bak files).");
+		}
+		ImGui::SameLine();
+		const bool working = busy_ && work_ == Work::Uninstalling;
+		ImGui::BeginDisabled(working);
+		const bool close = ImGui::Button("Close");
+		ImGui::EndDisabled();
+		if (close || (!working && ImGui::IsKeyPressed(ImGuiKey_Escape) && confirm_ == Confirm::None))
 		{
 			showMods_ = false;
 			ImGui::CloseCurrentPopup();
 		}
+		if (ImGui::IsKeyPressed(ImGuiKey_Escape)) confirm_ = Confirm::None;
 		ImGui::EndPopup();
 	}
 

@@ -294,6 +294,29 @@ namespace attrib::install
 		}
 	}
 
+	std::vector<std::string> ChangedFiles(const sc::ApplyReport& r, bool memoryFiles)
+	{
+		std::vector<std::string> files;
+		auto add = [&](const std::string& f)
+		{
+			if (std::find(files.begin(), files.end(), f) == files.end()) files.push_back(f);
+		};
+		for (const LoadedPack* pk : r.touched)
+		{
+			std::vector<std::string> pack{ pk->path };
+			if (const std::optional<std::string> twin = PackTwin(pk->path)) pack.push_back(*twin);
+			for (const std::string& f : pack)
+			{
+				add(f);
+				if (memoryFiles)
+					for (const MemoryFileCopy& c : MemoryFileCopiesOf(f)) add(c.memoryFile);
+			}
+		}
+		for (const std::string& f : r.removedFiles) add(f);
+		for (const std::string& f : r.copiedFiles) add(f);
+		return files;
+	}
+
 	Mod ReadMod(const std::string& path)
 	{
 		const fs::path p = FromUtf8(path);

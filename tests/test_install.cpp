@@ -96,6 +96,14 @@ struct Session {
         frames(1);
         return true;
     }
+    // In the window whose name holds `window`.
+    bool clickIn(const std::string& label, const std::string& window) {
+        const test::ProbeItem* it = test::UiProbe::get().find(label, window);
+        if (!it) return false;
+        imgui.click([&]() { inst.frame(); }, (it->rect.Min.x + it->rect.Max.x) * 0.5f, (it->rect.Min.y + it->rect.Max.y) * 0.5f);
+        frames(1);
+        return true;
+    }
     bool drawn(const std::string& label) const { return test::UiProbe::get().find(label) != nullptr; }
     // Drawn whole inside the window, not cut off at its bottom.
     bool onScreen(const std::string& label) const {
@@ -503,7 +511,24 @@ TEST("installer: once installed, the steps before stay locked until Install Anot
         s.inst.options()["frames"] = "8";
         s.inst.goTo(Step::Install);
         s.frames(1);
-        installed(s);
+        // It changes what its first installation changed: nothing is written
+        // until the user says, and the page offers to uninstall that one first.
+        const Bytes before = ReadFile((global / "ATTRIBUTES.BIN").string());
+        CHECK(s.click("Install"));
+        s.inst.wait();
+        s.frames(2);
+        CHECK(s.inst.outcome() == Outcome::None);
+        CHECK(!s.inst.finished());
+        CHECK_EQ(s.inst.conflicts().size(), size_t(1));
+        CHECK(s.drawn("Uninstall Louder 1.0 first"));
+        CHECK(s.drawn("Install Anyway"));
+        CHECK(!s.inst.canInstall());
+        CHECK(s.logText().find("Louder changes 1 thing Louder 1.0 changed: audio_revlimiter/default total_frames_short") != std::string::npos);
+        CHECK(ReadFile((global / "ATTRIBUTES.BIN").string()) == before);
+        CHECK(s.click("Install Anyway"));
+        s.inst.wait();
+        s.frames(2);
+        CHECK(s.inst.outcome() == Outcome::Succeeded);
 
         // Another version of it: the same question, in other words.
         CHECK(s.click("Install Another Mod"));
@@ -594,8 +619,159 @@ TEST("installer: once installed, the steps before stay locked until Install Anot
         s.inst.goTo(Step::Install);
         s.frames(1);
         installed(s);
-        CHECK(s.logText().find("The mod isn't on the list of installed mods") != std::string::npos);
+        CHECK(s.logText().find("The list of installed mods wasn't updated") != std::string::npos);
         CHECK_EQ(ReadText(global / kModListFile), std::string("attribulina mods 1\nmod \"Broken\n"));
+    }
+    fs::remove_all(root);
+}
+
+TEST("installer: a mod that changes what one on the list changed asks first: uninstall that one first, or install anyway; "
+     "the Installed Mods window uninstalls a mod or takes it off the list") {
+    const fs::path root = MakeGame("attribulina_installer_uninstall");
+    const fs::path game = root / "game", global = game / "GLOBAL";
+    const Bytes vanilla = ReadFile((global / "ATTRIBUTES.BIN").string());
+    const Bytes vanillaMemory = ReadFile((global / "GlobalMemoryFile.bin").string());
+    WriteText(root / "engine.amod", "attribulina 1\ngame prostreet_pc\ntitle \"Engine\"\nversion \"1\"\n"
+                                    "edit audio_revlimiter/default { total_frames_short = 20\n total_frames_long = 21 }\n");
+    WriteText(root / "sound.amod", "attribulina 1\ngame prostreet_pc\ntitle \"Sound\"\nversion \"1\"\n"
+                                   "edit audio_revlimiter/default { total_frames_short = 30 }\n");
+    WriteText(root / "apart.amod", "attribulina 1\ngame prostreet_pc\ntitle \"Apart\"\n"
+                                   "edit audio_revlimiter/default { load_for_short = 0.5 }\n");
+    WriteText(root / "readme.txt", "Copied.\n");
+    WriteText(root / "copier.nfsms", "version 4.6\ngame PS\nupdate_field audio_revlimiter default total_frames_short 40\n"
+                                     "file_copy \"readme.txt\" \"copier readme.txt\"\n# amod begin\n# title \"Copier\"\n# amod end\n");
+    auto install = [&](Session& s, const fs::path& mod) {
+        if (s.inst.finished()) CHECK(s.click("Install Another Mod"));
+        CHECK(s.inst.openMod(mod.string()));
+        s.frames(1);
+        if (!s.inst.gameLoaded()) {
+            s.inst.chooseGame(game.string());
+            s.frames(1);
+        }
+        CHECK(s.inst.gameLoaded());
+        s.inst.goTo(Step::Install);
+        s.frames(1);
+        CHECK(s.click("Install"));
+        s.inst.wait();
+        s.frames(2);
+    };
+    auto value = [&](const char* field) {
+        auto db = std::make_unique<Database>();
+        db->addTypeSchema(TypeSchema::Load(test::DataPath("data/schema/prostreet_pc.txt")));
+        db->loadPack((global / "ATTRIBUTES.BIN").string());
+        Collection* c = db->findCollection(StringHash32("audio_revlimiter"), StringHash32("default"));
+        const Attribute* a = c ? c->find(StringHash32(field)) : nullptr;
+        return a ? load32(a->data.bytes.data(), Endian::Little) : 0u;
+    };
+    const uint32_t shortWas = value("total_frames_short"), longWas = value("total_frames_long");
+    {
+        Session s(PathsIn(root));
+        install(s, root / "engine.amod");
+        CHECK(s.inst.outcome() == Outcome::Succeeded);
+        auto list = ReadModList(global.string());
+        CHECK(list && list->mods.size() == 1);
+        const std::string engineTrace = list && !list->mods.empty() ? list->mods[0].trace : std::string();
+        CHECK(engineTrace.rfind("attribulina_traces\\", 0) == 0);
+        CHECK(fs::exists(TracePath(global.string(), engineTrace)));
+        CHECK(s.logText().find("with what it changed in ") != std::string::npos);
+
+        // Sound changes Engine's value: Engine goes first, ticked as it starts.
+        install(s, root / "sound.amod");
+        CHECK(s.inst.outcome() == Outcome::None);
+        CHECK_EQ(s.inst.conflicts().size(), size_t(1));
+        CHECK(s.inst.conflicts().empty() || s.inst.conflicts()[0].uninstall);
+        CHECK_EQ(value("total_frames_short"), 20u);
+        CHECK(s.click("Uninstall the Ticked Mods, Then Install"));
+        s.inst.wait();
+        s.frames(2);
+        CHECK(s.inst.outcome() == Outcome::Succeeded);
+        CHECK(s.inst.result().detail.find("Engine 1 was uninstalled first.") != std::string::npos);
+        CHECK_EQ(value("total_frames_short"), 30u);
+        CHECK_EQ(value("total_frames_long"), longWas);
+        list = ReadModList(global.string());
+        CHECK(list && list->mods.size() == 1 && list->mods[0].title == "Sound");
+        CHECK(!fs::exists(TracePath(global.string(), engineTrace)));
+
+        // An nfsms mod that copies files is checked first without them: none
+        // is copied until the user says.
+        install(s, root / "copier.nfsms");
+        CHECK(s.inst.outcome() == Outcome::None);
+        CHECK_EQ(s.inst.conflicts().size(), size_t(1));
+        CHECK(!fs::exists(game / "copier readme.txt"));
+        CHECK(s.click("Install Anyway"));
+        s.inst.wait();
+        s.frames(2);
+        CHECK(s.inst.outcome() == Outcome::Succeeded);
+        CHECK(fs::exists(game / "copier readme.txt"));
+        CHECK_EQ(value("total_frames_short"), 40u);
+
+        // Apart changes nothing the others do: it goes in without asking.
+        install(s, root / "apart.amod");
+        CHECK(s.inst.outcome() == Outcome::Succeeded);
+        CHECK_EQ(s.inst.game().traced.size(), size_t(3));
+
+        // The window: uninstalling Sound, under Copier, which changes the same value, keeps Copier's.
+        CHECK(s.click("Advanced Options"));
+        s.frames(1); // a popup shows the frame after it opens
+        CHECK(s.click("Installed Mods..."));
+        s.frames(1);
+        CHECK(s.click("Sound"));
+        CHECK(s.click("Uninstall..."));
+        CHECK(s.drawn("Cancel##confirm"));
+        CHECK(s.click("Uninstall"));
+        s.inst.wait();
+        s.frames(2);
+        CHECK(s.inst.modsMessage().find("Uninstalled Sound 1: ") == 0);
+        CHECK(s.inst.modsMessage().find("undone and done again") != std::string::npos);
+        CHECK_EQ(value("total_frames_short"), 40u);
+        list = ReadModList(global.string());
+        CHECK(list && list->mods.size() == 2 && list->mods[0].title == "Copier");
+        // Copier's trace now goes back to the value before Sound.
+        CHECK(list && !list->mods.empty() &&
+              ReadText(TracePath(global.string(), list->mods[0].trace)).find("total_frames_short = " + std::to_string(shortWas) + " was 40") !=
+                  std::string::npos);
+
+        // Copier and Apart uninstalled: the database is the game's again, byte for byte; the copied file stays.
+        for (const char* name : {"Copier", "Apart"}) {
+            CHECK(s.click(name));
+            CHECK(s.click("Uninstall..."));
+            CHECK(s.click("Uninstall"));
+            s.inst.wait();
+            s.frames(2);
+            CHECK(s.inst.modsMessage().find(std::string("Uninstalled ") + name) == 0);
+        }
+        CHECK(ReadFile((global / "ATTRIBUTES.BIN").string()) == vanilla);
+        CHECK(ReadFile((global / "GlobalMemoryFile.bin").string()) == vanillaMemory);
+        CHECK(fs::exists(game / "copier readme.txt"));
+        CHECK(s.inst.game().traced.empty());
+        CHECK(!fs::exists(global / kTraceFolder) || fs::is_empty(global / kTraceFolder));
+
+        // One with no trace (installed before traces were kept) can only be taken off the list.
+        ModList old;
+        InstalledMod m;
+        m.title = "Old";
+        old.mods.push_back(m);
+        WriteModList(global.string(), old);
+        CHECK(s.clickIn("Close", "Installed Mods"));
+        s.frames(1);
+        CHECK(s.click("Install Another Mod"));
+        s.inst.chooseGame(game.string());
+        s.frames(1);
+        CHECK(s.click("Advanced Options"));
+        s.frames(1); // a popup shows the frame after it opens
+        CHECK(s.click("Installed Mods..."));
+        s.frames(1);
+        CHECK(s.click("Old"));
+        CHECK(!s.inst.canUninstall(0));
+        CHECK(s.click("Uninstall...")); // greyed out
+        CHECK(!s.drawn("Cancel##confirm"));
+        CHECK(s.click("Remove from List..."));
+        CHECK(s.click("Remove from List"));
+        s.frames(1);
+        CHECK(s.inst.modsMessage().find("Took Old off the list.") == 0);
+        list = ReadModList(global.string());
+        CHECK(list && list->mods.empty());
+        CHECK(test::UiProbe::get().conflicts.empty());
     }
     fs::remove_all(root);
 }

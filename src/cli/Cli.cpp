@@ -8,6 +8,7 @@
 #include "core/GenHeader.h"
 #include "core/Hash.h"
 #include "core/Install.h"
+#include "core/ModTrace.h"
 #include "core/Nfsms.h"
 #include "core/Script.h"
 #include "core/VaultLib.h"
@@ -47,6 +48,8 @@ namespace cli
   attribcli header <database> <class> [-o <out.h>] [--types] [--no-setters]
   attribcli info   <database>
   attribcli repair <database> [--out <dir>] [--dry-run] [--no-backup]
+  attribcli mods   <database>
+  attribcli uninstall <database> <mod>... [--out <dir>] [--dry-run] [--no-backup]
 
 A <database> is a game folder (with attributes.bin) or one pack file in it.
 Its game and platform come from its files (the Vers value of its vaults);
@@ -79,8 +82,10 @@ apply:
                     "NFS-VltEd compatible"): its value widths and quirks
   --no-mod-list     leave the game's list of installed mods out. By default each
                     script file applied goes on attribulina_mods.txt beside the
-                    database once it is saved (with --out, a copy of the list is
-                    written there), and one the list has already gives a warning
+                    database once it is saved, with the trace of what it changed
+                    (attribcli uninstall sets that back); with --out, a copy of
+                    the list is written there. One the list has already, or one
+                    that changes what a mod on it changed, gives a warning
 
 diff: the script that turns <base> into <database>. --no-was leaves out the
 old values, --class limits it to some classes.
@@ -104,6 +109,17 @@ OGVI's World event vaults go back to gc.vaults as the game's event files (the
 files it put beside attributes.bin are removed). What can't be undone is a
 warning. Only repaired packs are written; --out, --dry-run, --no-backup and
 --no-memory-files work as for apply.
+
+mods: the game's list of installed mods (attribulina_mods.txt beside the
+database), numbered, with what uninstalling each one sets back.
+
+uninstall: sets back what the mods named changed in the database, from the
+traces kept when they were installed, saves, and takes them off the list. A
+mod is its number from `mods`, its title (with or without its version) or its
+script's file name. Mods installed after it that change the same things are
+undone and done again around it, so what they set stays; one that builds on
+what it made stops it, and nothing is saved. Files a mod copied stay. --out,
+--dry-run, --no-backup and --no-memory-files work as for apply.
 
 convert: an nfsms script (and the scripts it includes) as a mod script. Its
 setup becomes options and `if` blocks. It is tried on a copy of the database,
@@ -224,6 +240,8 @@ which decides how values read; lines that fail come out as comments.
 					}
 					if (cmd == "apply") return apply(rest);
 					if (cmd == "repair") return repair(rest);
+					if (cmd == "mods") return modsCmd(rest);
+					if (cmd == "uninstall") return uninstall(rest);
 					if (cmd == "check") return check(rest);
 					if (cmd == "diff") return diff(rest);
 					if (cmd == "export") return exportCmd(rest);
@@ -519,6 +537,7 @@ which decides how values read; lines that fail come out as comments.
 					try
 					{
 						mods.list = ReadModList(mods.folder).value_or(ModList{});
+						mods.rows = ReadTraces(mods.folder, mods.list);
 					}
 					catch (const std::exception& e)
 					{
@@ -534,11 +553,14 @@ which decides how values read; lines that fail come out as comments.
 					{
 						draft = install::DescribeMod(files[k], readText(files[k]), isNfsms, isNfsms ? install::ModInfoOf(nfsmsScripts[index]) : scripts[index]);
 						ModList all = mods.list;
-						all.mods.insert(all.mods.end(), mods.added.begin(), mods.added.end());
 						const ModIdentity id = install::IdentityOf(*draft);
+						for (const ModListUpdate::Added& x : mods.added) all.mods.push_back(x.mod);
 						if (const std::string note = InstalledNote(FindInstalled(all, id), id); !note.empty())
 							err_ << "attribcli: warning: " << note << " (--no-mod-list leaves the list out)\n";
 					}
+					// The database before it, for the trace of what it changes.
+					std::unique_ptr<Database> before;
+					if (draft) before = sc::CloneDatabase(*db);
 					if (!isNfsms)
 					{
 						sc::ApplyReport r;
@@ -548,7 +570,7 @@ which decides how values read; lines that fail come out as comments.
 							std::map<std::string, std::string> opts;
 							for (const sc::OptionDef* o : scripts[index].options())
 								if (auto it = given.find(o->id); it != given.end()) opts[o->id] = it->second;
-							mods.add(std::move(*draft), *db, r, opts, nullptr, !a.has("--no-memory-files"));
+							mods.add(std::move(*draft), *db, r, opts, nullptr, !a.has("--no-memory-files"), std::move(before), err_);
 						}
 						continue;
 					}
@@ -586,7 +608,7 @@ which decides how values read; lines that fail come out as comments.
 					out_ << s.source << ": " << r.summary() << (failed ? "; " + std::to_string(failed) + " line(s) failed" : "")
 						<< (r.warnings() ? " (" + std::to_string(r.warnings()) + " warning(s))" : "") << "\n";
 					if (!a.has("--dry-run")) rememberNames(r.newNames);
-					if (draft) mods.add(std::move(*draft), *db, r, {}, &st.choices, !a.has("--no-memory-files"));
+					if (draft) mods.add(std::move(*draft), *db, r, {}, &st.choices, !a.has("--no-memory-files"), std::move(before), err_);
 				}
 
 				if (compress)
@@ -613,37 +635,41 @@ which decides how values read; lines that fail come out as comments.
 				bool track = true;
 				std::string folder; // the database's: the list's
 				ModList list;       // as read
+				std::vector<TracedMod> rows; // its mods with their traces
 				std::string error;  // why it didn't read: it stays as it is
-				std::vector<InstalledMod> added;
+				std::vector<ModListUpdate::Added> added;
 
 				void add(InstalledMod m, const Database& db, const sc::ApplyReport& r, const std::map<std::string, std::string>& options,
-					const ns::Choices* choices, bool memoryFiles)
+					const ns::Choices* choices, bool memoryFiles, std::unique_ptr<Database> before, std::ostream& err)
 				{
 					install::CompleteRecord(m, db, std::string("attribcli ") + Version::GetAppVersionString(), options, choices);
 					const size_t failed = r.errors();
 					m.result = failed ? "installed, " + std::to_string(failed) + (failed == 1 ? " line" : " lines") + " failed" : "installed";
-					std::vector<std::string> changed;
-					for (const LoadedPack* pk : r.touched)
-					{
-						std::vector<std::string> pack{ pk->path };
-						if (const std::optional<std::string> twin = PackTwin(pk->path)) pack.push_back(*twin);
-						for (const std::string& f : pack)
-						{
-							changed.push_back(f);
-							if (memoryFiles)
-								for (const MemoryFileCopy& c : MemoryFileCopiesOf(f)) changed.push_back(c.memoryFile);
-						}
-					}
-					changed.insert(changed.end(), r.removedFiles.begin(), r.removedFiles.end());
-					changed.insert(changed.end(), r.copiedFiles.begin(), r.copiedFiles.end());
 					const std::string game = ToUtf8(FromUtf8(folder).parent_path());
-					for (const std::string& f : changed)
+					for (const std::string& f : install::ChangedFiles(r, memoryFiles))
 					{
 						const std::string name = ModListFileName(f, game);
 						if (std::find(m.files.begin(), m.files.end(), name) == m.files.end()) m.files.push_back(name);
 					}
 					std::sort(m.files.begin(), m.files.end());
-					added.push_back(std::move(m));
+					std::shared_ptr<const sc::Script> trace;
+					if (before) trace = std::make_shared<const sc::Script>(MakeTrace(*before, db, m));
+					if (trace)
+					{
+						// The mods it changes the same things as: the list's, and the ones applied before it.
+						std::vector<TracedMod> all = rows;
+						for (const ModListUpdate::Added& x : added)
+						{
+							TracedMod t;
+							t.mod = x.mod;
+							t.trace = x.trace;
+							all.push_back(std::move(t));
+						}
+						for (const ModConflict& c : FindConflicts(PlacesOf(*trace), all))
+							err << "attribcli: warning: " << m.nameAndVersion() << " " << ConflictText(c, all[c.index].mod.nameAndVersion())
+								<< " (it goes over it; attribcli uninstall takes either off)\n";
+					}
+					added.push_back({ std::move(m), std::move(trace) });
 				}
 
 				void write(const Args& a, std::ostream& out, std::ostream& err) const
@@ -652,7 +678,7 @@ which decides how values read; lines that fail come out as comments.
 					const std::string outDir = a.get("--out");
 					const std::string to = outDir.empty() ? folder : outDir;
 					std::string names;
-					for (const InstalledMod& m : added) names += (names.empty() ? "" : ", ") + m.name() + (m.version.empty() ? "" : " " + m.version);
+					for (const ModListUpdate::Added& x : added) names += (names.empty() ? "" : ", ") + x.mod.nameAndVersion();
 					if (a.has("--dry-run"))
 					{
 						out << "would add " << names << " to " << ModListPath(to) << "\n";
@@ -660,9 +686,12 @@ which decides how values read; lines that fail come out as comments.
 					}
 					try
 					{
-						ModList l = list;
-						l.mods.insert(l.mods.end(), added.begin(), added.end());
-						WriteModList(to, l);
+						if (!outDir.empty()) CopyModList(folder, outDir, list);
+						ModListUpdate u;
+						u.add = added;
+						std::vector<std::string> problems;
+						UpdateModList(to, u, &problems);
+						for (const std::string& p : problems) err << "attribcli: warning: " << p << "\n";
 						out << "added " << names << " to " << ModListPath(to) << "\n";
 					}
 					catch (const std::exception& e)
@@ -671,6 +700,130 @@ which decides how values read; lines that fail come out as comments.
 					}
 				}
 			};
+
+			// The list as read, with its traces, into `to` (--out).
+			static void CopyModList(const std::string& from, const std::string& to, const ModList& list)
+			{
+				std::error_code ec;
+				fs::create_directories(FromUtf8(to), ec);
+				WriteModList(to, list);
+				for (const InstalledMod& m : list.mods)
+				{
+					if (m.trace.empty()) continue;
+					const fs::path dst = FromUtf8(TracePath(to, m.trace));
+					fs::create_directories(dst.parent_path(), ec);
+					fs::copy_file(FromUtf8(TracePath(from, m.trace)), dst, fs::copy_options::overwrite_existing, ec);
+				}
+			}
+
+			// --------------------------------------------------- installed mods ---
+
+			// The mod of the list a command line names: its number (from 1, as
+			// `mods` prints), its title, with or without its version, or its
+			// script's file name, in any case.
+			size_t pickMod(const std::vector<TracedMod>& rows, const std::string& sel)
+			{
+				if (!sel.empty() && std::all_of(sel.begin(), sel.end(), [](char c) { return c >= '0' && c <= '9'; }))
+				{
+					const unsigned long n = std::strtoul(sel.c_str(), nullptr, 10);
+					if (n < 1 || n > rows.size()) throw Failed{ "the list has no mod " + sel + " (attribcli mods lists them)" };
+					return size_t(n - 1);
+				}
+				const std::string want = Lower(sel);
+				std::vector<size_t> hits;
+				for (size_t i = 0; i < rows.size(); ++i)
+				{
+					const InstalledMod& m = rows[i].mod;
+					if (Lower(m.name()) == want || Lower(m.nameAndVersion()) == want || Lower(ToUtf8(FromUtf8(m.script).filename())) == want)
+						hits.push_back(i);
+				}
+				if (hits.empty()) throw Failed{ "no mod on the list is " + sel + " (attribcli mods lists them)" };
+				if (hits.size() > 1)
+				{
+					std::string numbers;
+					for (size_t i = 0; i < hits.size(); ++i) numbers += (i ? ", " : "") + std::to_string(hits[i] + 1);
+					throw Failed{ sel + " is on the list " + std::to_string(hits.size()) + " times (" + numbers + "): give its number" };
+				}
+				return hits[0];
+			}
+
+			int modsCmd(const std::vector<std::string>& in)
+			{
+				const Args a = Parse(in, {}, {});
+				if (a.positional.size() != 1) throw Failed{ "mods takes a database" };
+				const std::string folder = databaseFolderOf(a.positional[0]);
+				const std::optional<ModList> list = ReadModList(folder);
+				if (!list || list->mods.empty())
+				{
+					out_ << "no mods are listed in " << ModListPath(folder) << "\n";
+					return 0;
+				}
+				const std::vector<TracedMod> rows = ReadTraces(folder, *list);
+				for (size_t i = 0; i < rows.size(); ++i)
+				{
+					const InstalledMod& m = rows[i].mod;
+					out_ << (i + 1) << ". " << m.nameAndVersion();
+					if (!m.installed.empty()) out_ << ", installed " << m.installed;
+					if (!m.by.empty()) out_ << " by " << m.by;
+					if (!m.result.empty()) out_ << ": " << m.result;
+					out_ << "\n";
+					if (rows[i].trace) out_ << "   uninstalling sets back " << DescribePlaces(PlacesOf(*rows[i].trace)) << " (" << m.trace << ")\n";
+					else out_ << "   can't be uninstalled: " << rows[i].problem << "\n";
+				}
+				return 0;
+			}
+
+			int uninstall(const std::vector<std::string>& in)
+			{
+				const Args a = Parse(in, { "--out" }, { "--dry-run", "--no-backup", "--no-memory-files" });
+				if (a.positional.size() < 2) throw Failed{ "uninstall takes a database and the mods to uninstall" };
+				const std::string folder = databaseFolderOf(a.positional[0]);
+				const std::optional<ModList> list = ReadModList(folder);
+				if (!list) throw Failed{ "no mods are listed in " + ModListPath(folder) };
+				const std::vector<TracedMod> rows = ReadTraces(folder, *list);
+				std::vector<size_t> which;
+				for (size_t i = 1; i < a.positional.size(); ++i) which.push_back(pickMod(rows, a.positional[i]));
+				movedFrom_.clear();
+				auto db = load(a.positional[0]);
+				const UninstallResult u = Uninstall(*db, rows, which);
+				for (const std::string& n : u.notes) err_ << "attribcli: warning: " << n << "\n";
+				if (!u.ok)
+				{
+					err_ << "attribcli: " << u.error << " Nothing was saved.\n";
+					return 1;
+				}
+				std::string names;
+				for (size_t i = 0; i < u.removed.size(); ++i)
+					names += (i == 0 ? "" : i + 1 == u.removed.size() ? " and " : ", ") + rows[u.removed[i]].mod.nameAndVersion();
+				out_ << "uninstalled " << names << ": " << u.summary() << "\n";
+				if (!a.has("--dry-run")) rememberNames(u.newNames);
+				std::vector<std::string> removed = movedFrom_;
+				removed.insert(removed.end(), u.removedFiles.begin(), u.removedFiles.end());
+				const int saved = saveChanged(*db, std::move(removed), a);
+				if (saved != 0) return saved;
+				const std::string outDir = a.get("--out");
+				const std::string to = outDir.empty() ? folder : outDir;
+				if (a.has("--dry-run"))
+				{
+					out_ << "would take " << names << " off " << ModListPath(to) << "\n";
+					return 0;
+				}
+				try
+				{
+					if (!outDir.empty()) CopyModList(folder, outDir, *list);
+					ModListUpdate up;
+					FoldUninstall(up, rows, u);
+					std::vector<std::string> problems;
+					UpdateModList(to, up, &problems);
+					for (const std::string& p : problems) err_ << "attribcli: warning: " << p << "\n";
+					out_ << "took " << names << " off " << ModListPath(to) << "\n";
+				}
+				catch (const std::exception& e)
+				{
+					err_ << "attribcli: warning: the list of installed mods wasn't updated: " << e.what() << "\n";
+				}
+				return 0;
+			}
 
 			// The folder of the database `path` names: the list of installed mods is there.
 			static std::string databaseFolderOf(const std::string& path)

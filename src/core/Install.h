@@ -102,6 +102,12 @@ namespace attrib::install
 	void CompleteRecord(InstalledMod& m, const Database& db, const std::string& by, const std::map<std::string, std::string>& options,
 		const nfsms::Choices* choices = nullptr);
 
+	// The files installing a mod changes, for its entry on the list (full
+	// paths, each once): the packs `r` touched, each with its twin, the
+	// memory files holding copies of them (with `memoryFiles`), the files it
+	// removes and the ones nfsms file_copy wrote.
+	std::vector<std::string> ChangedFiles(const script::ApplyReport& r, bool memoryFiles = true);
+
 	// Why `mod` can't be installed into `db`: its game line names another game
 	// (a mod script's `game`, an nfsms script's), or it is nfsms and NFS-VltEd
 	// never read the game. Empty when it can.

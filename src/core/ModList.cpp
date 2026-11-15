@@ -105,6 +105,17 @@ namespace attrib
 		return slash == std::string::npos ? script : script.substr(slash + 1);
 	}
 
+	std::string InstalledMod::nameAndVersion() const
+	{
+		return name() + (Trimmed(version).empty() ? "" : " " + version);
+	}
+
+	bool SameEntry(const InstalledMod& a, const InstalledMod& b)
+	{
+		return a.title == b.title && a.version == b.version && a.script == b.script && a.sha256 == b.sha256 && a.installed == b.installed &&
+			a.by == b.by && a.trace == b.trace;
+	}
+
 	// ------------------------------------------------------------- the file ---
 
 	ModList ModList::Parse(std::string_view text, const std::string& source)
@@ -183,7 +194,7 @@ namespace attrib
 			{
 				std::string* field = key == "version" ? &mod->version : key == "author" ? &mod->author : key == "script" ? &mod->script
 					: key == "sha256" ? &mod->sha256 : key == "game" ? &mod->game : key == "installed" ? &mod->installed
-					: key == "by" ? &mod->by : key == "result" ? &mod->result : nullptr;
+					: key == "by" ? &mod->by : key == "result" ? &mod->result : key == "trace" ? &mod->trace : nullptr;
 				if (field)
 				{
 					args(1);
@@ -230,6 +241,7 @@ namespace attrib
 			line("result", m.result);
 			for (const auto& [k, v] : m.options) s += "    option " + Quoted(OneLine(k)) + " " + Quoted(OneLine(v)) + "\n";
 			for (const std::string& f : m.files) s += "    file " + Quoted(OneLine(f)) + "\n";
+			line("trace", m.trace);
 			for (const std::string& u : m.unknown) s += "    " + u + "\n";
 			s += "end\n";
 		}
