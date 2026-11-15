@@ -2,8 +2,10 @@
 
 // The mod installer: a small program beside the editor that installs one mod
 // into a game, step by step. It asks for the mod (a mod script or an nfsms
-// script; a path on the command line counts), then the game's folder, whose
-// GLOBAL folder holds the database, then the mod's options, and installs it:
+// script; a path on the command line counts) and the game's folder, whose
+// GLOBAL folder holds the database, on one page (the game loads without a mod,
+// so its list of installed mods can be seen and changed alone), then the
+// mod's options, and installs it:
 // the script runs on the game's packs, and the ones it changed are saved with
 // the copies the game's memory files hold of them, each file's first
 // original kept as .bak (core/Install.h). nfsms scripts always run NFS-VltEd
@@ -16,10 +18,11 @@
 // in GLOBAL) with the trace of what it changed (core/ModTrace.h), and
 // installing one the list has already asks first. A mod that changes what
 // mods on the list changed stops before anything is written and asks:
-// uninstall those first, or install over them. Advanced Options turns the
-// list off and shows it, and its window uninstalls a mod or takes it off the
-// list. Platform independent: a Host (app/Host.h) gives the window and the
-// dialogs. doc/installer.md.
+// uninstall those first, or install over them. The Installed Mods button
+// shows the list; its window uninstalls a mod (with the mods that build on
+// it, which the confirmation lists first) or takes it off the list. Advanced
+// Options turns the list off. Platform independent: a Host (app/Host.h)
+// gives the window and the dialogs. doc/installer.md.
 
 #include "app/CodeEditor.h"
 #include "app/Host.h"
@@ -60,7 +63,9 @@ namespace installer
 
 	enum class Step : uint8_t
 	{
-		Mod, Game, Options, Install
+		Mod,     // the mod and the game's folder, on one page
+		Options,
+		Install
 	};
 
 	// How the installation went.
@@ -92,6 +97,22 @@ namespace installer
 		attrib::InstalledMod mod;
 		std::string text; // "changes 3 things Shifted 1.2 changed: ..."
 		bool uninstall = true;
+		// The mods that build on it, which go with it (attrib::PlanUninstall),
+		// and what to tell the user about them.
+		std::vector<attrib::InstalledMod> with;
+		std::string withText;
+		std::string cannot; // why it can't be uninstalled: no tick then
+	};
+
+	// What uninstalling a mod of the list takes, worked out before the
+	// confirmation asks (attrib::PlanUninstall).
+	struct UninstallAsk
+	{
+		attrib::InstalledMod mod;               // the one asked for
+		std::vector<attrib::InstalledMod> all;  // it and the ones that build on it, oldest first
+		std::string dependents;                 // attrib::DependentsText; empty when it goes alone
+		bool around = false;
+		std::string error;                      // why it can't be uninstalled
 	};
 
 	class Installer
@@ -117,12 +138,11 @@ namespace installer
 		void openArguments(const std::vector<std::string>& args);
 		// A file is the mod, a folder the game's.
 		void dropped(const std::string& path);
-		// Reads the mod; when it reads, the Game step comes next and the
-		// folder entered there loads.
+		// Reads the mod; the folder entered for the game loads too, if it hasn't.
 		bool openMod(std::string path); // by value: callers pass the window's own strings
 		// Finds the database in the game's folder and reads it (in the
 		// background), as the game and platform its files say unless `target`
-		// names them.
+		// names them. No mod is needed: the list of installed mods shows then.
 		void chooseGame(std::string folder, std::optional<attrib::Target> target = std::nullopt);
 		// Runs the mod and saves what it changed (in the background).
 		void install();
@@ -242,11 +262,19 @@ namespace installer
 		{
 			showMods_ = true;
 		}
-		// The window's commands, on the game's list (game().traced). Uninstall
-		// sets back what the mod changed in the database (in the background)
-		// and saves; forget takes it off the list and changes nothing else.
+		// The window's commands, on the game's list (game().traced). Asking to
+		// uninstall works out, in the background, which mods go with it (those
+		// that build on it); uninstallAsk() has it, and the window's
+		// confirmation lists them. Uninstalling then sets back what they
+		// changed in the database (in the background) and saves; forget takes
+		// a mod off the list and changes nothing else.
 		bool canUninstall(size_t index) const;
-		void uninstallMod(size_t index);
+		void askUninstall(size_t index);
+		const std::optional<UninstallAsk>& uninstallAsk() const
+		{
+			return uninstallAsk_;
+		}
+		void uninstallAsked(); // the confirmation's Uninstall
 		void forgetMod(size_t index);
 		// How the last of those went, for the window.
 		const std::string& modsMessage() const
@@ -295,7 +323,7 @@ namespace installer
 	private:
 		enum class Work : uint8_t
 		{
-			None, Loading, Installing, Uninstalling
+			None, Loading, Installing, Planning, Uninstalling
 		};
 		// What installing does first: the mods on the list to uninstall, and
 		// whether it goes over the conflicts it finds.
@@ -311,6 +339,7 @@ namespace installer
 			std::vector<attrib::TracedMod> traced;
 			std::string message;
 			Level level = Level::Info;
+			std::optional<UninstallAsk> ask; // planning done: the confirmation's
 		};
 
 		// A line for the Log and the log file. `levelInText`: the text names its
@@ -336,7 +365,13 @@ namespace installer
 		attrib::InstalledMod entryFor(const attrib::install::Mod& mod, const attrib::install::ModSettings& settings) const;
 		// On the worker: `u` onto the game's list (r.mods, r.traced).
 		void writeList(const FoundGame& game, const attrib::ModListUpdate& u, Result& r);
-		void uninstallJob(const FoundGame& game, const attrib::InstalledMod& which);
+		// On the worker: the list as its file has it, and the rows of `mods`.
+		std::vector<attrib::TracedMod> listNow(const FoundGame& game, const std::vector<attrib::InstalledMod>& mods,
+			std::vector<size_t>& at) const;
+		void planJob(const FoundGame& game, const attrib::InstalledMod& which);
+		void uninstallJob(const FoundGame& game, const UninstallAsk& ask);
+		// The mods that go with each conflict, on the database before the mod.
+		void planConflicts(const attrib::Database& before, const std::vector<attrib::TracedMod>& rows, std::vector<Conflict>& found);
 		void reloadIfStale(const FoundGame& game); // on the worker
 		void resetOptions();
 		void loadSettings();
@@ -344,8 +379,8 @@ namespace installer
 		void rememberGame(const std::string& folder);
 
 		void drawSteps();
-		void drawModPage();
-		void drawGamePage();
+		void drawModPage(); // the mod and the game
+		void drawGamePart();
 		void drawOptionsPage();
 		void drawInstallPage();
 		void drawConflicts();
@@ -375,12 +410,14 @@ namespace installer
 		std::string conflictError_;
 		std::string modsMessage_;
 		Level modsMessageLevel_ = Level::Info;
+		std::optional<UninstallAsk> uninstallAsk_;
 		enum class Confirm : uint8_t
 		{
 			None, Uninstall, Forget
 		} confirm_ = Confirm::None;
 		bool trackMods_ = true;
 		bool showMods_ = false;
+		bool loadedFirst_ = false; // the folder chosen last loads once, at the first frame
 		app::ModListView modsView_;
 		Result result_;
 		Outcome outcome_ = Outcome::None;

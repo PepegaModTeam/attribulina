@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Compile-checks the Windows editor (Win32 + D3D11 host included) on a non-Windows
 # machine by cross-compiling with Zig's clang for x86_64-windows-gnu, then links
-# Attribulina.exe and attribcli.exe. It can't run them; it catches Windows-only
-# compile and link errors before an MSVC build does.
+# Attribulina.exe, AttribulinaModInstaller.exe and attribcli.exe. It can't run
+# them; it catches Windows-only compile and link errors before an MSVC build does.
 #
 # Usage: scripts/check_windows_build.sh /path/to/zig [outdir]
 # Get Zig from https://ziglang.org/download/ (tested with 0.16.0).
@@ -22,7 +22,12 @@ FLAGS=(-target x86_64-windows-gnu -std=c++20 -O1 -DNOMINMAX -Wno-date-time
 
 jobs=()
 for f in src/core/*.cpp src/core/lua/*.cpp src/app/*.cpp; do jobs+=("$f|-Wall -Wextra"); done
-jobs+=("src/platform/win32/main_win32.cpp|-Wall -Wextra -DUNICODE -D_UNICODE")
+# The Win32 host and Direct3D device both windowed programs share.
+for f in src/platform/win32/Win32Host.cpp src/platform/win32/D3D11Device.cpp; do jobs+=("$f|-Wall -Wextra -DUNICODE -D_UNICODE"); done
+# Each program's own sources go in a folder of its own, so one link doesn't see the other's main.
+mkdir -p "$OUT/editor" "$OUT/installer"
+jobs+=("src/platform/win32/main_win32.cpp|-Wall -Wextra -DUNICODE -D_UNICODE|editor/")
+for f in src/installer/*.cpp src/platform/win32/installer/main_installer.cpp; do jobs+=("$f|-Wall -Wextra -DUNICODE -D_UNICODE|installer/"); done
 for f in external/imgui/*.cpp external/imgui/misc/cpp/imgui_stdlib.cpp \
          external/imgui/backends/imgui_impl_win32.cpp external/imgui/backends/imgui_impl_dx11.cpp; do
     jobs+=("$f|-w")
@@ -52,10 +57,14 @@ done
 [ $status -eq 0 ] || exit $status
 
 # MinGW names the shader compiler import library d3dcompiler_47 (MSVC: d3dcompiler).
-"$ZIG" c++ -target x86_64-windows-gnu -municode -mwindows "$OUT"/*.o \
-    -ld3d11 -ldxgi -ld3dcompiler_47 -ldwmapi -lgdi32 -luser32 -lole32 -lshell32 -luuid -lcomdlg32 -limm32 -lwindowscodecs \
+WINLIBS=(-ld3d11 -ldxgi -ld3dcompiler_47 -ldwmapi -lgdi32 -luser32 -lole32 -lshell32 -luuid -lcomdlg32 -limm32 -lwindowscodecs)
+"$ZIG" c++ -target x86_64-windows-gnu -municode -mwindows "$OUT"/*.o "$OUT"/editor/*.o "${WINLIBS[@]}" \
     -o "$OUT/Attribulina.exe" > "$OUT/link.log" 2>&1 || { grep -E "error" "$OUT/link.log" | grep -v "warning:" | head -20; exit 1; }
 echo "OK: $OUT/Attribulina.exe"
+
+"$ZIG" c++ -target x86_64-windows-gnu -municode -mwindows "$OUT"/*.o "$OUT"/installer/*.o "${WINLIBS[@]}" \
+    -o "$OUT/AttribulinaModInstaller.exe" > "$OUT/link_installer.log" 2>&1 || { grep -E "error" "$OUT/link_installer.log" | grep -v "warning:" | head -20; exit 1; }
+echo "OK: $OUT/AttribulinaModInstaller.exe"
 
 "$ZIG" c++ -target x86_64-windows-gnu -municode "$OUT"/src_core_*.o "$OUT"/external_lua50_*.o "$OUT"/external_lua51_*.o "$OUT"/src_lzcompress_*.o \
     "$OUT"/cli/*.o -lshell32 -lole32 -o "$OUT/attribcli.exe" > "$OUT/link_cli.log" 2>&1 || { grep -E "error" "$OUT/link_cli.log" | grep -v "warning:" | head -20; exit 1; }

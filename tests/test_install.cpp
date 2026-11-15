@@ -217,15 +217,17 @@ TEST("installer: a mod script installs through the steps: its options, the packs
     {
         Session s(PathsIn(root));
         CHECK(s.inst.step() == Step::Mod);
-        CHECK(s.inst.status() == "Choose the mod to install.");
-        CHECK(!s.inst.canGoTo(Step::Game));
+        CHECK(s.inst.status() == "Choose the mod to install and the game's folder.");
+        CHECK(!s.inst.canGoTo(Step::Options));
         CHECK(!s.inst.logFilePath().empty());
+        CHECK(s.drawn("1   Mod and Game"));
 
-        // Browse... gives the mod, and the game's folder comes next.
+        // Browse... gives the mod, and the game's folder is chosen on the same page.
         s.host.nextOpenFile = (root / "louder.amod").string();
         CHECK(s.click("Browse...##mod"));
         CHECK(s.inst.mod());
-        CHECK(s.inst.step() == Step::Game);
+        CHECK(s.inst.step() == Step::Mod);
+        CHECK(!s.inst.canGoTo(Step::Options));
         CHECK(s.host.title == "Attribulina Mod Installer - Louder");
         s.host.nextOpenFolder = game.string();
         CHECK(s.click("Browse...##game"));
@@ -330,7 +332,7 @@ TEST("installer: an nfsms mod runs NFS-VltEd compatible with the setup's choices
         // In the background, as the program runs it: the command line's game folder and mod.
         Session s(PathsIn(root), true);
         s.inst.openArguments({game.string(), (mod / "Loud Mod.nfsms").string()});
-        CHECK(s.inst.step() == Step::Game);
+        CHECK(s.inst.step() == Step::Mod);
         CHECK(s.inst.mod() && s.inst.mod()->isNfsms);
         s.frames(1);
         s.inst.wait();
@@ -411,7 +413,7 @@ TEST("installer: a mod script that stops saves nothing; a mod for another game c
         CHECK(s.inst.result().detail.find("Nothing was saved") != std::string::npos);
         CHECK(s.inst.status() == "Installation failed.");
 
-        // Another game's mod: the steps after Game are closed.
+        // Another game's mod: the steps after the first are closed.
         s.inst.installAnother();
         CHECK(s.inst.step() == Step::Mod);
         CHECK(s.inst.openMod((root / "carbon.amod").string()));
@@ -433,13 +435,16 @@ TEST("installer: a mod script that stops saves nothing; a mod for another game c
     CHECK(!fs::exists(global / "ATTRIBUTES.BIN.bak"));
     CHECK(!fs::exists(global / "GlobalMemoryFile.bin.bak"));
     {
-        // The next run starts with the folder chosen before, read once a mod opens.
+        // The next run starts with the folder chosen before, read at once, with no mod.
         Session s(PathsIn(root));
         CHECK_EQ(s.inst.recentGames().size(), size_t(1));
+        CHECK(s.inst.gameLoaded());
+        CHECK(!s.inst.mod());
+        CHECK_EQ(fs::path(s.inst.game().folder.game), game);
+        CHECK(s.inst.status().rfind("Found ", 0) == 0);
         CHECK(s.inst.openMod((root / "stops.amod").string()));
         s.frames(1);
         CHECK(s.inst.gameLoaded());
-        CHECK_EQ(fs::path(s.inst.game().folder.game), game);
     }
     // Each run wrote its own log.
     CHECK_EQ(LogFiles(root).size(), size_t(2));
@@ -480,13 +485,13 @@ TEST("installer: once installed, the steps before stay locked until Install Anot
 
         // Done: the steps before can't be gone back to, by the list, Back, a dropped file or a folder.
         CHECK(s.inst.finished());
-        for (Step st : {Step::Mod, Step::Game, Step::Options}) CHECK(!s.inst.canGoTo(st));
+        for (Step st : {Step::Mod, Step::Options}) CHECK(!s.inst.canGoTo(st));
         CHECK(!s.drawn("< Back"));
-        CHECK(s.click("1   Mod"));
+        CHECK(s.click("1   Mod and Game"));
         CHECK(s.inst.step() == Step::Install);
         s.inst.dropped((root / "plain.amod").string());
         s.inst.dropped(game.string());
-        s.inst.goTo(Step::Game);
+        s.inst.goTo(Step::Mod);
         s.frames(1);
         CHECK(s.inst.step() == Step::Install);
         CHECK(s.inst.outcome() == Outcome::Succeeded);
@@ -503,7 +508,7 @@ TEST("installer: once installed, the steps before stay locked until Install Anot
         CHECK(!s.inst.canGoTo(Step::Options));
         CHECK(!s.inst.canInstall());
         CHECK(s.click("Next >")); // greyed out
-        CHECK(s.inst.step() == Step::Game);
+        CHECK(s.inst.step() == Step::Mod);
         CHECK(s.click("Install it anyway"));
         CHECK(s.inst.installAnyway());
         CHECK(s.click("Next >"));
@@ -545,7 +550,9 @@ TEST("installer: once installed, the steps before stay locked until Install Anot
         CHECK(s.inst.installedNote().empty());
         CHECK(s.inst.canGoTo(Step::Options));
         CHECK(ReadText(root / "user" / installer::kSettingsFileName).find("TrackMods=0\n") != std::string::npos);
-        // The window with the list.
+        s.imgui.key([&]() { s.inst.frame(); }, ImGuiKey_Escape); // closes the popup
+        s.frames(1);
+        // The window with the list: its button is beside Advanced Options.
         CHECK(s.drawn("Installed Mods..."));
         CHECK(s.click("Installed Mods..."));
         s.frames(1);
@@ -621,6 +628,103 @@ TEST("installer: once installed, the steps before stay locked until Install Anot
         installed(s);
         CHECK(s.logText().find("The list of installed mods wasn't updated") != std::string::npos);
         CHECK_EQ(ReadText(global / kModListFile), std::string("attribulina mods 1\nmod \"Broken\n"));
+    }
+    fs::remove_all(root);
+}
+
+TEST("installer: the game's list opens without a mod, and uninstalling a mod takes the ones that build on it, once the confirmation lists them") {
+    const fs::path root = MakeGame("attribulina_installer_dependents");
+    const fs::path game = root / "game", global = game / "GLOBAL";
+    const Bytes vanilla = ReadFile((global / "ATTRIBUTES.BIN").string());
+    const Bytes vanillaMemory = ReadFile((global / "GlobalMemoryFile.bin").string());
+    WriteText(root / "maker.amod", "attribulina 1\ngame prostreet_pc\ntitle \"Maker\"\nversion \"1\"\n"
+                                   "create pvehicle/dep_car from pvehicle/street\n"
+                                   "edit audio_revlimiter/default { total_frames_short = 20 }\n");
+    WriteText(root / "user.amod", "attribulina 1\ngame prostreet_pc\ntitle \"User\"\nversion \"1\"\n"
+                                  "edit pvehicle/dep_car { HornType = 3 }\n");
+    WriteText(root / "rival.amod", "attribulina 1\ngame prostreet_pc\ntitle \"Rival\"\nversion \"1\"\n"
+                                   "edit audio_revlimiter/default { total_frames_short = 30 }\n");
+    auto install = [&](Session& s, const fs::path& mod) {
+        if (s.inst.finished()) CHECK(s.click("Install Another Mod"));
+        CHECK(s.inst.openMod(mod.string()));
+        s.frames(1);
+        CHECK(s.inst.gameLoaded());
+        s.inst.goTo(Step::Install);
+        s.frames(1);
+        CHECK(s.click("Install"));
+        s.inst.wait();
+        s.frames(2);
+    };
+    {
+        Session s(PathsIn(root));
+        // No mod, no game yet: the button waits for the game.
+        CHECK(s.drawn("Installed Mods..."));
+        CHECK(s.click("Installed Mods..."));
+        CHECK(!test::UiProbe::get().find("Close", "Installed Mods"));
+        s.host.nextOpenFolder = game.string();
+        CHECK(s.click("Browse...##game"));
+        s.frames(1);
+        CHECK(s.inst.gameLoaded());
+        CHECK(!s.inst.mod());
+        CHECK(s.inst.step() == Step::Mod);
+        install(s, root / "maker.amod");
+        CHECK(s.inst.outcome() == Outcome::Succeeded);
+        install(s, root / "user.amod");
+        CHECK(s.inst.outcome() == Outcome::Succeeded);
+    }
+    {
+        // A new run: the folder chosen before loads with no mod, and the list is a click away.
+        Session s(PathsIn(root));
+        CHECK(s.inst.gameLoaded());
+        CHECK(!s.inst.mod());
+        CHECK_EQ(s.inst.game().traced.size(), size_t(2));
+        CHECK(s.click("Installed Mods..."));
+        s.frames(1);
+        CHECK(test::UiProbe::get().find("Maker", "Installed Mods"));
+        CHECK(s.click("Maker"));
+        CHECK(s.click("Uninstall..."));
+        // Worked out first: User builds on the car Maker made, so it goes too, and the question says so.
+        CHECK(s.inst.uninstallAsk().has_value());
+        if (s.inst.uninstallAsk()) {
+            CHECK_EQ(s.inst.uninstallAsk()->all.size(), size_t(2));
+            CHECK(s.inst.uninstallAsk()->dependents.find("User 1 builds on what Maker 1 changed, so it is uninstalled with it") == 0);
+        }
+        CHECK(s.drawn("Cancel##confirm"));
+        CHECK(!s.drawn("Uninstall")); // the button names them all
+        CHECK(s.drawn("Uninstall All of Them"));
+        CHECK(ReadFile((global / "ATTRIBUTES.BIN").string()) != vanilla); // nothing written by asking
+        CHECK(s.click("Cancel##confirm"));
+        CHECK(!s.inst.uninstallAsk());
+        CHECK(s.click("Uninstall..."));
+        CHECK(s.click("Uninstall All of Them"));
+        s.inst.wait();
+        s.frames(2);
+        CHECK(s.inst.modsMessage().find("Uninstalled Maker 1 and User 1: ") == 0);
+        CHECK(s.inst.game().traced.empty());
+        CHECK(ReadFile((global / "ATTRIBUTES.BIN").string()) == vanilla);
+        CHECK(ReadFile((global / "GlobalMemoryFile.bin").string()) == vanillaMemory);
+        CHECK(s.clickIn("Close", "Installed Mods"));
+        s.frames(1);
+
+        // On the conflict page: ticking Maker takes User with it, and the page says so first.
+        install(s, root / "maker.amod");
+        install(s, root / "user.amod");
+        install(s, root / "rival.amod");
+        CHECK(s.inst.outcome() == Outcome::None);
+        CHECK_EQ(s.inst.conflicts().size(), size_t(1));
+        if (!s.inst.conflicts().empty()) {
+            CHECK(s.inst.conflicts()[0].mod.title == "Maker");
+            CHECK_EQ(s.inst.conflicts()[0].with.size(), size_t(1));
+            CHECK(s.inst.conflicts()[0].withText.find("User 1 builds on what Maker 1 changed") == 0);
+        }
+        CHECK(s.click("Uninstall the Ticked Mods, Then Install"));
+        s.inst.wait();
+        s.frames(2);
+        CHECK(s.inst.outcome() == Outcome::Succeeded);
+        CHECK(s.inst.result().detail.find("Maker 1 and User 1 were uninstalled first.") != std::string::npos);
+        auto list = ReadModList(global.string());
+        CHECK(list && list->mods.size() == 1 && list->mods[0].title == "Rival");
+        CHECK(test::UiProbe::get().conflicts.empty());
     }
     fs::remove_all(root);
 }
@@ -711,8 +815,6 @@ TEST("installer: a mod that changes what one on the list changed asks first: uni
         CHECK_EQ(s.inst.game().traced.size(), size_t(3));
 
         // The window: uninstalling Sound, under Copier, which changes the same value, keeps Copier's.
-        CHECK(s.click("Advanced Options"));
-        s.frames(1); // a popup shows the frame after it opens
         CHECK(s.click("Installed Mods..."));
         s.frames(1);
         CHECK(s.click("Sound"));
@@ -757,8 +859,6 @@ TEST("installer: a mod that changes what one on the list changed asks first: uni
         CHECK(s.click("Install Another Mod"));
         s.inst.chooseGame(game.string());
         s.frames(1);
-        CHECK(s.click("Advanced Options"));
-        s.frames(1); // a popup shows the frame after it opens
         CHECK(s.click("Installed Mods..."));
         s.frames(1);
         CHECK(s.click("Old"));

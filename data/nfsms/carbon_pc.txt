@@ -179,9 +179,10 @@ type CarBodyMotion
   # A/_001B_0012.cs
   # read (registered for ALL; registry line 190)
   DegPerG 0 :f32 DegPerG
-  DegPerSec 4 :f32 MaxGs
-  MaxG 8 :f32 DegPerSec
-  # note: the game's order is DegPerG, MaxGs, DegPerSec (PS, UC, MW and Carbon headers alike). NFS-VltEd declares DegPerG, DegPerSec, MaxG and its setters are proxies, so the decompilation can't show whether DegPerSec lands at 4 or 8. Taken in declaration order here; may be swapped.
+  MaxG 4 :f32 MaxGs
+  DegPerSec 8 :f32 DegPerSec
+  # note: the words follow their names. NFS-VltEd declares DegPerSec, MaxG in that order, and its setters are proxy delegates, so the declaration order doesn't say which read each one takes; taken in it, DegPerSec would set MaxGs and MaxG would set DegPerSec.
+  # note: the game's order is DegPerG, MaxGs, DegPerSec (PS, UC, MW and Carbon headers alike), and the retail data agrees: 0.5 to 1 at 4, 5 to 10 at 8, in every game.
 end
 
 type CollisionReactionRecord
@@ -614,9 +615,9 @@ end
 type GMapCurve
   # A/_001A_0019.cs
   # read (registered for C,UC; registry line 725)
-  PointCount 0 :u16 mPointStart
-  PointStart 2 :u16 mPointCount
-  # note: taken in declaration order, PointCount sets mPointStart and PointStart sets mPointCount, though the names say otherwise. The setters are proxies, so the decompilation can't show which is right.
+  PointStart 0 :u16 mPointStart
+  PointCount 2 :u16 mPointCount
+  # note: the words follow their names. NFS-VltEd declares PointCount, PointStart in that order, and its setters are proxy delegates, so the declaration order doesn't say which read each one takes; taken in it, PointCount would set mPointStart and PointStart would set mPointCount.
 end
 
 type GMapCurvePoint
@@ -965,4 +966,48 @@ type Attrib::StringKey(MODEL)
   Visual 4 :string mString
   # on x360 demo: 16 bytes there, not 8; every word has a path that resolves
   # on ps2 demo: 16 bytes there, not 8; every word has a path that resolves
+end
+
+# VaultLib's names (quirk-analysis/VaultLib, heyitsleo's library, which the
+# community Attribulator's mod scripts and OGVI use) for the parts of Carbon values
+# whose name isn't our member's, case and an m prefix aside:
+# scripts/nfsms/vaultlib.py reads each class's Read method for the bytes a name
+# reads and gives our member there. Attribulina's own reading takes them after our
+# member names and before NFS-VltEd's words; NFS-VltEd compatible runs never do. A
+# VaultLib name that is one of our member names at other bytes isn't taken, and
+# neither are the type's other names then.
+#
+# vaultlib <AttribSys type name>
+#   <VaultLib name>[.<part>] <path>   a part of one of its properties: Attribulator's next word
+# end
+
+vaultlib CopFormationRecord
+  # VaultLib.Frameworks.Speed/CopFormationRecord.cs
+  FormationType Formation
+end
+
+vaultlib EmittedGeometryRecord
+  # VaultLib.Frameworks.Speed/EmittedGeometryRecord.cs
+  Value mEnum
+end
+
+vaultlib GMapTriangle
+  # VaultLib.Frameworks.Speed/GMapTriangle.cs
+  # not taken: VaultLib reads mPoint1 at byte 0, where our mPoint0 is; our mPoint1 is at 2. Our names win.
+  # not taken: VaultLib reads mPoint2 at byte 2, where our mPoint1 is; our mPoint2 is at 4. Our names win.
+end
+
+vaultlib MovieVolume
+  # VaultLib.Frameworks.Speed/MovieVolume.cs
+  Hash Name
+end
+
+vaultlib TireEffectRecord
+  # VaultLib.Support.Carbon/VLT/TireEffectRecord.cs
+  # not taken: VaultLib reads mEmitter at byte 4, where our mEmitter.mCollectionKey is; our mEmitter is at 0. Our names win.
+end
+
+vaultlib UpgradeSpecs
+  # VaultLib.Frameworks.Speed/UpgradeSpecs.cs
+  ReferencedRow Item
 end

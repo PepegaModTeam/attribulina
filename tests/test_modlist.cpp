@@ -388,8 +388,11 @@ TEST("mod traces: what two mods change in common") {
         CHECK_EQ(found[0].count, size_t(1));
         CHECK_EQ(ConflictText(found[0], "A"), std::string("changes 1 thing A changed: audio_revlimiter/default total_frames_short"));
     }
-    // A value of a collection another made.
-    found = FindConflicts(PlacesOf(*d.trace), mods);
+    // A value of a collection another made builds on that mod: no conflict.
+    CHECK(FindConflicts(PlacesOf(*d.trace), mods).empty());
+    // Making a collection another made (deleting or renaming it, too) does conflict.
+    const TracedMod e = InstallTraced(*db, "E", "attribulina 2\ndelete pvehicle/trace_car\n");
+    found = FindConflicts(PlacesOf(*e.trace), mods);
     CHECK_EQ(found.size(), size_t(1));
     if (!found.empty()) CHECK_EQ(found[0].index, size_t(2));
 
@@ -469,6 +472,63 @@ TEST("mod traces: a mod that builds on another keeps it installed; a value chang
     r = Uninstall(*db, {a, b, none}, {2});
     CHECK(!r.ok);
     CHECK(r.error.find("Old can't be uninstalled: what it changed wasn't kept") == 0);
+}
+
+TEST("mod traces: uninstalling a mod takes the ones that build on it, and theirs, as a package manager does; the others stay") {
+    auto db = LoadProStreet();
+    auto base = sc::CloneDatabase(*db);
+    const TracedMod maker = InstallTraced(*db, "Maker", "attribulina 2\ncreate pvehicle/trace_car from pvehicle/street\n"
+                                                        "edit audio_revlimiter/default { total_frames_short = 77 }\n");
+    const TracedMod user = InstallTraced(*db, "User", "attribulina 2\nedit pvehicle/trace_car { HornType = 3 }\n");
+    // A collection under the one Maker made: no value in common, but it can't stay without it.
+    const TracedMod kid = InstallTraced(*db, "Kid", "attribulina 2\ncreate pvehicle/trace_kid under pvehicle/trace_car\n");
+    const TracedMod grandkid = InstallTraced(*db, "Grandkid", "attribulina 2\nedit pvehicle/trace_kid { HornType = 2 }\n");
+    const TracedMod apart = InstallTraced(*db, "Apart", "attribulina 2\nedit pvehicle/default { HornType = 2 }\n"
+                                                        "edit audio_revlimiter/default { total_frames_long = 5 }\n");
+    const std::vector<TracedMod> mods{maker, user, kid, grandkid, apart};
+    const std::map<std::string, Bytes> installed = PackBytes(*db);
+
+    const UninstallPlan plan = PlanUninstall(*db, mods, {0});
+    if (!plan.ok()) std::fprintf(stderr, "%s\n", plan.error.c_str());
+    CHECK(plan.ok());
+    CHECK(plan.asked == std::vector<size_t>{0});
+    CHECK((plan.which == std::vector<size_t>{0, 1, 2, 3}));
+    std::vector<size_t> deps;
+    for (const auto& [i, why] : plan.dependents) {
+        deps.push_back(i);
+        CHECK(!why.empty());
+    }
+    CHECK((deps == std::vector<size_t>{1, 2, 3}));
+    const std::string text = DependentsText(plan, mods);
+    if (text.find("User, Kid and Grandkid build on what Maker changed, so they are uninstalled with it: User (") != 0)
+        std::fprintf(stderr, "%s\n", text.c_str());
+    CHECK(text.find("User, Kid and Grandkid build on what Maker changed, so they are uninstalled with it: User (") == 0);
+    // Planning changes nothing.
+    CHECK(PackBytes(*db) == installed);
+
+    const UninstallResult r = Uninstall(*db, mods, plan.which, {}, plan.around);
+    if (!r.ok) std::fprintf(stderr, "%s\n", r.error.c_str());
+    CHECK(r.ok);
+    CHECK(!db->findCollection(StringHash32("pvehicle"), StringHash32("trace_car")));
+    CHECK(!db->findCollection(StringHash32("pvehicle"), StringHash32("trace_kid")));
+    // The one that builds on nothing of theirs stays, done again if it had to be.
+    CHECK_EQ(ValueOf(*db, "pvehicle", "default", "HornType"), 2u);
+    CHECK_EQ(ValueOf(*db, "audio_revlimiter", "default", "total_frames_long"), 5u);
+    std::vector<TracedMod> left{apart};
+    for (const auto& [i, trace] : r.retraced)
+        if (i == 4) left[0].trace = trace;
+    CHECK(Uninstall(*db, left, {0}).ok);
+    CHECK_EQ(Changes(sc::Diff(*base, *db)), size_t(0));
+
+    // Asked for one that nothing builds on: no more than it.
+    auto again = sc::CloneDatabase(*base);
+    const TracedMod a = InstallTraced(*again, "A", "attribulina 2\nedit pvehicle/default { HornType = 2 }\n");
+    const TracedMod b = InstallTraced(*again, "B", "attribulina 2\nedit pvehicle/default { HornType = 3 }\n");
+    const UninstallPlan only = PlanUninstall(*again, {a, b}, {0});
+    CHECK(only.ok());
+    CHECK((only.which == std::vector<size_t>{0}));
+    CHECK(only.dependents.empty());
+    CHECK(DependentsText(only, {a, b}).empty());
 }
 
 TEST("mod traces: the list's traces are written beside it, follow its entries and go with them") {

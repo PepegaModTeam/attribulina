@@ -19,8 +19,9 @@
 // done again (their changes as the database held them), each traced again,
 // so their traces set things back to how they were before the uninstalled
 // mod. A later mod that builds on what the uninstalled one made (a value of
-// a collection it made) can't be done again then, and nothing is
-// uninstalled.
+// a collection it made) can't be done again then: as a package manager takes
+// the packages that depend on one, PlanUninstall finds those mods first and
+// they are uninstalled with it, once the user has seen them listed.
 
 #include "Database.h"
 #include "ModList.h"
@@ -92,7 +93,9 @@ namespace attrib
 	std::string TracePath(const std::string& folder, const std::string& trace);
 
 	// The mods of `mods` that change some of what `places` change, with the
-	// places they share (the first few as text, and how many).
+	// places they share (the first few as text, and how many). A change inside
+	// a collection or class one of them made builds on that mod and isn't
+	// counted: uninstalling it later takes the one building on it along.
 	struct ModConflict
 	{
 		size_t index = 0; // in `mods`
@@ -118,6 +121,13 @@ namespace attrib
 		// with their new traces.
 		std::vector<std::pair<size_t, std::shared_ptr<const script::Script>>> retraced;
 		bool redone = false; // later mods were undone and done again
+		// Not ok because this later mod (an index into the mods given) builds on
+		// what the ones going changed: done again, it fails (buildsOnWhy says how).
+		std::optional<size_t> buildsOn;
+		std::string buildsOnWhy;
+		// Not ok because a trace of the ones going doesn't apply while mods
+		// installed after them stayed as they were (not undone around it).
+		bool directFailed = false;
 		std::set<LoadedPack*> touched;
 		std::vector<std::string> removedFiles; // World event vault files a trace dropped
 		std::vector<std::string> newNames;
@@ -126,8 +136,33 @@ namespace attrib
 	};
 	// Uninstalls the mods `which` (indices into `mods`, the list in order,
 	// oldest first) from `db`. `beforeRemove` is the editor's, as for Apply.
+	// `aroundAll`: every traced mod installed after them is undone and done
+	// again, not only those that change some of the same things.
 	UninstallResult Uninstall(Database& db, const std::vector<TracedMod>& mods, std::vector<size_t> which,
-		const std::function<void(Collection&)>& beforeRemove = {});
+		const std::function<void(Collection&)>& beforeRemove = {}, bool aroundAll = false);
+
+	// What uninstalling `which` takes: those mods, and the ones installed after
+	// them that build on what they changed (and those building on these), found
+	// by uninstalling on copies of `db` until it holds. `db` is left as it is.
+	// Uninstall(db, mods, plan.which, ..., plan.around) then does it.
+	struct UninstallPlan
+	{
+		std::vector<size_t> asked; // the ones asked for
+		std::vector<size_t> which; // every one that goes, oldest first
+		// The ones that go because they build on the others, and how (the
+		// change that no longer applies without them).
+		std::vector<std::pair<size_t, std::string>> dependents;
+		bool around = false; // Uninstall's aroundAll
+		std::string error;   // why none of it can be uninstalled
+		bool ok() const
+		{
+			return error.empty();
+		}
+	};
+	UninstallPlan PlanUninstall(const Database& db, const std::vector<TracedMod>& mods, std::vector<size_t> which);
+	// "Y and Z build on what X changed, so they are uninstalled with it: Y (no
+	// collection pvehicle/x)". Empty without dependents.
+	std::string DependentsText(const UninstallPlan& plan, const std::vector<TracedMod>& mods);
 
 	// ------------------------------------------------- changing the list ---
 

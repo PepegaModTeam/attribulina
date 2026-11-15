@@ -225,9 +225,10 @@ type CarBodyMotion
   # A/_001B_0012.cs
   # read (registered for ALL; registry line 190)
   DegPerG 0 :f32 DegPerG
-  DegPerSec 4 :f32 MaxGs
-  MaxG 8 :f32 DegPerSec
-  # note: the game's order is DegPerG, MaxGs, DegPerSec (PS, UC, MW and Carbon headers alike). NFS-VltEd declares DegPerG, DegPerSec, MaxG and its setters are proxies, so the decompilation can't show whether DegPerSec lands at 4 or 8. Taken in declaration order here; may be swapped.
+  MaxG 4 :f32 MaxGs
+  DegPerSec 8 :f32 DegPerSec
+  # note: the words follow their names. NFS-VltEd declares DegPerSec, MaxG in that order, and its setters are proxy delegates, so the declaration order doesn't say which read each one takes; taken in it, DegPerSec would set MaxGs and MaxG would set DegPerSec.
+  # note: the game's order is DegPerG, MaxGs, DegPerSec (PS, UC, MW and Carbon headers alike), and the retail data agrees: 0.5 to 1 at 4, 5 to 10 at 8, in every game.
 end
 
 type CollisionReactionRecord
@@ -880,13 +881,13 @@ type Sound::PursuitMusicTuning
   UnsafeTimeLimit1 64 :f32 UnsafeTimeLimit[0]
   UnsafeTimeLimit2 68 :f32 UnsafeTimeLimit[1]
   StartupDelay 72 :f32 StartupDelay
-  MinTimeLost 76 :f32 PctMaxVel_Low
-  PctMaxVel_Low 80 :f32 MinTimeLost
+  PctMaxVel_Low 76 :f32 PctMaxVel_Low
+  MinTimeLost 80 :f32 MinTimeLost
   MinTimeLastCrashed 84 :f32 MinTimeLastCrashed
   PctMaxVel_High 88 :f32 PctMaxVel_High
   MaxPursuitDist 92 :f32 MaxPursuitDist
   MinCopCohesion 96 :f32 MinCopCohesion
-  # note: taken in declaration order, MinTimeLost sets PctMaxVel_Low and PctMaxVel_Low sets MinTimeLost, though the names say otherwise. The setters are proxies, so the decompilation can't show which is right.
+  # note: the words follow their names. NFS-VltEd declares MinTimeLost, PctMaxVel_Low in that order, and its setters are proxy delegates, so the declaration order doesn't say which read each one takes; taken in it, MinTimeLost would set PctMaxVel_Low and PctMaxVel_Low would set MinTimeLost.
 end
 
 type Sound::SirenSequence
@@ -1056,4 +1057,95 @@ type Attrib::StringKey(MODEL)
   # read (A/_0007_0014.cs:1293)
   Collision 0 :u32/key mHash32
   Visual 4 :string mString
+end
+
+# VaultLib's names (quirk-analysis/VaultLib, heyitsleo's library, which the
+# community Attribulator's mod scripts and OGVI use) for the parts of World's betas
+# values whose name isn't our member's, case and an m prefix aside:
+# scripts/nfsms/vaultlib.py reads each class's Read method for the bytes a name
+# reads and gives our member there. Attribulina's own reading takes them after our
+# member names and before NFS-VltEd's words; NFS-VltEd compatible runs never do. A
+# VaultLib name that is one of our member names at other bytes isn't taken, and
+# neither are the type's other names then.
+#
+# vaultlib <AttribSys type name>
+#   <VaultLib name>[.<part>] <path>   a part of one of its properties: Attribulator's next word
+# end
+
+vaultlib Commerce::HatBonus
+  # VaultLib.Support.World/VLT/Commerce/HatBonus.cs
+  # not taken: VaultLib reads Handling at byte 0, where our Acceleration is; our Handling is at 4. Our names win.
+  # not taken: VaultLib reads Acceleration at byte 4, where our Handling is; our Acceleration is at 0. Our names win.
+end
+
+vaultlib ControllerDataRecord
+  # VaultLib.Support.World/VLT/ControllerDataRecord.cs
+  LowerDeadZone mLowerDZ
+  UpperDeadZone mUpperDZ
+end
+
+vaultlib CopFormationRecord
+  # VaultLib.Frameworks.Speed/CopFormationRecord.cs
+  FormationType Formation
+end
+
+vaultlib Curve
+  # VaultLib.Support.World/VLT/Curve.cs
+  MinX xMin
+  MaxX xMax
+  MinY yMin
+  MaxY yMax
+  XValues X
+  YValues Y
+  Y2Values Y2
+end
+
+vaultlib EmittedGeometryRecord
+  # VaultLib.Frameworks.Speed/EmittedGeometryRecord.cs
+  Value mEnum
+end
+
+vaultlib FEMsgToMixTrigger
+  # VaultLib.Support.World/VLT/FEMsgToMixTrigger.cs
+  Value1 FEngMsg
+  Value2 MixTrigger
+end
+
+vaultlib GameCore::BlackBoardSlot
+  # VaultLib.Support.World/VLT/GameCore/BlackBoardSlot.cs
+  mFlag mFlags
+end
+
+vaultlib GMapTriangle
+  # VaultLib.Frameworks.Speed/GMapTriangle.cs
+  # not taken: VaultLib reads mPoint1 at byte 0, where our mPoint0 is; our mPoint1 is at 2. Our names win.
+  # not taken: VaultLib reads mPoint2 at byte 2, where our mPoint1 is; our mPoint2 is at 4. Our names win.
+end
+
+vaultlib HudSFXStringIdToSoundTrigger
+  # VaultLib.Support.World/VLT/HudSFXStringIdToSoundTrigger.cs
+  Value1 StringId
+  Value2 SoundTrigger
+end
+
+vaultlib MovieVolume
+  # VaultLib.Frameworks.Speed/MovieVolume.cs
+  Hash Name
+end
+
+vaultlib PowerupTriggerAndTarget
+  # VaultLib.Support.World/VLT/PowerupTriggerAndTarget.cs
+  Value1 Trigger
+  Value2 Target
+end
+
+vaultlib Sound::BinarySequence
+  # VaultLib.Support.World/VLT/Sound/BinarySequence.cs
+  Value mbValue
+  Duration mfDuration
+end
+
+vaultlib UpgradeSpecs
+  # VaultLib.Frameworks.Speed/UpgradeSpecs.cs
+  ReferencedRow Item
 end

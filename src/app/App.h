@@ -329,9 +329,24 @@ namespace app
 		// The list's mods as Save All leaves them: the file's, then the ones
 		// applied since (TracedMod::pending).
 		std::vector<attrib::TracedMod> modRows() const;
-		// Uninstalls those rows of modRows() (tried on a copy first: false and
-		// nothing changed when a trace doesn't apply, modsMessage() says why).
+		// Uninstalls those rows of modRows(), worked out on copies first
+		// (attrib::PlanUninstall): false and nothing changed when a trace doesn't
+		// apply (modsMessage() says why), or when mods build on them: then the
+		// Uninstall Mod prompt opens, listing those, which go with them once
+		// the user says (uninstallPlanned()).
 		bool uninstallMods(const std::vector<size_t>& rows);
+		// The prompt's plan: what it lists, and its Uninstall.
+		struct ModsPlan
+		{
+			std::vector<attrib::InstalledMod> asked, all; // all: with the ones building on them, oldest first
+			std::string dependents;                      // attrib::DependentsText
+			bool around = false;
+		};
+		const std::optional<ModsPlan>& modsPlan() const
+		{
+			return modsPlan_;
+		}
+		bool uninstallPlanned();
 		// Takes a row off the list at once (one not saved yet: off what Save
 		// All adds), the database as it is.
 		bool forgetMod(size_t row);
@@ -1020,9 +1035,14 @@ namespace app
 		ModListView modsView_;
 		std::string modsMessage_;
 		bool modsMessageError_ = false;
-		// The Uninstall Mod and Remove Mod from List prompts' row, as it was then.
+		// The Remove Mod from List prompt's row, as it was then.
 		int modsPick_ = -1;
 		attrib::InstalledMod modsPickEntry_;
+		std::optional<ModsPlan> modsPlan_; // the Uninstall Mod prompt's
+		// Works out what uninstalling the rows takes into modsPlan_; false with
+		// modsMessage_ saying why not.
+		bool planUninstall(const std::vector<size_t>& rows);
+		bool runUninstall(const ModsPlan& plan);
 		// The Mod Conflicts prompt: the mod just applied and the ones it clashes with.
 		struct ModClash
 		{

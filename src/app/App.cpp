@@ -1380,6 +1380,7 @@ namespace app
 		modBefore_.reset();
 		modsView_.forget();
 		modsMessage_.clear();
+		modsPlan_.reset();
 		modClashes_.clear();
 		modClashesWaiting_ = false;
 		designer_.editing = 0;

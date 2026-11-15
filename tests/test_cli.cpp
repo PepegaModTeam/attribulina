@@ -549,5 +549,23 @@ TEST("cli: apply traces each mod and warns when one changes what a listed mod ch
     CHECK(attrib::ReadModList(global.string())->mods.empty());
     CHECK(attrib::ReadFile((global / "ATTRIBUTES.BIN").string()) == attributes);
     CHECK(attrib::ReadFile((global / "GlobalMemoryFile.bin").string()) == memory);
+
+    // One that builds on another goes with it, only when asked to.
+    WriteText(root / "maker.amod", "attribulina 1\ntitle \"Maker\"\ncreate pvehicle/cli_car from pvehicle/street\n");
+    WriteText(root / "user.amod", "attribulina 1\ntitle \"User\"\nedit pvehicle/cli_car { HornType = 3 }\n");
+    CHECK_EQ(run({"apply", global.string(), (root / "maker.amod").string()}), 0);
+    CHECK_EQ(run({"apply", global.string(), (root / "user.amod").string()}), 0);
+    CHECK(run.err.find("changes 1 thing Maker changed") == std::string::npos); // building on it is no conflict
+    const attrib::Bytes both = attrib::ReadFile((global / "ATTRIBUTES.BIN").string());
+    CHECK(run({"uninstall", global.string(), "Maker"}) != 0);
+    CHECK(run.err.find("attribcli: User builds on what Maker changed, so it is uninstalled with it") != std::string::npos);
+    CHECK(run.err.find("--with-dependents uninstalls them all") != std::string::npos);
+    CHECK(attrib::ReadFile((global / "ATTRIBUTES.BIN").string()) == both);
+    CHECK_EQ(attrib::ReadModList(global.string())->mods.size(), size_t(2));
+    CHECK_EQ(run({"uninstall", global.string(), "Maker", "--with-dependents"}), 0);
+    CHECK(run.out.find("uninstalled Maker and User: ") != std::string::npos);
+    CHECK(attrib::ReadModList(global.string())->mods.empty());
+    CHECK(attrib::ReadFile((global / "ATTRIBUTES.BIN").string()) == attributes);
+    CHECK(attrib::ReadFile((global / "GlobalMemoryFile.bin").string()) == memory);
     fs::remove_all(root);
 }

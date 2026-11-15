@@ -49,7 +49,7 @@ namespace cli
   attribcli info   <database>
   attribcli repair <database> [--out <dir>] [--dry-run] [--no-backup]
   attribcli mods   <database>
-  attribcli uninstall <database> <mod>... [--out <dir>] [--dry-run] [--no-backup]
+  attribcli uninstall <database> <mod>... [--with-dependents] [--out <dir>] [--dry-run] [--no-backup]
 
 A <database> is a game folder (with attributes.bin) or one pack file in it.
 Its game and platform come from its files (the Vers value of its vaults);
@@ -117,9 +117,11 @@ uninstall: sets back what the mods named changed in the database, from the
 traces kept when they were installed, saves, and takes them off the list. A
 mod is its number from `mods`, its title (with or without its version) or its
 script's file name. Mods installed after it that change the same things are
-undone and done again around it, so what they set stays; one that builds on
-what it made stops it, and nothing is saved. Files a mod copied stay. --out,
---dry-run, --no-backup and --no-memory-files work as for apply.
+undone and done again around it, so what they set stays. Mods that build on
+what it changed (a value of a collection it made) can't stay without it: they
+are listed and nothing is saved, unless --with-dependents uninstalls them with
+it, as a package manager would. Files a mod copied stay. --out, --dry-run,
+--no-backup and --no-memory-files work as for apply.
 
 convert: an nfsms script (and the scripts it includes) as a mod script. Its
 setup becomes options and `if` blocks. It is tried on a copy of the database,
@@ -775,7 +777,7 @@ which decides how values read; lines that fail come out as comments.
 
 			int uninstall(const std::vector<std::string>& in)
 			{
-				const Args a = Parse(in, { "--out" }, { "--dry-run", "--no-backup", "--no-memory-files" });
+				const Args a = Parse(in, { "--out" }, { "--dry-run", "--no-backup", "--no-memory-files", "--with-dependents" });
 				if (a.positional.size() < 2) throw Failed{ "uninstall takes a database and the mods to uninstall" };
 				const std::string folder = databaseFolderOf(a.positional[0]);
 				const std::optional<ModList> list = ReadModList(folder);
@@ -785,7 +787,24 @@ which decides how values read; lines that fail come out as comments.
 				for (size_t i = 1; i < a.positional.size(); ++i) which.push_back(pickMod(rows, a.positional[i]));
 				movedFrom_.clear();
 				auto db = load(a.positional[0]);
-				const UninstallResult u = Uninstall(*db, rows, which);
+				// What it takes, worked out on copies: the mods that build on them go too.
+				const UninstallPlan plan = PlanUninstall(*db, rows, which);
+				if (!plan.ok())
+				{
+					err_ << "attribcli: " << plan.error << " Nothing was saved.\n";
+					return 1;
+				}
+				if (!plan.dependents.empty())
+				{
+					const std::string text = DependentsText(plan, rows);
+					if (!a.has("--with-dependents"))
+					{
+						err_ << "attribcli: " << text << " Nothing was saved: --with-dependents uninstalls them all.\n";
+						return 1;
+					}
+					err_ << "attribcli: warning: " << text << "\n";
+				}
+				const UninstallResult u = Uninstall(*db, rows, plan.which, {}, plan.around);
 				for (const std::string& n : u.notes) err_ << "attribcli: warning: " << n << "\n";
 				if (!u.ok)
 				{

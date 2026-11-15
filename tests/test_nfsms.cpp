@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <map>
 #include <set>
 #include <sstream>
@@ -162,10 +163,14 @@ TEST("nfsms: every platform of a game runs it; Nitro, which NFS-VltEd never read
         CHECK_EQ(load64(a->elem(0) + 8, Endian::Little), StringHash64("organic"));
         CHECK_EQ(load64(a->elem(0) + 32, Endian::Little), StringHash64("carscrapeearth"));
         CHECK(loadf32(a->elem(0) + 52, Endian::Little) == 31.0f);
-        // Recorded back in the same words.
+        // Recorded back in the same words NFS-VltEd compatible, by our members otherwise.
         const sc::Script edits = sc::Parse("attribulina 1\nedit pvehicle/default { OnScrapeGround[0].mSurface = simsurface/concrete }\n", "rec.amod");
-        const std::vector<std::string> lines = ns::FromStatements(*db, edits.statements, st.names.get());
+        const std::vector<std::string> lines = ns::FromStatements(*db, edits.statements, st.names.get(), true);
+        if (std::find(lines.begin(), lines.end(), "update_field pvehicle default OnScrapeGround[0] SurfaceCollectionKey concrete") == lines.end())
+            for (const std::string& l : lines) std::fprintf(stderr, "        %s\n", l.c_str());
         CHECK(std::find(lines.begin(), lines.end(), "update_field pvehicle default OnScrapeGround[0] SurfaceCollectionKey concrete") != lines.end());
+        const std::vector<std::string> own = ns::FromStatements(*db, edits.statements, st.names.get(), false);
+        CHECK(std::find(own.begin(), own.end(), "update_field pvehicle default OnScrapeGround[0] mSurface Collection concrete") != own.end());
     }
     Database nitro;
     nitro.setTarget({Game::Nitro, Platform::Wii});
@@ -183,13 +188,15 @@ TEST("nfsms: every platform of a game runs it; Nitro, which NFS-VltEd never read
 }
 
 
-TEST("nfsms: each game's words lead to the same member on every platform of it, and record back as themselves") {
+TEST("nfsms: each game's words lead to the same member on every platform of it, and record back as themselves when NFS-VltEd compatible") {
     struct GameTable {
         const char* table;
         std::vector<const char*> folders;
         std::vector<std::string> expectedFailures; // "type word" that can't lead anywhere on some platform
         // "type word" over several of our members: a change to one records by our member names.
         std::vector<std::string> recordedOtherwise = {};
+        // "type word" that NFS-VltEd compatible runs take and Attribulina's own reading refuses.
+        std::vector<std::string> ownRefuses = {};
     };
     const std::vector<GameTable> games = {
         // A curve's allocatedMemory is the game's to set; scripts can't.
@@ -225,10 +232,12 @@ TEST("nfsms: each game's words lead to the same member on every platform of it, 
           "RenderReflect::cSamplerStateAttribDefinition 16", "Sound::SirenTuning 14", "Sound::SirenTuning 15", "Sound::SirenTuning 16",
           "Sound::SirenTuning 17"},
          {"VinylsAttrib::VinylLayer 3", "VinylsAttrib::VinylLayer 4"}},
-        // A curve's allocatedMemory is the game's to set, and a StringKey's hash
-        // comes from its text (NFS-VltEd's word 1 of IntegratedKitWheelOffset).
+        // A curve's allocatedMemory is the game's to set. NFS-VltEd's word 1 of
+        // IntegratedKitWheelOffset sets its StringKey's hash, which Attribulina's own
+        // reading takes from the text, and records through the text (word 2).
         // Build 593 is one of the builds between the betas and the final one.
-        {"world_pc", {"pc/world-final", "pc/world-various/GLOBAL 593"}, {"Curve AllocatedMemory", "IntegratedKitWheelOffset 1"}},
+        {"world_pc", {"pc/world-final", "pc/world-various/GLOBAL 593"}, {"Curve AllocatedMemory"},
+         {"IntegratedKitWheelOffset 1"}, {"IntegratedKitWheelOffset 1"}},
         // NFS-VltEd's WB: World's betas, which the final build's schema lays out. It
         // reads CameraCauseAndEffect as 27 numbers, its two curves' array pointers,
         // lengths and allocatedMemory among them, which nothing can set.
@@ -244,6 +253,9 @@ TEST("nfsms: each game's words lead to the same member on every platform of it, 
         auto names = ns::PropertyNames::Load(test::DataPath(std::string("data/nfsms/") + g.table + ".txt"));
         ns::RunSettings st;
         st.names = names;
+        st.vltEd = true; // NFS-VltEd's words, as it reads them
+        ns::RunSettings own;
+        own.names = names; // Attribulina's own reading: our names first, NFS-VltEd's words after them
         std::map<std::string, std::string> first; // "type word" -> where it led on the first platform
         std::set<std::string> failures;
         for (const char* folder : g.folders) {
@@ -290,6 +302,23 @@ TEST("nfsms: each game's words lead to the same member on every platform of it, 
                         std::printf("        %s on %s: %s, not %s\n", key.c_str(), folder, where.c_str(), first[key].c_str());
                         ++wrong;
                     }
+                    // Attribulina's own reading takes the word to the same place: no word
+                    // is our name for another member now (CarBodyMotion's DegPerSec was).
+                    if (part != "data") {
+                        std::string ownPart;
+                        std::string ownWhere;
+                        try {
+                            const sc::FieldPath q = ns::WordsLeadTo(*db, *c, field, words, own, &ownPart);
+                            ownWhere = StepsText(q, from) + (ownPart.empty() ? "" : " " + ownPart);
+                        } catch (const std::exception& e) {
+                            ownWhere = e.what();
+                        }
+                        const bool refused = std::find(g.ownRefuses.begin(), g.ownRefuses.end(), key) != g.ownRefuses.end();
+                        if ((ownWhere != where) != refused) {
+                            std::printf("        %s on %s, Attribulina's reading: %s, not %s\n", key.c_str(), folder, ownWhere.c_str(), where.c_str());
+                            ++wrong;
+                        }
+                    }
                     // Recorded, the same value comes out in the same word.
                     if (part == "data" || pr.list) continue;
                     sc::Statement set;
@@ -309,15 +338,33 @@ TEST("nfsms: each game's words lead to the same member on every platform of it, 
                     edit.target.cls = db->names().format(c->classKey);
                     edit.target.name = db->names().format(c->key);
                     edit.body.push_back(set);
+                    // Recorded the other way, the line names our members and leads back.
+                    for (const std::string& line : ns::FromStatements(*db, {edit}, names.get(), false)) {
+                        const ns::Command cmd = ns::ParseLine(line);
+                        if (cmd.args.size() < 4 || cmd.name != "update_field") continue;
+                        std::string backPart;
+                        std::string back;
+                        try {
+                            const std::vector<std::string> ws(cmd.args.begin() + 3, cmd.args.end() - 1);
+                            back = StepsText(ns::WordsLeadTo(*db, *c, cmd.args[2], ws, own, &backPart), 0);
+                        } catch (const std::exception& e) {
+                            back = e.what();
+                        }
+                        if (back != StepsText(p, 0) || (!part.empty() && backPart.empty())) {
+                            std::printf("        %s on %s records as [%s], which leads to %s, not %s\n", key.c_str(), folder, line.c_str(),
+                                        back.c_str(), StepsText(p, 0).c_str());
+                            ++wrong;
+                        }
+                    }
                     bool found = false;
-                    for (const std::string& line : ns::FromStatements(*db, {edit}, names.get())) {
+                    for (const std::string& line : ns::FromStatements(*db, {edit}, names.get(), true)) {
                         const ns::Command cmd = ns::ParseLine(line);
                         found |= cmd.args.size() > 4 && std::find(cmd.args.begin() + 3, cmd.args.end() - 1, pr.word) != cmd.args.end() - 1;
                     }
                     if (!found && std::find(g.recordedOtherwise.begin(), g.recordedOtherwise.end(), key) != g.recordedOtherwise.end()) continue;
                     if (!found) {
                         std::printf("        %s on %s records as:", key.c_str(), folder);
-                        for (const std::string& line : ns::FromStatements(*db, {edit}, names.get())) std::printf(" [%s]", line.c_str());
+                        for (const std::string& line : ns::FromStatements(*db, {edit}, names.get(), true)) std::printf(" [%s]", line.c_str());
                         std::printf("\n");
                         ++wrong;
                     }
@@ -331,6 +378,284 @@ TEST("nfsms: each game's words lead to the same member on every platform of it, 
         }
     }
     CHECK_EQ(wrong, size_t(0));
+}
+
+TEST("nfsms: Attribulina's own reading finds every member of every class's values by our names and VaultLib's, and records them by ours") {
+    // Each game's table, on the PC and on a console of another layout.
+    const std::vector<std::pair<const char*, std::vector<const char*>>> games = {
+        {"prostreet_pc", {"pc/prostreet-vanilla", "ps2/prostreet-vanilla"}},
+        {"mw_pc", {"pc/mw-vanilla", "gamecube/mw-vanilla"}},
+        {"carbon_pc", {"pc/carbon-vanilla", "ps2/carbon-vanilla", "360/carbon-vanilla"}},
+        {"undercover_pc", {"pc/undercover-vanilla", "wii/undercover-vanilla"}},
+        {"world_pc", {"pc/world-final"}},
+        {"world_beta_pc", {"pc/world-2009-beta"}},
+    };
+    size_t wrong = 0, members = 0, aliases = 0;
+    std::set<std::string> aliasesSeen; // "table type name" found on some platform
+    for (const auto& [table, folders] : games) {
+        auto names = ns::PropertyNames::Load(test::DataPath(std::string("data/nfsms/") + table + ".txt"));
+        ns::RunSettings own;
+        own.names = names;
+        ns::RunSettings vlt;
+        vlt.names = names;
+        vlt.vltEd = true;
+        for (const char* folder : folders) {
+            auto db = LoadFolder(test::DataPath(std::string("attrib/databases/") + folder));
+            auto report = [&](const std::string& what) {
+                if (wrong < 40) std::printf("        %s on %s: %s\n", table, folder, what.c_str());
+                ++wrong;
+            };
+            std::set<std::string> walked; // a type's members are walked once per folder
+            for (const auto& cls : db->classes())
+                for (const auto& fd : cls->fields) {
+                    // The field's value in the first collection that has one.
+                    Collection* c = nullptr;
+                    for (Collection* x : cls->collections)
+                        if (const Attribute* a = x->find(fd.key); a && a->count) {
+                            c = x;
+                            break;
+                        }
+                    if (!c) continue;
+                    const std::string field = db->names().format(fd.key) + (fd.isArray() ? "[0]" : "");
+                    sc::FieldPath top;
+                    top.field = db->names().format(fd.key);
+                    if (fd.isArray()) top.steps.push_back({std::string(), 0});
+                    std::function<void(const sc::FieldPath&, const std::vector<std::string>&, int)> walk =
+                        [&](const sc::FieldPath& p, const std::vector<std::string>& words, int depth) {
+                            ValueType vt;
+                            try {
+                                vt = sc::TypeAt(*db, *c, p);
+                            } catch (const std::exception&) {
+                                return;
+                            }
+                            if ((vt.kind == TypeKind::Struct || vt.kind == TypeKind::Curve) && vt.st && depth < 6) {
+                                if (!walked.insert(vt.typeName + "|" + std::to_string(depth) + "|" + (words.empty() ? "" : words[0])).second &&
+                                    depth > 0)
+                                    return;
+                                // VaultLib's names for its members lead where the table says.
+                                for (const char* prefix : {"", "Attrib::Types::", "Attrib::", "EA::Reflection::"}) {
+                                    auto it = names->vaultLib.find(prefix + vt.typeName);
+                                    if (it == names->vaultLib.end()) continue;
+                                    for (const auto& [name, steps] : it->second) {
+                                        if (steps.empty() || !vt.st->member(steps[0].member)) continue; // not on this platform
+                                        sc::FieldPath want = p;
+                                        for (const auto& stp : steps) {
+                                            want.steps.push_back({stp.member, -1});
+                                            if (stp.index >= 0) want.steps.push_back({std::string(), stp.index});
+                                        }
+                                        std::vector<std::string> ws = words;
+                                        const size_t dot = name.find('.');
+                                        ws.push_back(name.substr(0, dot));
+                                        if (dot != std::string::npos) ws.push_back(name.substr(dot + 1));
+                                        ++aliases;
+                                        aliasesSeen.insert(std::string(table) + " " + it->first + " " + name);
+                                        try {
+                                            const sc::FieldPath got = ns::WordsLeadTo(*db, *c, field, ws, own);
+                                            if (StepsText(got, 0) != StepsText(want, 0))
+                                                report(it->first + " " + name + " leads to " + StepsText(got, 0) + ", not " + StepsText(want, 0));
+                                        } catch (const std::exception& e) {
+                                            report(it->first + " " + name + ": " + e.what());
+                                        }
+                                        // NFS-VltEd compatible runs know only NFS-VltEd's words.
+                                        const ns::PropertyNames::Type* t = names->find(vt.typeName);
+                                        if (dot == std::string::npos && !(t && t->find(name, true))) {
+                                            bool led = true;
+                                            try {
+                                                ns::WordsLeadTo(*db, *c, field, ws, vlt);
+                                            } catch (const std::exception&) {
+                                                led = false;
+                                            }
+                                            if (led) report(it->first + " " + name + " is taken NFS-VltEd compatible");
+                                        }
+                                    }
+                                    break;
+                                }
+                                for (const MemberDef& m : vt.st->members) {
+                                    if (m.prim == MemberPrim::Ptr || m.prim == MemberPrim::CStr || m.name.rfind("__", 0) == 0) continue;
+                                    sc::FieldPath q = p;
+                                    q.steps.push_back({m.name, -1});
+                                    std::string w = m.name;
+                                    if (m.count > 1) {
+                                        q.steps.push_back({std::string(), int64_t(m.count - 1)});
+                                        w += "[" + std::to_string(m.count - 1) + "]";
+                                    }
+                                    std::vector<std::string> ws = words;
+                                    ws.push_back(w);
+                                    walk(q, ws, depth + 1);
+                                }
+                                return;
+                            }
+                            if (words.empty()) return;
+                            // A member: by our names, and recorded by them.
+                            ++members;
+                            std::string part;
+                            try {
+                                const sc::FieldPath got = ns::WordsLeadTo(*db, *c, field, words, own, &part);
+                                if (StepsText(got, 0) != StepsText(p, 0)) {
+                                    std::string ws;
+                                    for (const std::string& w : words) ws += " " + w;
+                                    report(top.field + ws + " leads to " + StepsText(got, 0) + ", not " + StepsText(p, 0));
+                                    return;
+                                }
+                            } catch (const std::exception& e) {
+                                std::string ws;
+                                for (const std::string& w : words) ws += " " + w;
+                                report(db->names().format(cls->key) + " " + top.field + ws + ": " + e.what());
+                                return;
+                            }
+                            sc::Statement set;
+                            set.kind = sc::Statement::Kind::Set;
+                            set.path = p;
+                            if (vt.kind == TypeKind::RefSpec) {
+                                auto v = std::make_shared<sc::Value>();
+                                v->kind = sc::Value::Kind::Binary;
+                                v->op = '/';
+                                v->items = {sc::MakeString("a"), sc::MakeString("b")};
+                                set.value = v;
+                            } else {
+                                set.value = vt.kind == TypeKind::StringKey ? sc::MakeString("a") : sc::MakeNumber("1");
+                            }
+                            sc::Statement edit;
+                            edit.kind = sc::Statement::Kind::Edit;
+                            edit.target.cls = db->names().format(c->classKey);
+                            edit.target.name = db->names().format(c->key);
+                            edit.body.push_back(set);
+                            for (const std::string& line : ns::FromStatements(*db, {edit}, names.get(), false)) {
+                                const ns::Command cmd = ns::ParseLine(line);
+                                if (cmd.name != "update_field" || cmd.args.size() < 4) continue;
+                                const std::vector<std::string> ws(cmd.args.begin() + 3, cmd.args.end() - 1);
+                                // Our names: each word is a member of ours (or a reference's part, a component).
+                                for (size_t i = 0; i < words.size() && i < ws.size(); ++i)
+                                    if (ws[i] != words[i]) report("[" + line + "] writes " + ws[i] + " for " + words[i]);
+                                try {
+                                    const sc::FieldPath back = ns::WordsLeadTo(*db, *c, cmd.args[2], ws, own);
+                                    if (StepsText(back, 0) != StepsText(p, 0))
+                                        report("[" + line + "] leads to " + StepsText(back, 0) + ", not " + StepsText(p, 0));
+                                } catch (const std::exception& e) {
+                                    report("[" + line + "]: " + e.what());
+                                }
+                            }
+                        };
+                    walk(top, {}, 0);
+                }
+        }
+    }
+    // Every VaultLib name of every table was found on some platform of its game.
+    size_t listed = 0;
+    for (const auto& [table, folders] : games) {
+        auto names = ns::PropertyNames::Load(test::DataPath(std::string("data/nfsms/") + table + ".txt"));
+        for (const auto& [type, byName] : names->vaultLib)
+            for (const auto& [name, steps] : byName) {
+                ++listed;
+                if (!aliasesSeen.count(std::string(table) + " " + type + " " + name))
+                    std::printf("        %s: VaultLib's %s %s wasn't tried (no value of the type)\n", table, type.c_str(), name.c_str());
+            }
+    }
+    std::printf("        %zu members, %zu VaultLib names tried (%zu of %zu listed)\n", members, aliases, aliasesSeen.size(), listed);
+    CHECK(members > 1000);
+    CHECK_EQ(wrong, size_t(0));
+}
+
+TEST("nfsms: CarBodyMotion's words set the members they are named after (Carbon's BodyDive), and record as our names") {
+    auto db = LoadFolder(test::DataPath("attrib/databases/pc/carbon-vanilla"));
+    auto names = ns::PropertyNames::Load(test::DataPath("data/nfsms/carbon_pc.txt"));
+    for (bool vltEd : {false, true}) {
+        auto d = sc::CloneDatabase(*db);
+        ns::RunSettings st;
+        st.names = names;
+        st.vltEd = vltEd;
+        CHECK_RUN(Run(*d, "update_field ecar copmidsize BodyDive DegPerG 3.25\n"
+                          "update_field ecar copmidsize BodyDive DegPerSec 6\n"
+                          "update_field ecar copmidsize BodyDive MaxG 2\n", st));
+        const Attribute& a = Own(Col(*d, "ecar", "copmidsize"), "BodyDive");
+        CHECK_EQ(F32(a, 0, 0), 3.25f); // DegPerG
+        CHECK_EQ(F32(a, 0, 4), 2.0f);  // MaxGs
+        CHECK_EQ(F32(a, 0, 8), 6.0f);  // DegPerSec
+    }
+    // Our names: Attribulina's own reading only, as VaultLib (Attribulator) names them too.
+    auto d = sc::CloneDatabase(*db);
+    ns::RunSettings st;
+    st.names = names;
+    CHECK_RUN(Run(*d, "update_field ecar copmidsize BodyDive MaxGs 1.5\n", st));
+    CHECK_EQ(F32(Own(Col(*d, "ecar", "copmidsize"), "BodyDive"), 0, 4), 1.5f);
+    st.vltEd = true;
+    CHECK(!Run(*d, "update_field ecar copmidsize BodyDive MaxGs 1.5\n", st).messages.empty());
+    // Recorded: our names, or NFS-VltEd's words when NFS-VltEd compatible.
+    const sc::Script edit = sc::Parse("attribulina 1\nedit ecar/copmidsize { BodyDive.MaxGs = 2.5\n BodyDive.DegPerSec = 7 }\n");
+    CHECK(sc::Apply(*d, edit).ok); // the recorder writes NFS-VltEd's numbers from the value as it is
+    auto lines = [&](bool vltEd) {
+        std::string t;
+        for (const std::string& l : ns::FromStatements(*d, edit.statements, names.get(), vltEd)) t += l + "\n";
+        return t;
+    };
+    const std::string mine = lines(false), theirs = lines(true);
+    if (mine.find("BodyDive MaxGs 2.5") == std::string::npos) std::fprintf(stderr, "%s", mine.c_str());
+    CHECK(mine.find("update_field ecar copmidsize BodyDive MaxGs 2.5") != std::string::npos);
+    CHECK(mine.find("update_field ecar copmidsize BodyDive DegPerSec 7") != std::string::npos);
+    if (theirs.find("BodyDive MaxG 2.5") == std::string::npos) std::fprintf(stderr, "%s", theirs.c_str());
+    CHECK(theirs.find("update_field ecar copmidsize BodyDive MaxG 2.5") != std::string::npos);
+    CHECK(theirs.find("update_field ecar copmidsize BodyDive DegPerSec 7") != std::string::npos);
+    // The other types whose words NFS-VltEd declares out of the game's order follow their names too.
+    auto check = [&](const char* tableName, const char* folder, const char* line, const char* type, const char* word,
+                     const char* member) {
+        auto t = ns::PropertyNames::Load(test::DataPath(std::string("data/nfsms/") + tableName + ".txt"));
+        const ns::PropertyNames::Type* ty = t->find(type);
+        CHECK(ty != nullptr);
+        const ns::PropertyNames::Property* pr = ty ? ty->find(word, false) : nullptr;
+        CHECK(pr != nullptr);
+        if (pr && pr->pathText() != member) std::fprintf(stderr, "%s %s %s: %s\n", folder, type, word, pr->pathText().c_str());
+        CHECK(pr && pr->pathText() == member);
+        (void)line;
+    };
+    check("carbon_pc", "", "", "GMapCurve", "PointStart", "mPointStart");
+    check("carbon_pc", "", "", "GMapCurve", "PointCount", "mPointCount");
+    check("undercover_pc", "", "", "Sound::PursuitMusicTuning", "MinTimeLost", "MinTimeLost");
+    check("world_pc", "", "", "Commerce::HatBonus", "RequiredPartCount", "RequiredPartCount");
+    check("world_pc", "", "", "Commerce::HatBonus", "TopSpeed", "TopSpeed");
+}
+
+TEST("nfsms: Attribulator's (VaultLib's) names for parts run in Attribulina's own reading, not NFS-VltEd compatible") {
+    auto db = Load();
+    auto names = ns::PropertyNames::Load(test::DataPath("data/nfsms/prostreet_pc.txt"));
+    ns::RunSettings st;
+    st.names = names;
+    // A PhysicsUpgrade's ReferencedAttribute is VaultLib's AttributeRefSpec over our mClassKey and mDefinitionKey.
+    Collection* c = nullptr;
+    std::string field;
+    for (const auto& cls : db->classes())
+        for (const auto& fd : cls->fields)
+            if (!c && fd.type && fd.type->name == "PhysicsUpgrade")
+                for (Collection* x : cls->collections)
+                    if (const Attribute* a = x->find(fd.key); a && a->count && !c) {
+                        c = x;
+                        field = db->names().format(fd.key) + (fd.isArray() ? "[0]" : "");
+                    }
+    CHECK(c != nullptr);
+    if (!c) return;
+    sc::FieldPath p = ns::WordsLeadTo(*db, *c, field, {"ReferencedAttribute", "ClassKey"}, st);
+    CHECK_EQ(StepsText(p, 1), std::string(".mClassKey"));
+    p = ns::WordsLeadTo(*db, *c, field, {"ReferencedAttribute", "DefinitionKey"}, st);
+    CHECK_EQ(StepsText(p, 1), std::string(".mDefinitionKey"));
+    CHECK_RUN(Run(*db, "update_field " + db->names().format(c->classKey) + " " + db->names().format(c->key) + " " + field +
+                           " ReferencedAttribute DefinitionKey TORQUE\n", st));
+    CHECK_EQ(U32(Own(*c, field.substr(0, field.find('[')).c_str()), 0, 4), StringHash32("TORQUE"));
+    p = ns::WordsLeadTo(*db, *c, field, {"IsMember"}, st); // our mIsMember without its m
+    CHECK_EQ(StepsText(p, 1), std::string(".mIsMember"));
+    bool failed = false;
+    try {
+        ns::WordsLeadTo(*db, *c, field, {"ReferencedAttribute"}, st);
+    } catch (const std::exception& e) {
+        failed = std::string(e.what()).find("ClassKey") != std::string::npos;
+    }
+    CHECK(failed); // its part has to follow
+    st.vltEd = true;
+    failed = false;
+    try {
+        ns::WordsLeadTo(*db, *c, field, {"ReferencedAttribute", "ClassKey"}, st);
+    } catch (const std::exception&) {
+        failed = true;
+    }
+    CHECK(failed);
 }
 
 TEST("nfsms: lines split the way NFS-VltEd splits them") {
@@ -468,27 +793,43 @@ TEST("nfsms: NFS-VltEd's own words for the parts of a value (data/nfsms), as a r
     CHECK_RUN(Run(d, "update_field presetride player_d_day Parts[7] mKitNumber 4\nupdate_field vehicle 240sx TORQUE yMax 300\n", st));
     CHECK_EQ(U32(Own(Col(d, "presetride", "player_d_day"), "Parts"), 7, 20), 4u);
 
-    // Recording writes NFS-VltEd's words back, and a curve point as update_collection.
+    // Recording writes our member names, as Attribulina's own reading (and VaultLib's) has them.
     const sc::Script edits = sc::Parse("attribulina 1\n"
                                        "edit presetride/player_d_day { Parts[7].mKitNumber = 5 }\n"
                                        "edit vehicle/240sx { TORQUE.yMin = 100\n TORQUE.Y[2] = 0.25 }\n"
                                        "edit part_physics/tires_lvl_4_kit03 { UpgradeDescriptions[0].mBlendingPower = 2 }\n",
                                        "rec.amod");
-    const std::vector<std::string> lines = ns::FromStatements(d, edits.statements, st.names.get());
+    std::vector<std::string> lines = ns::FromStatements(d, edits.statements, st.names.get(), false);
     auto has = [&](const std::string& l) {
         const bool ok = std::find(lines.begin(), lines.end(), l) != lines.end();
         if (!ok) std::fprintf(stderr, "missing: %s\n", l.c_str());
         return ok;
     };
+    CHECK(has("update_field presetride player_d_day Parts[7] mKitNumber 5"));
+    CHECK(has("update_field vehicle 240sx TORQUE yMin 100"));
+    CHECK(has("update_field vehicle 240sx TORQUE Y[2] 0.25"));
+    CHECK(has("update_field part_physics tires_lvl_4_kit03 UpgradeDescriptions[0] mBlendingPower 2"));
+    // And they read back.
+    std::string text;
+    for (const std::string& l : lines) text += l + "\n";
+    auto mine = sc::CloneDatabase(d);
+    CHECK_RUN(Run(*mine, text, st));
+    CHECK_EQ(U32(Own(Col(*mine, "presetride", "player_d_day"), "Parts"), 7, 20), 5u);
+    // NFS-VltEd compatible: its words, and a curve point as update_collection (the whole curve as it is now).
+    auto edited = sc::CloneDatabase(d);
+    CHECK(sc::Apply(*edited, edits).ok);
+    lines = ns::FromStatements(*edited, edits.statements, st.names.get(), true);
     CHECK(has("update_field presetride player_d_day Parts[7] KitNumber 5"));
     CHECK(has("update_field vehicle 240sx TORQUE MinY 100"));
     CHECK(has("update_collection vehicle 240sx TORQUE YValues 2 Value 0.25"));
     CHECK(has("update_field part_physics tires_lvl_4_kit03 UpgradeDescriptions[0] 4 2"));
-    // And they read back.
-    std::string text;
+    text.clear();
     for (const std::string& l : lines) text += l + "\n";
-    CHECK_RUN(Run(d, text, st));
+    ns::RunSettings vlt = st;
+    vlt.vltEd = true;
+    CHECK_RUN(Run(d, text, vlt));
     CHECK_EQ(U32(Own(Col(d, "presetride", "player_d_day"), "Parts"), 7, 20), 5u);
+    CHECK_EQ(Changes(sc::Diff(*edited, d)), size_t(0));
 }
 
 TEST("nfsms: a real NFS-VltEd mod (nfsms test/, when present) runs with no failed line") {

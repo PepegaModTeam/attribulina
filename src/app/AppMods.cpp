@@ -171,38 +171,81 @@ namespace app
 		modClashesWaiting_ = true;
 	}
 
-	bool App::uninstallMods(const std::vector<size_t>& which)
+	bool App::planUninstall(const std::vector<size_t>& which)
 	{
 		modsMessage_.clear();
 		modsMessageError_ = false;
+		modsPlan_.reset();
 		if (!db_ || which.empty()) return false;
 		const std::vector<TracedMod> rows = modRows();
 		std::vector<std::string> list;
 		for (size_t i : which)
 			if (i < rows.size()) list.push_back(rows[i].mod.nameAndVersion());
-		const std::string names = Names(list);
-		// Tried on a copy first: a trace that doesn't apply leaves the database as it was.
-		UninstallResult trial;
-		try
+		// On copies: the database stays as it is until the user says.
+		const UninstallPlan p = PlanUninstall(*db_, rows, which);
+		if (!p.ok())
 		{
-			std::unique_ptr<Database> copy = sc::CloneDatabase(*db_);
-			trial = Uninstall(*copy, rows, which);
-		}
-		catch (const std::exception& e)
-		{
-			trial.ok = false;
-			trial.error = e.what();
-		}
-		if (!trial.ok)
-		{
-			modsMessage_ = names + " wasn't uninstalled: " + trial.error + " Nothing was changed.";
+			modsMessage_ = Names(list) + " can't be uninstalled: " + p.error + " Nothing was changed.";
 			modsMessageError_ = true;
 			log(LogLevel::Error, modsMessage_);
 			return false;
 		}
+		ModsPlan plan;
+		for (size_t i : p.asked) plan.asked.push_back(rows[i].mod);
+		for (size_t i : p.which) plan.all.push_back(rows[i].mod);
+		plan.dependents = DependentsText(p, rows);
+		plan.around = p.around;
+		modsPlan_ = std::move(plan);
+		return true;
+	}
+
+	bool App::uninstallMods(const std::vector<size_t>& which)
+	{
+		if (!planUninstall(which)) return false;
+		if (!modsPlan_->dependents.empty())
+		{
+			// More go than were asked for: the prompt lists them first.
+			log(LogLevel::Warning, modsPlan_->dependents);
+			request(Pending::UninstallMod);
+			return false;
+		}
+		return uninstallPlanned();
+	}
+
+	bool App::uninstallPlanned()
+	{
+		if (!modsPlan_) return false;
+		const ModsPlan plan = std::move(*modsPlan_);
+		modsPlan_.reset();
+		return runUninstall(plan);
+	}
+
+	bool App::runUninstall(const ModsPlan& plan)
+	{
+		modsMessage_.clear();
+		modsMessageError_ = false;
+		if (!db_) return false;
+		const std::vector<TracedMod> rows = modRows();
+		std::vector<size_t> which;
+		std::vector<std::string> list;
+		for (const InstalledMod& m : plan.all)
+		{
+			size_t i = 0;
+			while (i < rows.size() && !SameEntry(rows[i].mod, m)) ++i;
+			if (i == rows.size())
+			{
+				modsMessage_ = m.nameAndVersion() + " isn't on the list any more. Nothing was changed.";
+				modsMessageError_ = true;
+				log(LogLevel::Error, modsMessage_);
+				return false;
+			}
+			which.push_back(i);
+			list.push_back(m.nameAndVersion());
+		}
+		const std::string names = Names(list);
 		nameAction("Uninstall " + names);
 		beginScriptRun();
-		const UninstallResult u = Uninstall(*db_, rows, which, [this](Collection& c) { forgetCollection(&c); });
+		const UninstallResult u = Uninstall(*db_, rows, which, [this](Collection& c) { forgetCollection(&c); }, plan.around);
 		endScriptRun();
 		for (const std::string& n : u.newNames) rememberName(n);
 		structureChanged();
@@ -218,7 +261,7 @@ namespace app
 		FoldUninstall(pendingList_, rows, u);
 		modsView_.forget();
 		modsMessage_ = "Uninstalled " + names + ": " + u.summary() + "." +
-			(u.redone ? " The mods installed after it that change the same things were undone and done again, so what they set stays." : "") +
+			(u.redone ? " The mods installed after that change the same things were undone and done again, so what they set stays." : "") +
 			" Save All writes the files and the list; files a mod copied stay as they are.";
 		log(LogLevel::Info, modsMessage_);
 		return true;
@@ -351,12 +394,8 @@ namespace app
 		const int picked = modsView_.picked();
 		const bool hasPick = picked >= 0 && size_t(picked) < rows.size();
 		ImGui::BeginDisabled(!hasPick || !rows[size_t(std::max(picked, 0))].trace);
-		if (ImGui::Button("Uninstall..."))
-		{
-			modsPick_ = picked;
-			modsPickEntry_ = rows[size_t(picked)].mod;
-			request(Pending::UninstallMod);
-		}
+		// Worked out first, so the prompt lists the mods that go with it.
+		if (ImGui::Button("Uninstall...") && planUninstall({ size_t(picked) })) request(Pending::UninstallMod);
 		ImGui::EndDisabled();
 		if (hasPick && !rows[size_t(picked)].trace && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
 			ImGui::SetTooltip("%s", ("It can't be uninstalled: " + rows[size_t(picked)].problem + ".").c_str());
@@ -403,36 +442,44 @@ namespace app
 
 		if (begin("Uninstall Mod"))
 		{
-			const std::vector<TracedMod> rows = modRows();
-			const int row = pickedRow(rows);
-			if (row < 0 || !rows[size_t(row)].trace)
+			if (!modsPlan_)
 			{
 				done();
 			}
 			else
 			{
-				const TracedMod& t = rows[size_t(row)];
+				const ModsPlan& plan = *modsPlan_;
+				std::vector<std::string> asked;
+				for (const InstalledMod& m : plan.asked) asked.push_back(m.nameAndVersion());
+				std::vector<ModPlace> places;
+				for (const TracedMod& t : modRows())
+					if (t.trace && std::any_of(plan.all.begin(), plan.all.end(), [&](const InstalledMod& m) { return SameEntry(m, t.mod); }))
+					{
+						const std::vector<ModPlace> p = PlacesOf(*t.trace);
+						places.insert(places.end(), p.begin(), p.end());
+					}
 				ImGui::PushTextWrapPos(wrap);
-				ImGui::Text("Uninstall %s?", t.mod.nameAndVersion().c_str());
-				ImGui::TextDisabled("This sets back what it changed in the database (%s). Save All writes the files and the list; "
-					"until then, Undo takes it back. Files it copied into the game's folder stay as they are.",
-					DescribePlaces(PlacesOf(*t.trace)).c_str());
-				if (size_t(row) + 1 < rows.size())
-					ImGui::TextDisabled("Mods installed after it that change the same things are undone and done again around it, so what "
-						"they set stays.");
+				ImGui::Text("Uninstall %s?", Names(asked).c_str());
+				ImGui::TextDisabled("This sets back what %s changed in the database (%s). Save All writes the files and the list; "
+					"until then, Undo takes it back. Files a mod copied into the game's folder stay as they are.",
+					plan.all.size() == 1 ? "it" : "they", DescribePlaces(places).c_str());
+				if (!plan.dependents.empty()) ImGui::TextColored(kError, "Warning: %s", plan.dependents.c_str());
+				ImGui::TextDisabled("Mods installed after that change the same things are undone and done again around it, so what "
+					"they set stays.");
 				ImGui::PopTextWrapPos();
-				bool ok = ImGui::Button("Uninstall");
+				bool ok = ImGui::Button(plan.all.size() > 1 ? "Uninstall All of Them" : "Uninstall");
 				ImGui::SameLine();
 				const bool cancel = ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape);
 				ok |= ConfirmKey();
 				if (cancel)
 				{
 					done();
+					modsPlan_.reset();
 				}
 				else if (ok)
 				{
 					done();
-					uninstallMods({ size_t(row) });
+					uninstallPlanned();
 				}
 			}
 			ImGui::EndPopup();

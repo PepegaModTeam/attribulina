@@ -6860,6 +6860,37 @@ TEST("ui: installed mods: a mod that changes what one on the list changed asks; 
     list = ReadModList(global.string());
     CHECK(list && list->mods.empty());
 
+    // A mod that builds on another (a value of the car it made) is no conflict; uninstalling
+    // the other takes it along, and the prompt says so first.
+    std::ofstream(root / "maker.amod", std::ios::binary)
+        << "attribulina 1\ntitle \"Maker\"\nversion \"1\"\ncreate pvehicle/ui_car from pvehicle/street\n";
+    std::ofstream(root / "user.amod", std::ios::binary)
+        << "attribulina 1\ntitle \"User\"\nversion \"1\"\nedit pvehicle/ui_car { HornType = 3 }\n";
+    apply(root / "maker.amod");
+    apply(root / "user.amod");
+    imgui.run(a, 2);
+    CHECK(!probe.find("Keep Them Installed", "Mod Conflicts"));
+    CHECK(a.saveAll());
+    imgui.run(a, 2);
+    ClickItem(imgui, a, probe.find("Maker", "Installed Mods"));
+    imgui.run(a, 1);
+    ClickItem(imgui, a, probe.find("Uninstall...", "Installed Mods"));
+    imgui.run(a, 2);
+    CHECK(a.modsPlan().has_value());
+    if (a.modsPlan()) {
+        CHECK_EQ(a.modsPlan()->all.size(), size_t(2));
+        CHECK(a.modsPlan()->dependents.find("User 1 builds on what Maker 1 changed, so it is uninstalled with it") == 0);
+    }
+    CHECK(!probe.find("Uninstall", "Uninstall Mod"));
+    ClickItem(imgui, a, probe.find("Uninstall All of Them", "Uninstall Mod"));
+    imgui.run(a, 2);
+    CHECK(a.modsMessage().find("Uninstalled Maker 1 and User 1: ") == 0);
+    CHECK(!a.database()->findCollection(StringHash32("pvehicle"), StringHash32("ui_car")));
+    CHECK(a.saveAll());
+    CHECK(ReadFile((global / "ATTRIBUTES.BIN").string()) == vanilla);
+    list = ReadModList(global.string());
+    CHECK(list && list->mods.empty());
+
     // One without a trace can only be taken off the list, at once.
     {
         ModList old;

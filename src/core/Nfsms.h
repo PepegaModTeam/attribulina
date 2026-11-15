@@ -127,6 +127,7 @@ namespace attrib::nfsms
 	// data/nfsms/<game>_pc.txt, one table for every platform of the game. Each
 	// word has the offset of the bytes it sets in NFS-VltEd's (the PC's) layout,
 	// and, for a type our schema has as a struct, the path of our members there.
+	// The table also gives VaultLib's names where they aren't our members'.
 	struct PropertyNames
 	{
 		struct Step
@@ -164,6 +165,15 @@ namespace attrib::nfsms
 		std::string game; // the nfsms game code (PS)
 		std::map<std::string, Type> types;
 		const Type* find(const std::string& typeName) const; // also with the prefix a type label leaves off
+		// VaultLib's names (the community Attribulator's) for parts our members
+		// name otherwise: by type, the name (a reference's part after a '.':
+		// ReferencedRow.ClassKey; looked up in any case) to our members.
+		// Attribulina's own reading takes them after our member names; NFS-VltEd
+		// compatible runs never do.
+		std::map<std::string, std::map<std::string, std::vector<Step>>> vaultLib;
+		const std::vector<Step>* vaultLibPath(const std::string& typeName, std::string_view name) const;
+		// A VaultLib name whose parts follow as the next word (ReferencedRow ClassKey).
+		bool vaultLibHead(const std::string& typeName, std::string_view name) const;
 		// Throws std::runtime_error on a line it can't read.
 		static PropertyNames Parse(std::string_view text, const std::string& source = "names");
 		static std::shared_ptr<const PropertyNames> Load(const std::string& path);
@@ -193,13 +203,14 @@ namespace attrib::nfsms
 		// Reads an included script (`script <file>`); the default reads the file.
 		std::function<std::string(const std::string& path)> readFile;
 		std::function<void(Collection&)> beforeRemove;
-		// NFS-VltEd's words for the game's values; without them only our
-		// schema's member names are known.
+		// NFS-VltEd's words for the game's values (and VaultLib's names); without
+		// them only our schema's member names are known.
 		std::shared_ptr<const PropertyNames> names;
 		// NFS-VltEd compatible: words and values read the way NFS-VltEd 4.6
 		// reads them, for scripts written against its quirks (doc/nfsms.md,
 		// "NFS-VltEd compatible"). Off (the default): Attribulina's extended
-		// reading, by our schema's members.
+		// reading: our schema's member names, then VaultLib's (Attribulator's
+		// scripts), then NFS-VltEd's words.
 		bool vltEd = false;
 	};
 
@@ -228,10 +239,12 @@ namespace attrib::nfsms
 	std::string Incompatibility(const Database& db);
 
 	// nfsms lines for mod script statements (the editor records changes this
-	// way), in NFS-VltEd's words when `names` has them. What nfsms can't say
-	// comes out as a # comment.
-	// With `vltEd`, in the form NFS-VltEd 4.6 reads (its value widths, no
-	// Attribulator commands), as RunSettings::vltEd reads them. `before`, when
+	// way), the parts of values by our schema's member names (MaxGs), as
+	// Attribulina's own reading takes them. What nfsms can't say comes out as a
+	// # comment.
+	// With `vltEd`, in the form NFS-VltEd 4.6 reads: its words for the parts
+	// (MaxG) where `names` has them, its value widths, no Attribulator
+	// commands, as RunSettings::vltEd reads them. `before`, when
 	// given, is the database the statements change: a value they give a
 	// collection that only inherited it gets add_field first, which NFS-VltEd
 	// needs (the change recorder passes its copy).

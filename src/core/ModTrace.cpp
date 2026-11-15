@@ -255,6 +255,23 @@ namespace attrib
 					}
 				}
 			}
+			// As clashes, but a change inside a collection or class theirs made
+			// (or deleted, or renamed) builds on it rather than changing what they
+			// changed: an add-on for that mod, which goes with it when it is
+			// uninstalled (PlanUninstall).
+			bool conflicts(const ModPlace& p) const
+			{
+				switch (p.kind)
+				{
+					case ModPlace::Kind::Class: return classes.count(p.cls) || usedClasses.count(p.cls);
+					case ModPlace::Kind::Vault: return vaults.count(p.vault) > 0;
+					default:
+						if (auto it = byCollection.find(Id(p.cls, p.key)); it != byCollection.end())
+							for (const ModPlace* q : it->second)
+								if (Clash(p, *q) && !(q->kind == ModPlace::Kind::Collection && p.kind != ModPlace::Kind::Collection)) return true;
+						return false;
+				}
+			}
 			bool clashes(const ModPlace& p) const
 			{
 				switch (p.kind)
@@ -379,7 +396,7 @@ namespace attrib
 			std::unordered_set<std::string> seen;
 			for (const ModPlace& p : places)
 			{
-				if (!index.clashes(p) || !seen.insert(p.text).second) continue;
+				if (!index.conflicts(p) || !seen.insert(p.text).second) continue;
 				++c.count;
 				if (c.places.size() < maxPlaces) c.places.push_back(p.text);
 			}
@@ -417,7 +434,7 @@ namespace attrib
 	}
 
 	UninstallResult Uninstall(Database& db, const std::vector<TracedMod>& mods, std::vector<size_t> which,
-		const std::function<void(Collection&)>& beforeRemove)
+		const std::function<void(Collection&)>& beforeRemove, bool aroundAll)
 	{
 		UninstallResult r;
 		std::sort(which.begin(), which.end());
@@ -486,7 +503,7 @@ namespace attrib
 				}
 				if (clash) break;
 			}
-			if (clash) clashing.push_back(j);
+			if (clash || aroundAll) clashing.push_back(j);
 		}
 		r.redone = !clashing.empty();
 
@@ -518,7 +535,10 @@ namespace attrib
 			{
 				r.error = "the trace of " + mods[i].mod.nameAndVersion() + " doesn't apply: " + firstError(rep) + ".";
 				if (!later.empty() && !r.redone)
+				{
+					r.directFailed = true;
 					r.error += " A mod installed after it (" + names(later) + ") may build on what it changed: uninstall that first.";
+				}
 				return false;
 			}
 			std::vector<std::string> changed;
@@ -581,8 +601,10 @@ namespace attrib
 			take(rep, false);
 			if (!rep.ok)
 			{
+				r.buildsOn = j;
+				r.buildsOnWhy = firstError(rep);
 				r.error = mods[j].mod.nameAndVersion() + " builds on what " + goneNames + " changed, so it can't stay installed without " +
-					(which.size() == 1 ? "it" : "them") + " (" + firstError(rep) + "). Uninstall it too.";
+					(which.size() == 1 ? "it" : "them") + " (" + r.buildsOnWhy + "). Uninstall it too.";
 				return r;
 			}
 			r.retraced.emplace_back(j, std::make_shared<const sc::Script>(MakeTrace(*before, db, mods[j].mod)));
@@ -593,6 +615,75 @@ namespace attrib
 		r.removed = which;
 		r.ok = true;
 		return r;
+	}
+
+	UninstallPlan PlanUninstall(const Database& db, const std::vector<TracedMod>& mods, std::vector<size_t> which)
+	{
+		UninstallPlan plan;
+		std::sort(which.begin(), which.end());
+		which.erase(std::unique(which.begin(), which.end()), which.end());
+		plan.asked = which;
+		std::set<size_t> all(which.begin(), which.end());
+		// Each round either works, takes in one more mod or says why not, so it ends.
+		for (size_t round = 0; round <= mods.size() + 1; ++round)
+		{
+			std::unique_ptr<Database> copy;
+			UninstallResult r;
+			try
+			{
+				copy = sc::CloneDatabase(db);
+				r = Uninstall(*copy, mods, std::vector<size_t>(all.begin(), all.end()), {}, plan.around);
+			}
+			catch (const std::exception& e)
+			{
+				plan.error = e.what();
+				return plan;
+			}
+			if (r.ok)
+			{
+				plan.which.assign(all.begin(), all.end());
+				return plan;
+			}
+			if (r.buildsOn && !all.count(*r.buildsOn) && mods[*r.buildsOn].trace)
+			{
+				all.insert(*r.buildsOn);
+				plan.dependents.emplace_back(*r.buildsOn, r.buildsOnWhy);
+				continue;
+			}
+			// A trace that doesn't apply with the later mods as they are: undone
+			// around it, the one that builds on it shows.
+			if (r.directFailed && !plan.around)
+			{
+				plan.around = true;
+				continue;
+			}
+			plan.error = r.error;
+			return plan;
+		}
+		plan.error = "the mods that build on it couldn't be worked out";
+		return plan;
+	}
+
+	std::string DependentsText(const UninstallPlan& plan, const std::vector<TracedMod>& mods)
+	{
+		if (plan.dependents.empty()) return {};
+		auto names = [&](const std::vector<size_t>& list)
+		{
+			std::string s;
+			for (size_t i = 0; i < list.size(); ++i)
+				s += (i == 0 ? "" : i + 1 == list.size() ? " and " : ", ") + (list[i] < mods.size() ? mods[list[i]].mod.nameAndVersion() : "?");
+			return s;
+		};
+		std::vector<size_t> deps;
+		for (const auto& [i, why] : plan.dependents) deps.push_back(i);
+		std::string s = names(deps) + (deps.size() == 1 ? " builds" : " build") + " on what " + names(plan.asked) + " changed, so " +
+			(deps.size() == 1 ? "it is" : "they are") + " uninstalled with " + (plan.asked.size() == 1 ? "it" : "them") + ":";
+		for (size_t k = 0; k < plan.dependents.size(); ++k)
+		{
+			const auto& [i, why] = plan.dependents[k];
+			s += (k ? "; " : " ") + mods[i].mod.nameAndVersion() + " (" + why + ")";
+		}
+		return s + ".";
 	}
 
 	// ------------------------------------------------------- changing the list ---

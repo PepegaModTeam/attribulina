@@ -28,6 +28,7 @@ from decode import decode_class  # noqa: E402
 import registry  # noqa: E402
 from schema import Schema, from_gen  # noqa: E402
 import typetable  # noqa: E402
+import vaultlib  # noqa: E402
 
 SCHEMAS = os.path.join(REPO, 'data', 'schema')
 
@@ -86,10 +87,8 @@ does, and the paths name those members.'''),
 
 # Notes on a class, by its file.
 NOTES = {
-    'A/_001B_0012.cs': "the game's order is DegPerG, MaxGs, DegPerSec (PS, UC, MW and Carbon headers alike). "
-                       "NFS-VltEd declares DegPerG, DegPerSec, MaxG and its setters are proxies, so the "
-                       "decompilation can't show whether DegPerSec lands at 4 or 8. Taken in declaration order "
-                       "here; may be swapped.",
+    'A/_001B_0012.cs': "the game's order is DegPerG, MaxGs, DegPerSec (PS, UC, MW and Carbon headers alike), and "
+                       "the retail data agrees: 0.5 to 1 at 4, 5 to 10 at 8, in every game.",
     'A/_0017_0019.cs': "Type is declared first but read last (offset 12). It carries DataType key on a string "
                        "property, so how a value converts is unclear.",
     'A/_0008_0015.cs': "no GraphScale: that is A/_0019_0012.cs, registered for UC/W/WB. update_collection <class> "
@@ -208,10 +207,53 @@ class Table:
             s += '  # no member of our schema at these bytes'
         return s
 
+    def follow_names(self, t, st, reads):
+        """The reads with their words moved to the members they are named after, when
+        declaration order puts them on each other's members, and a note saying so.
+        The setters are proxy delegates, so declaration order is only an assumption,
+        and where the data can tell (CarBodyMotion, GMapCurve, Commerce::HatBonus) the
+        names are right."""
+        if not st:
+            return reads, None
+        props = [i for i, r in enumerate(reads) if r[0] == 'prop' and r[1] and r[1]['attr']]
+        leaf = {}
+        for i in props:
+            path, names = self.sch.path(t, reads[i][2], reads[i][4])
+            if path and len(names) == 1:
+                leaf[i] = plain(re.sub(r'\[\d+\]$', '', path.split('+')[0].split('.')[-1]))
+        word = {i: plain(reads[i][1]['name']) for i in props}
+        move = {}                     # read -> the read its word goes to
+        for i in props:
+            if leaf.get(i) == word[i]:
+                continue
+            to = [j for j in props if j != i and leaf.get(j) == word[i] and word[j] != leaf[j]]
+            if len(to) == 1:
+                move[i] = to[0]
+        if not move:
+            return reads, None
+        # A word another one displaces takes the read that one leaves.
+        vacated = [i for i in move if i not in move.values()]
+        displaced = [j for j in move.values() if j not in move]
+        if len(vacated) != len(displaced):
+            return reads, None
+        move.update(zip(displaced, vacated))
+        if any(reads[a][3:] != reads[b][3:] for a, b in move.items()):
+            return reads, None
+        out = list(reads)
+        for a, b in move.items():
+            out[b] = (reads[b][0], reads[a][1], reads[b][2], reads[b][3], reads[b][4])
+        order = [reads[i][1]['name'] for i in sorted(move)]
+        note = ('  # note: the words follow their names. NFS-VltEd declares %s in that order, and its setters are '
+                'proxy delegates, so the declaration order doesn\'t say which read each one takes; taken in it, %s.'
+                % (', '.join(order), ' and '.join('%s would set %s' % (reads[a][1]['name'], self.sch.path(t, reads[a][2], reads[a][4])[0])
+                                                  for a in sorted(move))))
+        return out, note
+
     def words(self, t, d, st):
         out = []
         paths = []                    # (word, offset, path, names)
-        for what, p, off, k, sz in d['out']:
+        reads, self.follow_note = self.follow_names(t, st, d['out'])
+        for what, p, off, k, sz in reads:
             path, names = self.sch.path(t, off, sz) if st else (None, [])
             if what == 'prop':
                 if p and p['attr']:
@@ -330,9 +372,11 @@ class Table:
         b += self.platform_notes(t, st, paths)
         for p in d['problems']:
             b.append('  # note: ' + p)
+        if self.follow_note:
+            b.append(self.follow_note)
         if reg['cls'] in NOTES:
             b.append('  # note: ' + NOTES[reg['cls']])
-        else:
+        if not self.follow_note:
             b += swapped(paths)
         b.append('end')
         self.stats['types'] += 1
@@ -420,7 +464,26 @@ end"""
                                                   key=lambda kv: kv[0].lower()):
             blocks.append(self.block(t, reg, conf, why, others))
         blocks.append(self.model_block())
-        return self.header() + '\n' + '\n\n'.join(blocks) + '\n'
+        vl = vaultlib.blocks(self.sch, self.game)
+        self.stats['vaultlib'] = sum(b.count('\n  ') - b.count('\n  #') for b in vl)
+        return (self.header() + '\n' + '\n\n'.join(blocks) + '\n\n' + self.vaultlib_header() + '\n\n' +
+                '\n\n'.join(vl) + '\n')
+
+    def vaultlib_header(self):
+        paras = [
+            "VaultLib's names (quirk-analysis/VaultLib, heyitsleo's library, which the community "
+            "Attribulator's mod scripts and OGVI use) for the parts of %s values whose name isn't our "
+            "member's, case and an m prefix aside: scripts/nfsms/vaultlib.py reads each class's Read "
+            "method for the bytes a name reads and gives our member there. Attribulina's own reading "
+            "takes them after our member names and before NFS-VltEd's words; NFS-VltEd compatible runs "
+            "never do. A VaultLib name that is one of our member names at other bytes isn't taken, and "
+            "neither are the type's other names then." % self.cfg['name'],
+        ]
+        fmt = '''vaultlib <AttribSys type name>
+  <VaultLib name>[.<part>] <path>   a part of one of its properties: Attribulator's next word
+end'''
+        wrap = lambda p: textwrap.fill(p, width=84, initial_indent='# ', subsequent_indent='# ', break_on_hyphens=False)
+        return '\n#\n'.join([wrap(p) for p in paras] + ['\n'.join('# ' + l for l in fmt.split('\n'))])
 
 
 def plain(name):
@@ -488,8 +551,8 @@ def main():
         with open(path, 'w', newline='\n') as f:
             f.write(text)
         s = tab.stats
-        print('wrote %s: %d types, %d words, %d types with a path, %s' % (
-            os.path.relpath(path, REPO), s['types'], s['words'], s['with_path'],
+        print('wrote %s: %d types, %d words, %d types with a path, %d VaultLib names, %s' % (
+            os.path.relpath(path, REPO), s['types'], s['words'], s['with_path'], s['vaultlib'],
             ', '.join('%s %d' % kv for kv in sorted(s['conf'].items()))))
         for x in s['plus']:
             print('  +N path:', x)

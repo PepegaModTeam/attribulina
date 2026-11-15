@@ -579,10 +579,38 @@ namespace attrib::nfsms
 		return nullptr;
 	}
 
+	const std::vector<PropertyNames::Step>* PropertyNames::vaultLibPath(const std::string& typeName, std::string_view name) const
+	{
+		for (const char* prefix : { "", "Attrib::Types::", "Attrib::", "EA::Reflection::" })
+			if (auto it = vaultLib.find(prefix + typeName); it != vaultLib.end())
+			{
+				if (auto w = it->second.find(std::string(name)); w != it->second.end()) return &w->second;
+				const std::string l = Lower(std::string(name));
+				for (const auto& [n, steps] : it->second)
+					if (Lower(n) == l) return &steps;
+				return nullptr;
+			}
+		return nullptr;
+	}
+
+	bool PropertyNames::vaultLibHead(const std::string& typeName, std::string_view name) const
+	{
+		const std::string head = Lower(std::string(name)) + ".";
+		for (const char* prefix : { "", "Attrib::Types::", "Attrib::", "EA::Reflection::" })
+			if (auto it = vaultLib.find(prefix + typeName); it != vaultLib.end())
+			{
+				for (const auto& [n, steps] : it->second)
+					if (Lower(n).compare(0, head.size(), head) == 0) return true;
+				return false;
+			}
+		return false;
+	}
+
 	PropertyNames PropertyNames::Parse(std::string_view text, const std::string& source)
 	{
 		PropertyNames n;
 		Type* cur = nullptr;
+		std::map<std::string, std::vector<Step>>* vaultLib = nullptr; // in a vaultlib block
 		int line = 0;
 		size_t b = 0;
 		while (b < text.size())
@@ -600,6 +628,40 @@ namespace attrib::nfsms
 			{
 				throw std::runtime_error(source + ":" + std::to_string(line) + ": " + why);
 			};
+			// A member path: name[.name...], each with an optional [index], then
+			// +bytes into the last one.
+			auto memberPath = [&](std::string k, std::vector<Step>& path, uint32_t* rest)
+			{
+				if (const size_t plus = k.find('+'); plus != std::string::npos)
+				{
+					char* stop = nullptr;
+					const uint32_t r = uint32_t(std::strtoul(k.c_str() + plus + 1, &stop, 10));
+					if (!rest || plus + 1 == k.size() || *stop) bad("bad member path " + k);
+					*rest = r;
+					k.erase(plus);
+				}
+				size_t i = 0;
+				while (i < k.size())
+				{
+					Step st;
+					const size_t end = k.find_first_of(".[", i);
+					st.member = k.substr(i, end == std::string::npos ? std::string::npos : end - i);
+					if (st.member.empty()) bad("bad member path " + k);
+					i = end == std::string::npos ? k.size() : end;
+					if (i < k.size() && k[i] == '[')
+					{
+						const size_t close = k.find(']', i);
+						if (close == std::string::npos) bad("bad member path " + k);
+						char* stop = nullptr;
+						st.index = std::strtoll(k.c_str() + i + 1, &stop, 10);
+						if (stop != k.c_str() + close || st.index < 0) bad("bad index in " + k);
+						i = close + 1;
+					}
+					if (i < k.size() && k[i] != '.') bad("bad member path " + k);
+					if (i < k.size()) ++i;
+					path.push_back(std::move(st));
+				}
+			};
 			if (w == "game")
 			{
 				in >> n.game;
@@ -609,10 +671,28 @@ namespace attrib::nfsms
 				std::string t;
 				if (!(in >> t)) bad("type needs a name");
 				cur = &n.types[t];
+				vaultLib = nullptr;
+			}
+			else if (w == "vaultlib")
+			{
+				std::string t;
+				if (!(in >> t)) bad("vaultlib needs a type's name");
+				vaultLib = &n.vaultLib[t];
+				cur = nullptr;
 			}
 			else if (w == "end")
 			{
 				cur = nullptr;
+				vaultLib = nullptr;
+			}
+			else if (vaultLib)
+			{
+				// <VaultLib name>[.<part>] <our member path>
+				std::string k;
+				if (!(in >> k)) bad(w + " needs our member's path");
+				std::vector<Step> path;
+				memberPath(k, path, nullptr);
+				(*vaultLib)[w] = std::move(path);
 			}
 			else if (!cur)
 			{
@@ -636,36 +716,7 @@ namespace attrib::nfsms
 				}
 				if (!k.empty() && k != "list")
 				{
-					// The member path: name[.name...], each with an optional [index],
-					// then +bytes into the last one.
-					if (const size_t plus = k.find('+'); plus != std::string::npos)
-					{
-						char* stop = nullptr;
-						p.rest = uint32_t(std::strtoul(k.c_str() + plus + 1, &stop, 10));
-						if (plus + 1 == k.size() || *stop) bad("bad member path " + k);
-						k.erase(plus);
-					}
-					size_t i = 0;
-					while (i < k.size())
-					{
-						Step st;
-						const size_t end = k.find_first_of(".[", i);
-						st.member = k.substr(i, end == std::string::npos ? std::string::npos : end - i);
-						if (st.member.empty()) bad("bad member path " + k);
-						i = end == std::string::npos ? k.size() : end;
-						if (i < k.size() && k[i] == '[')
-						{
-							const size_t close = k.find(']', i);
-							if (close == std::string::npos) bad("bad member path " + k);
-							char* stop = nullptr;
-							st.index = std::strtoll(k.c_str() + i + 1, &stop, 10);
-							if (stop != k.c_str() + close || st.index < 0) bad("bad index in " + k);
-							i = close + 1;
-						}
-						if (i < k.size() && k[i] != '.') bad("bad member path " + k);
-						if (i < k.size()) ++i;
-						p.path.push_back(std::move(st));
-					}
+					memberPath(k, p.path, &p.rest);
 					if (!(in >> k)) k.clear();
 				}
 				if (!k.empty())
@@ -1438,7 +1489,9 @@ namespace attrib::nfsms
 					if (f) requireOwn(x, *f, p.field);
 					RefPart part = RefPart::Whole;
 					elementWords_ = inElement_ = nullptr;
+					vaultLibHead_.clear();
 					for (size_t i = 3; i + 1 < c.args.size(); ++i) property(x, p, c.args[i], part);
+					endWords();
 					// NFS-VltEd resizes a curve's list without the point count the file keeps.
 					if (st_.vltEd && f && curvePoint(x, p, nullptr, std::strtoll(c.args.back().c_str(), nullptr, 10))) return;
 					sc::Statement r;
@@ -2084,11 +2137,70 @@ namespace attrib::nfsms
 				}
 			}
 
+			// Our member of a struct a word names: as written, else in any case or
+			// without its m prefix (mKitNumber: KitNumber).
+			static const MemberDef* OwnMember(const ValueType& vt, const std::string& prop)
+			{
+				if ((vt.kind != TypeKind::Struct && vt.kind != TypeKind::Curve) || !vt.st || prop.empty()) return nullptr;
+				if (const MemberDef* m = vt.st->member(prop)) return m;
+				const std::string l = Lower(prop);
+				for (const MemberDef& mm : vt.st->members)
+				{
+					const std::string n = Lower(mm.name);
+					if (n == l || (n.size() > 1 && n[0] == 'm' && std::isupper(static_cast<unsigned char>(mm.name[1])) && n.substr(1) == l))
+						return &mm;
+				}
+				return nullptr;
+			}
+
+			// A VaultLib name given without its part (ReferencedRow, then ClassKey).
+			void endWords()
+			{
+				if (vaultLibHead_.empty()) return;
+				const std::string head = vaultLibHead_;
+				vaultLibHead_.clear();
+				fail("VaultLib's " + head + " needs its part after it (" + vaultLibParts(head) + ")");
+			}
+			std::string vaultLibParts(const std::string& head) const
+			{
+				std::string parts;
+				if (const PropertyNames* n = st_.names.get())
+					for (const char* prefix : { "", "Attrib::Types::", "Attrib::", "EA::Reflection::" })
+						if (auto it = n->vaultLib.find(prefix + vaultLibType_); it != n->vaultLib.end())
+						{
+							const std::string h = Lower(head) + ".";
+							for (const auto& [name, steps] : it->second)
+								if (Lower(name).compare(0, h.size(), h) == 0) parts += (parts.empty() ? "" : ", ") + name.substr(h.size());
+							break;
+						}
+				return parts;
+			}
+			void pushSteps(sc::FieldPath& p, const std::vector<PropertyNames::Step>& steps)
+			{
+				for (const PropertyNames::Step& st : steps)
+				{
+					p.steps.push_back({ st.member, -1 });
+					if (st.index >= 0) p.steps.push_back({ std::string(), st.index });
+				}
+			}
+
 			// One property token of update_field: NFS-VltEd's word for a part of the
 			// value, our schema's member, an index, or a part of a value the way
-			// Attribulator names it.
+			// Attribulator (VaultLib) names it. Attribulina's own reading takes our
+			// member's name first, then VaultLib's, then NFS-VltEd's word; NFS-VltEd
+			// compatible runs take only NFS-VltEd's words.
 			void property(Collection& x, sc::FieldPath& p, const std::string& token, RefPart& part)
 			{
+				if (!vaultLibHead_.empty())
+				{
+					// The part of a VaultLib name given before it: ReferencedRow ClassKey.
+					const std::string head = vaultLibHead_;
+					vaultLibHead_.clear();
+					const std::vector<PropertyNames::Step>* steps = st_.names ? st_.names->vaultLibPath(vaultLibType_, head + "." + token) : nullptr;
+					if (!steps) fail("VaultLib's " + head + " has no part " + token + " (its parts: " + vaultLibParts(head) + ")");
+					pushSteps(p, *steps);
+					return;
+				}
 				if (!token.empty() && std::all_of(token.begin(), token.end(), [](char ch)
 				{
 					return std::isdigit(static_cast<unsigned char>(ch));
@@ -2130,14 +2242,25 @@ namespace attrib::nfsms
 					for (const std::string& w : *element) words += (words.empty() ? "" : ", ") + w;
 					fail("Value '" + token + "' cannot be found (the element's words: " + words + ")");
 				}
+				// Attribulina's own reading: the member our schema or VaultLib names so.
+				const MemberDef* own = st_.vltEd ? nullptr : OwnMember(vt, prop);
+				const std::vector<PropertyNames::Step>* vaultLib =
+					st_.vltEd || own || !st_.names || element ? nullptr : st_.names->vaultLibPath(vt.typeName, prop);
+				const std::string target = own ? own->name : vaultLib && !vaultLib->empty() ? (*vaultLib)[0].member : std::string();
 				if (const PropertyNames::Type* t = vltType(p, vt))
 				{
-					if (t->single) return; // NFS-VltEd ignores the word; update() steps to its one property
-					const PropertyNames::Property* pr = t->find(token, !st_.vltEd);
-					if (!pr && !idx.empty() && !st_.vltEd) pr = t->find(prop);
-					else if (pr) idx.clear(); // M[1,1]: the index is part of the word
+					// NFS-VltEd ignores the word; update() steps to its one property.
+					if (t->single && target.empty()) return;
+					const PropertyNames::Property* pr = t->single ? nullptr : t->find(token, !st_.vltEd);
+					bool whole = pr != nullptr; // M[1,1]: the index is part of the word
+					if (!pr && !idx.empty() && !st_.vltEd && !t->single) pr = t->find(prop);
+					// NFS-VltEd's word of that name for the same member still goes its way
+					// (a list word steps into the pointer it holds); one for another member
+					// gives way to ours (CarBodyMotion's MaxG over MaxGs was such a word).
+					if (pr && !target.empty() && (pr->path.empty() || Lower(pr->path[0].member) != Lower(target))) pr = nullptr, whole = false;
 					if (pr)
 					{
+						if (whole) idx.clear();
 						noteWord(*pr, p, vt);
 						stepToProperty(x, p, vt, *pr, part, token);
 						elementWords_ = pr->list ? &pr->elements : nullptr;
@@ -2147,12 +2270,31 @@ namespace attrib::nfsms
 					// NFS-VltEd knows only its own words, as written.
 					if (st_.vltEd && !element) fail(NotFound(*t, token));
 				}
-				else if (st_.names && (st_.vltEd ? prop == "Data" : l == "data") && idx.empty())
+				if (vaultLib)
+				{
+					pushSteps(p, *vaultLib);
+					if (!idx.empty())
+					{
+						char* end = nullptr;
+						const long long i = std::strtoll(idx.c_str(), &end, 10);
+						if (!end || *end || i < 0) fail("bad index in " + token);
+						p.steps.push_back({ std::string(), i });
+					}
+					return;
+				}
+				if (!st_.vltEd && !own && st_.names && !element && idx.empty() && st_.names->vaultLibHead(vt.typeName, prop))
+				{
+					vaultLibHead_ = prop; // its part is the next word
+					vaultLibType_ = vt.typeName;
+					return;
+				}
+				const bool hasWords = vltType(p, vt) != nullptr;
+				if (!hasWords && st_.names && (st_.vltEd ? prop == "Data" : l == "data") && idx.empty())
 				{
 					part = RefPart::Data; // NFS-VltEd's raw class: the value's bytes
 					return;
 				}
-				else if (st_.vltEd && st_.names && !element)
+				if (!hasWords && st_.vltEd && st_.names && !element)
 				{
 					// A type NFS-VltEd has no class for: its raw class has Data alone.
 					fail("Value '" + token + "' cannot be found: NFS-VltEd has no words for " + vt.typeName + " but Data, its bytes in hex");
@@ -2200,14 +2342,7 @@ namespace attrib::nfsms
 						if (vt.st)
 						{
 							// Our member names, without case, and without their m prefix (mKitNumber: KitNumber).
-							const MemberDef* m = vt.st->member(prop);
-							for (const MemberDef& mm : vt.st->members)
-							{
-								const std::string n = Lower(mm.name);
-								if (!m && (n == l || (n.size() > 1 && n[0] == 'm' && std::isupper(static_cast<unsigned char>(mm.name[1])) &&
-													  n.substr(1) == l)))
-									m = &mm;
-							}
+							const MemberDef* m = OwnMember(vt, prop);
 							// Value: NFS-VltEd's word for a list element of one member (MiniRefSpec's key).
 							if (!m && l == "value" && vt.st->members.size() == 1) m = &vt.st->members[0];
 							if (!m)
@@ -2240,6 +2375,7 @@ namespace attrib::nfsms
 			// struct): the property it sets, when ours is a struct.
 			void single(Collection& x, sc::FieldPath& p, RefPart& part)
 			{
+				endWords();
 				const ValueType vt = sc::TypeAt(db_, x, p);
 				const PropertyNames::Type* t = vltType(p, vt);
 				if (!t || !t->single || t->properties.empty() || part != RefPart::Whole) return;
@@ -2452,6 +2588,7 @@ namespace attrib::nfsms
 				if (st_.vltEd && spareWrite(x, *f, p, fieldToken, rest)) return;
 				RefPart part = RefPart::Whole;
 				elementWords_ = inElement_ = nullptr;
+				vaultLibHead_.clear();
 				size_t first = 0;
 				if (st_.vltEd && collection)
 				{
@@ -3131,6 +3268,7 @@ namespace attrib::nfsms
 			{
 				sc::FieldPath p = fieldPath(x, field);
 				RefPart part = RefPart::Whole;
+				vaultLibHead_.clear();
 				for (const std::string& w : words) property(x, p, w, part);
 				single(x, p, part);
 				sc::TypeAt(db_, x, p);
@@ -3188,6 +3326,8 @@ namespace attrib::nfsms
 			// A list's element words after its word (elementWords_), then after its index (inElement_).
 			const std::vector<std::string>* elementWords_ = nullptr;
 			const std::vector<std::string>* inElement_ = nullptr;
+			// A VaultLib name whose part is the next word, and the type it is of.
+			std::string vaultLibHead_, vaultLibType_;
 			sc::FieldPath lastBase_;
 			ValueType lastBaseType_;
 
@@ -3665,6 +3805,19 @@ namespace attrib::nfsms
 							const auto& st = b.path.steps[i];
 							if (st.member.empty())
 							{
+								// A matrix's element as Attribulator (VaultLib) names it, from 1;
+								// NFS-VltEd's form takes row[column] to its own word.
+								if (!vltEd_ && i + 1 < b.path.steps.size() && b.path.steps[i + 1].member.empty())
+								{
+									sc::FieldPath prefix = b.path;
+									prefix.steps.resize(i);
+									if (kindAt(t, prefix) == TypeKind::Matrix)
+									{
+										props.push_back("Data[" + std::to_string(st.index + 1) + "," + std::to_string(b.path.steps[i + 1].index + 1) + "]");
+										++i;
+										continue;
+									}
+								}
 								if (props.empty()) props.push_back(std::to_string(st.index));
 								else props.back() += "[" + std::to_string(st.index) + "]";
 							}
@@ -3961,7 +4114,11 @@ namespace attrib::nfsms
 					// The word as NFS-VltEd reads it, from the value's bytes now: wider than
 					// our member (FEPartData's 4 over tier, drift, drag and grip), or a
 					// number where we have a name (an enum member).
-					if (pr && vltEd_ && !pr->list && VltSize(pr->vltType) && (VltReadsOtherwise(pr->vltType, vt.kind, vt.size) || !IsKeyWord(pr->vltType)))
+					// A key word on 64-bit keys (Most Wanted's early demos) keeps the name: its
+					// bytes are a StringHash64, which no 32-bit name has.
+					const bool keys64 = x->vault && x->vault->raw.keys64;
+					if (pr && vltEd_ && !pr->list && VltSize(pr->vltType) && !(keys64 && IsKeyWord(pr->vltType)) &&
+						(VltReadsOtherwise(pr->vltType, vt.kind, vt.size) || !IsKeyWord(pr->vltType)))
 						wideValue_ = wordNow(*pr, top, topBytes, x->vault ? x->vault->raw.endian : Endian::Little);
 				}
 				catch (const std::exception&)
@@ -4032,6 +4189,7 @@ namespace attrib::nfsms
 				sc::FieldPath p = path;
 				p.field = nameOf(path.field);
 				CurveValue c;
+				bool graphScale = false; // Undercover's and World's 48-byte curve
 				try
 				{
 					// A curve field, an element of one, or a struct's member (AI::GlueCurve's Easy).
@@ -4041,6 +4199,7 @@ namespace attrib::nfsms
 					const DataBlock* b = vt.kind == TypeKind::Curve ? sc::BlockAt(db, *x, p, &off) : nullptr;
 					if (!b || uint64_t(off) + vt.size > b->bytes.size()) return nullptr;
 					c = ReadCurve(*b, off, x->vault ? x->vault->raw.endian : Endian::Little, vt.size);
+					graphScale = CurveAt(vt.size).graphScale;
 				}
 				catch (const std::exception&)
 				{
@@ -4055,8 +4214,11 @@ namespace attrib::nfsms
 				auto v = std::make_shared<sc::Value>();
 				v->kind = sc::Value::Kind::Struct;
 				v->members = { { "xMin", sc::MakeNumber(sc::NumberText(c.xMin, true)) }, { "xMax", sc::MakeNumber(sc::NumberText(c.xMax, true)) },
-							   { "yMin", sc::MakeNumber(sc::NumberText(c.yMin, true)) }, { "yMax", sc::MakeNumber(sc::NumberText(c.yMax, true)) },
-							   { "X", list(c.x) }, { "Y", list(c.y) }, { "Y2", list(c.y2) } };
+							   { "yMin", sc::MakeNumber(sc::NumberText(c.yMin, true)) }, { "yMax", sc::MakeNumber(sc::NumberText(c.yMax, true)) } };
+				if (graphScale) v->members.push_back({ "graphScale", sc::MakeNumber(sc::NumberText(c.graphScale, true)) });
+				v->members.push_back({ "X", list(c.x) });
+				v->members.push_back({ "Y", list(c.y) });
+				v->members.push_back({ "Y2", list(c.y2) });
 				return v;
 			}
 
@@ -4067,7 +4229,9 @@ namespace attrib::nfsms
 				{
 					std::string s = head + " " + field;
 					wideValue_.reset();
-					if (vltWords(field, ps)) s = "update_collection" + s.substr(std::strlen("update_field"));
+					// NFS-VltEd's words in its form; our members' names otherwise, as
+					// Attribulina's own reading (and mostly VaultLib's) has them.
+					if (vltEd_ && vltWords(field, ps)) s = "update_collection" + s.substr(std::strlen("update_field"));
 					for (const std::string& p : ps) s += " " + p;
 					const std::string& text = wideValue_ ? *wideValue_ : val;
 					// NFS-VltEd cuts a line at its first # and has no escape for a quote.
@@ -4130,7 +4294,9 @@ namespace attrib::nfsms
 								for (size_t c = 0; c < 4; ++c)
 								{
 									auto ps = props;
-									ps.push_back(std::to_string(r) + "[" + std::to_string(c) + "]");
+									// row[column] becomes NFS-VltEd's word; Attribulator's is Data[row,column] from 1.
+									ps.push_back(vltEd_ ? std::to_string(r) + "[" + std::to_string(c) + "]"
+														: "Data[" + std::to_string(r + 1) + "," + std::to_string(c + 1) + "]");
 									line(ps, NetNumber(v.items[r]->items[c]->text));
 								}
 							return;
@@ -4192,6 +4358,23 @@ namespace attrib::nfsms
 			const sc::Target* target_ = nullptr;
 			// The value an NFS-VltEd word wider than our member has now (vltWords, vltEd_).
 			mutable std::optional<std::string> wideValue_;
+
+			// The kind of value a path leads to in the target, or Unknown.
+			TypeKind kindAt(const sc::Target& t, sc::FieldPath p) const
+			{
+				const ClassDef* k = db_.findClass(KeyOf(nameOf(t.cls)));
+				Collection* x = k ? const_cast<Database&>(db_).findCollection(k->key, KeyOf(nameOf(t.name))) : nullptr;
+				if (!x) return TypeKind::Unknown;
+				p.field = nameOf(p.field);
+				try
+				{
+					return sc::TypeAt(const_cast<Database&>(db_), *x, p).kind;
+				}
+				catch (const std::exception&)
+				{
+					return TypeKind::Unknown;
+				}
+			}
 			bool inCurve_ = false;
 
 			// The curve a path leads into (or is), as a path.
