@@ -86,6 +86,19 @@ namespace attrib::nfsms
 			return !setup.empty() || !images.empty();
 		}
 		bool hasDescription() const;  // a ui_text that isn't blank
+
+		// The mod's title, author, version and game as mod script statements
+		// (Script.h) in comment lines, which NFS-VltEd skips (doc/nfsms.md):
+		//   # amod begin
+		//   # title "Shifted"
+		//   # version "1.2"
+		//   # amod end
+		// The block's lines without their #, each at its line of the file and
+		// the others empty, so a mod script parser's line numbers are the file's.
+		// Empty without a block; install::ReadMod reads it.
+		std::string modInfo;
+		int modInfoLine = 0;      // the begin line
+		std::string modInfoError; // "line 9: ..." for a block without its end, or a command in it
 	};
 
 	// The commands NFS-VltEd 4.6 knows, and Attribulator's additions.

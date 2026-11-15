@@ -77,6 +77,10 @@ apply:
                     updated memory file is written there too
   --vlted           read nfsms scripts as NFS-VltEd 4.6 does (doc/nfsms.md,
                     "NFS-VltEd compatible"): its value widths and quirks
+  --no-mod-list     leave the game's list of installed mods out. By default each
+                    script file applied goes on attribulina_mods.txt beside the
+                    database once it is saved (with --out, a copy of the list is
+                    written there), and one the list has already gives a warning
 
 diff: the script that turns <base> into <database>. --no-was leaves out the
 old values, --class limits it to some classes.
@@ -455,7 +459,8 @@ which decides how values read; lines that fail come out as comments.
 
 			int apply(const std::vector<std::string>& in)
 			{
-				const Args a = Parse(in, { "-e", "--set", "--out", "--compress" }, { "--dry-run", "--strict", "--no-backup", "--vlted", "--no-memory-files" });
+				const Args a = Parse(in, { "-e", "--set", "--out", "--compress" },
+					{ "--dry-run", "--strict", "--no-backup", "--vlted", "--no-memory-files", "--no-mod-list" });
 				if (a.positional.empty()) throw Failed{ "apply needs a database" };
 				std::optional<LzKind> compress;
 				if (a.has("--compress") && !(compress = ParseLzKind(a.get("--compress"))))
@@ -464,9 +469,11 @@ which decides how values read; lines that fail come out as comments.
 				std::vector<sc::Script> scripts;
 				std::vector<ns::Script> nfsmsScripts;
 				std::vector<std::pair<bool, size_t>> order; // in command line order: (nfsms, index)
+				std::vector<std::string> files;              // per entry of order: the script's file ("" for -e and -)
 				for (size_t i = 1; i < a.positional.size(); ++i)
 				{
 					const std::string& f = a.positional[i];
+					files.push_back(f == "-" ? std::string() : f);
 					if (Lower(ToUtf8(FromUtf8(f).extension())) == ns::kExtension)
 					{
 						order.emplace_back(true, nfsmsScripts.size());
@@ -482,6 +489,7 @@ which decides how values read; lines that fail come out as comments.
 				for (const std::string& e : a.all("-e"))
 				{
 					order.emplace_back(false, scripts.size());
+					files.emplace_back();
 					scripts.push_back(sc::Parse(e, "-e#" + std::to_string(++n), "."));
 					sc::LoadIncludes(scripts.back());
 				}
@@ -501,11 +509,47 @@ which decides how values read; lines that fail come out as comments.
 				// World event vault files whose vault a script deleted, and OGVI's
 				// saves of event vaults that go to gc.vaults (vaultlib::MoveToEventVaultFile).
 				std::vector<std::string> removed = movedFrom_;
-				for (const auto& [isNfsms, index] : order)
+				// The game's list of installed mods (core/ModList.h): each script
+				// file goes on it once saved.
+				ModsToList mods;
+				mods.track = !a.has("--no-mod-list");
+				mods.folder = databaseFolderOf(a.positional[0]);
+				if (mods.track)
 				{
+					try
+					{
+						mods.list = ReadModList(mods.folder).value_or(ModList{});
+					}
+					catch (const std::exception& e)
+					{
+						mods.error = e.what();
+						err_ << "attribcli: warning: the list of installed mods doesn't read, so it is left as it is: " << e.what() << "\n";
+					}
+				}
+				for (size_t k = 0; k < order.size(); ++k)
+				{
+					const auto& [isNfsms, index] = order[k];
+					std::optional<InstalledMod> draft;
+					if (mods.track && !files[k].empty())
+					{
+						draft = install::DescribeMod(files[k], readText(files[k]), isNfsms, isNfsms ? install::ModInfoOf(nfsmsScripts[index]) : scripts[index]);
+						ModList all = mods.list;
+						all.mods.insert(all.mods.end(), mods.added.begin(), mods.added.end());
+						const ModIdentity id = install::IdentityOf(*draft);
+						if (const std::string note = InstalledNote(FindInstalled(all, id), id); !note.empty())
+							err_ << "attribcli: warning: " << note << " (--no-mod-list leaves the list out)\n";
+					}
 					if (!isNfsms)
 					{
-						if (!applyOne(*db, scripts[index], a, given, removed)) return 1;
+						sc::ApplyReport r;
+						if (!applyOne(*db, scripts[index], a, given, removed, &r)) return 1;
+						if (draft)
+						{
+							std::map<std::string, std::string> opts;
+							for (const sc::OptionDef* o : scripts[index].options())
+								if (auto it = given.find(o->id); it != given.end()) opts[o->id] = it->second;
+							mods.add(std::move(*draft), *db, r, opts, nullptr, !a.has("--no-memory-files"));
+						}
 						continue;
 					}
 					const ns::Script& s = nfsmsScripts[index];
@@ -542,6 +586,7 @@ which decides how values read; lines that fail come out as comments.
 					out_ << s.source << ": " << r.summary() << (failed ? "; " + std::to_string(failed) + " line(s) failed" : "")
 						<< (r.warnings() ? " (" + std::to_string(r.warnings()) + " warning(s))" : "") << "\n";
 					if (!a.has("--dry-run")) rememberNames(r.newNames);
+					if (draft) mods.add(std::move(*draft), *db, r, {}, &st.choices, !a.has("--no-memory-files"));
 				}
 
 				if (compress)
@@ -557,7 +602,93 @@ which decides how values read; lines that fail come out as comments.
 					}
 					if (!any) err_ << "attribcli: warning: --compress: no compressed pack (gameplay.lzc) is loaded\n";
 				}
-				return saveChanged(*db, std::move(removed), a);
+				const int saved = saveChanged(*db, std::move(removed), a);
+				if (saved == 0) mods.write(a, out_, err_);
+				return saved;
+			}
+
+			// The mods `apply` adds to the game's list of installed mods.
+			struct ModsToList
+			{
+				bool track = true;
+				std::string folder; // the database's: the list's
+				ModList list;       // as read
+				std::string error;  // why it didn't read: it stays as it is
+				std::vector<InstalledMod> added;
+
+				void add(InstalledMod m, const Database& db, const sc::ApplyReport& r, const std::map<std::string, std::string>& options,
+					const ns::Choices* choices, bool memoryFiles)
+				{
+					install::CompleteRecord(m, db, std::string("attribcli ") + Version::GetAppVersionString(), options, choices);
+					const size_t failed = r.errors();
+					m.result = failed ? "installed, " + std::to_string(failed) + (failed == 1 ? " line" : " lines") + " failed" : "installed";
+					std::vector<std::string> changed;
+					for (const LoadedPack* pk : r.touched)
+					{
+						std::vector<std::string> pack{ pk->path };
+						if (const std::optional<std::string> twin = PackTwin(pk->path)) pack.push_back(*twin);
+						for (const std::string& f : pack)
+						{
+							changed.push_back(f);
+							if (memoryFiles)
+								for (const MemoryFileCopy& c : MemoryFileCopiesOf(f)) changed.push_back(c.memoryFile);
+						}
+					}
+					changed.insert(changed.end(), r.removedFiles.begin(), r.removedFiles.end());
+					changed.insert(changed.end(), r.copiedFiles.begin(), r.copiedFiles.end());
+					const std::string game = ToUtf8(FromUtf8(folder).parent_path());
+					for (const std::string& f : changed)
+					{
+						const std::string name = ModListFileName(f, game);
+						if (std::find(m.files.begin(), m.files.end(), name) == m.files.end()) m.files.push_back(name);
+					}
+					std::sort(m.files.begin(), m.files.end());
+					added.push_back(std::move(m));
+				}
+
+				void write(const Args& a, std::ostream& out, std::ostream& err) const
+				{
+					if (!track || added.empty() || !error.empty()) return;
+					const std::string outDir = a.get("--out");
+					const std::string to = outDir.empty() ? folder : outDir;
+					std::string names;
+					for (const InstalledMod& m : added) names += (names.empty() ? "" : ", ") + m.name() + (m.version.empty() ? "" : " " + m.version);
+					if (a.has("--dry-run"))
+					{
+						out << "would add " << names << " to " << ModListPath(to) << "\n";
+						return;
+					}
+					try
+					{
+						ModList l = list;
+						l.mods.insert(l.mods.end(), added.begin(), added.end());
+						WriteModList(to, l);
+						out << "added " << names << " to " << ModListPath(to) << "\n";
+					}
+					catch (const std::exception& e)
+					{
+						err << "attribcli: warning: the list of installed mods wasn't updated: " << e.what() << "\n";
+					}
+				}
+			};
+
+			// The folder of the database `path` names: the list of installed mods is there.
+			static std::string databaseFolderOf(const std::string& path)
+			{
+				const fs::path p = FromUtf8(path);
+				std::error_code ec;
+				if (fs::is_directory(p, ec)) return path;
+				if (const std::optional<std::string> attrs = DatabaseFileFor(path)) return ToUtf8(FromUtf8(*attrs).parent_path());
+				return ToUtf8(p.parent_path());
+			}
+
+			std::string readText(const std::string& path)
+			{
+				std::ifstream in(FromUtf8(path), std::ios::binary);
+				if (!in) throw std::runtime_error("can't read " + path);
+				std::ostringstream s;
+				s << in.rdbuf();
+				return s.str();
 			}
 
 			// Writes the database's dirty packs (with a .lzc's twin) and removes
@@ -628,7 +759,7 @@ which decides how values read; lines that fail come out as comments.
 			}
 
 			bool applyOne(Database& db, const sc::Script& s, const Args& a, const std::map<std::string, std::string>& given,
-						  std::vector<std::string>& removed)
+						  std::vector<std::string>& removed, sc::ApplyReport* result = nullptr)
 			{
 				sc::ApplySettings st;
 				st.strict = a.has("--strict");
@@ -645,6 +776,7 @@ which decides how values read; lines that fail come out as comments.
 				out_ << s.source << ": " << r.summary() << (r.warnings() ? " (" + std::to_string(r.warnings()) + " warning(s))" : "") << "\n";
 				if (!a.has("--dry-run")) rememberNames(r.newNames);
 				removed.insert(removed.end(), r.removedFiles.begin(), r.removedFiles.end());
+				if (result) *result = r;
 				return true;
 			}
 

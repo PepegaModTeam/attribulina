@@ -11,11 +11,15 @@
 //
 // The window shows the step, a status line and, on request, the Log, which
 // ends with how the installation went. Every run also writes a timestamped
-// log file into the folder the program runs in. Platform independent: a
-// Host (app/Host.h) gives the window and the dialogs. doc/installer.md.
+// log file into the folder the program runs in. Each mod installed goes on
+// the game's list of installed mods (core/ModList.h, attribulina_mods.txt
+// in GLOBAL), and installing one the list has already asks first; Advanced
+// Options turns that off and shows the list. Platform independent: a Host
+// (app/Host.h) gives the window and the dialogs. doc/installer.md.
 
 #include "app/CodeEditor.h"
 #include "app/Host.h"
+#include "app/InstalledMods.h"
 #include "app/ScriptSetup.h"
 
 #include "core/Install.h"
@@ -109,8 +113,11 @@ namespace installer
 		// Runs the mod and saves what it changed (in the background).
 		void install();
 		bool canInstall() const;
-		// Starts over with another mod, the game's folder kept.
+		// Starts over with another mod, the game's folder kept. Once a mod is
+		// installed (or failed to), the steps before are locked, and this is
+		// the only way back: they show what was installed.
 		void installAnother();
+		bool finished() const; // the Install step, with how it went
 		void goTo(Step s);
 		bool canGoTo(Step s) const;
 
@@ -162,6 +169,10 @@ namespace installer
 			std::vector<std::string> packs;  // their file names
 			std::vector<std::string> copies; // "GlobalMemoryFile.bin holds a copy of GLOBAL\ATTRIBUTES.BIN"
 			size_t warnings = 0;
+			// Its attribulina_mods.txt: none when there is no file, or when it
+			// doesn't read (modsError says why).
+			std::optional<attrib::ModList> mods;
+			std::string modsError;
 		};
 		const FoundGame& game() const
 		{
@@ -180,11 +191,35 @@ namespace installer
 		{
 			return modWarning_;
 		}
+		// The game's list has the mod already (this version or another): what
+		// to know, and the user's go-ahead, which the steps after Game wait for.
+		const std::string& installedNote() const
+		{
+			return installedNote_;
+		}
+		bool& installAnyway()
+		{
+			return installAnyway_;
+		}
+		// Advanced Options: keep the list of installed mods (on by default,
+		// TrackMods in mod_installer.ini). Off, installing neither reads it
+		// nor adds to it.
+		bool trackMods() const
+		{
+			return trackMods_;
+		}
+		void setTrackMods(bool on);
+		// The Installed Mods window, with the game's list.
+		void showInstalledMods()
+		{
+			showMods_ = true;
+		}
 		struct Result
 		{
 			Outcome outcome = Outcome::None;
 			std::string headline, detail;
 			std::vector<std::string> files; // written and removed, from the game's folder
+			std::optional<attrib::ModList> mods; // the list, the mod added
 		};
 		const Result& result() const
 		{
@@ -218,6 +253,7 @@ namespace installer
 		// level already (a script's "x.amod:3:1: error: ..."), so the file
 		// doesn't put it in front again.
 		void post(Level level, std::string text, bool levelInText = false);
+		bool refuseFinished(); // finished: says to use Install Another Mod
 		void setStatus(Level level, std::string text);
 		void startWork(Work kind, std::function<void()> job);
 		void harvest(); // after the work: its results into the window's state
@@ -229,7 +265,11 @@ namespace installer
 		std::unique_ptr<attrib::Database> loadDatabase(const attrib::install::GameFolder& f, const attrib::Target& target,
 			std::vector<std::string>& movedFrom, FoundGame* found);
 		void loadGameJob(const attrib::install::GameFolder& f, std::optional<attrib::Target> target);
-		void installJob(const attrib::install::Mod& mod, const attrib::install::ModSettings& settings, const FoundGame& game);
+		void installJob(const attrib::install::Mod& mod, const attrib::install::ModSettings& settings, const FoundGame& game, bool track);
+		// On the worker: the mod onto the game's list (r.mods), with how it went
+		// and the files it changed (full paths).
+		void recordInstall(const attrib::install::Mod& mod, const attrib::install::ModSettings& settings, const FoundGame& game,
+			const std::string& result, const std::vector<std::string>& files, Result& r);
 		void resetOptions();
 		void loadSettings();
 		void saveSettings();
@@ -243,6 +283,8 @@ namespace installer
 		void drawStatus();
 		void drawLog(float height);
 		void drawButtons();
+		void drawAdvanced();
+		void drawModsWindow();
 
 		app::Host& host_;
 		Paths paths_;
@@ -258,6 +300,11 @@ namespace installer
 		app::SetupImages images_;
 		FoundGame game_;
 		std::string modProblem_, modWarning_;
+		std::string installedNote_;
+		bool installAnyway_ = false;
+		bool trackMods_ = true;
+		bool showMods_ = false;
+		app::ModListView modsView_;
 		Result result_;
 		Outcome outcome_ = Outcome::None;
 		bool showLog_ = false;

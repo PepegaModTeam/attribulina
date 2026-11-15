@@ -5,6 +5,7 @@
 
 #include "CodeEditor.h"
 #include "Host.h"
+#include "InstalledMods.h"
 #include "ScriptSetup.h"
 #include "ValueEditors.h"
 
@@ -18,6 +19,7 @@
 #include "core/Database.h"
 #include "core/Gameplay.h"
 #include "core/LogFile.h"
+#include "core/ModList.h"
 #include "core/Nfsms.h"
 #include "core/Script.h"
 
@@ -303,6 +305,31 @@ namespace app
 			return logFile_.path();
 		}
 		bool hasUnsavedChanges() const;
+
+		// The game's list of installed mods (core/ModList.h, AppMods.cpp):
+		// attribulina_mods.txt in the database's folder, read as the database
+		// opens (none when the folder has no file). File > Apply Script and
+		// File > Run nfsms Script add the mod they apply to pendingMods(), and
+		// Save All writes those to the list, unless File > Keep a List of
+		// Installed Mods is off (TrackMods= in the ini). The Script panels'
+		// own Apply and Run don't count: those are scripts being written.
+		const std::optional<attrib::ModList>& modList() const
+		{
+			return modList_;
+		}
+		const std::vector<attrib::InstalledMod>& pendingMods() const
+		{
+			return pendingMods_;
+		}
+		bool& trackMods()
+		{
+			return trackMods_;
+		}
+		void readModList(); // again from the folder (the panel's Reload)
+		bool& showInstalledMods()
+		{
+			return showMods_;
+		}
 		ViewOptions& viewOptions()
 		{
 			return view_;
@@ -491,7 +518,9 @@ namespace app
 		void setNfsmsText(std::string text, std::string path = {});
 		// Runs lines first..last of the nfsms window (0, 0: all). Running all of
 		// a script with a setup opens the setup prompt first.
-		bool runNfsms(int firstLine, int lastLine);
+		// `asMod`: File > Run nfsms Script, whose draft (draftMod) goes on the
+		// list of installed mods once the whole script ran; otherwise it is dropped.
+		bool runNfsms(int firstLine, int lastLine, bool asMod = false);
 		// The nfsms setup's choices, for the next run (tests set them).
 		attrib::nfsms::Choices& nfsmsChoices()
 		{
@@ -768,6 +797,18 @@ namespace app
 		void drawStateGraphBuilder();
 		void chooseLuaFunctions(); // luaApi_ for the open game (frame() calls it when the game changes)
 		void drawUserLuaWindow();
+		// Installed mods (AppMods.cpp).
+		void drawModsPanel();
+		// The mod list's entry for the script at `path` (its text as read), to
+		// be completed once it applies; nothing when tracking is off.
+		void draftMod(const std::string& path, const std::string& text, bool nfsms, const attrib::script::Script& meta);
+		// The draft applied: onto pendingMods_ with the options, how it went
+		// and the files `r` changed.
+		void modApplied(const attrib::script::ApplyReport& r, const std::map<std::string, std::string>& options,
+			const attrib::nfsms::Choices* choices);
+		// The list's note on installing the draft again ("" when it isn't there).
+		std::string draftNote() const;
+		void writePendingMods(); // Save All
 		void drawStateGraph(const std::vector<attrib::Collection*>& states);
 		void drawHandlerList();
 		void drawCodeEditor();
@@ -946,6 +987,13 @@ namespace app
 		bool arraysPastLimit_ = false;
 		bool saveOnlyChanged_ = false;
 		bool updateMemoryFiles_ = true;
+		// Installed mods.
+		bool trackMods_ = true, showMods_ = false;
+		std::optional<attrib::ModList> modList_;
+		std::string modListFor_, modListError_; // the folder it was read from; why it didn't read
+		std::vector<attrib::InstalledMod> pendingMods_;
+		std::optional<attrib::InstalledMod> modDraft_;
+		ModListView modsView_;
 		attrib::Target lastTarget_;          // chosen last this run
 		attrib::Detection targetDetection_;  // what the prompt's files say
 		attrib::Target targetChoice_;        // what the prompt has chosen
@@ -1073,6 +1121,7 @@ namespace app
 			std::vector<std::shared_ptr<const attrib::Bytes>> packs; // per path; unchanged ones shared
 			std::vector<std::optional<attrib::LzKind>> compression; // per pack: how saving compresses it
 			std::set<uint64_t> touched;                             // class << 32 | key of what it edited
+			std::vector<attrib::InstalledMod> mods;                 // pendingMods_ then: applied, not saved
 			bool script = false;                                    // a script run (not recorded)
 			std::pair<uint32_t, uint32_t> selBefore{}, selAfter{};  // the collection being edited, before and after
 		};

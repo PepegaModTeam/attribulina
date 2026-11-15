@@ -3,6 +3,8 @@
 #include "ClassList.h"
 #include "Folder.h"
 #include "Gameplay.h"
+#include "Hash.h"
+#include "LogFile.h"
 #include "Schema.h"
 #include "VaultLib.h"
 #include "Writer.h"
@@ -220,6 +222,78 @@ namespace attrib::install
 		return isNfsms ? nfsms.hasSetup() : !amod.options().empty();
 	}
 
+	std::string Mod::meta(const std::string& key) const
+	{
+		return isNfsms ? info.meta(key) : amod.meta(key);
+	}
+
+	ModIdentity Mod::identity() const
+	{
+		return ModIdentity{ titled ? title : std::string(), version, sha256, path };
+	}
+
+	sc::Script ModInfoOf(const ns::Script& s, std::vector<std::string>* warnings)
+	{
+		auto warn = [&](std::string w)
+		{
+			if (warnings) warnings->push_back(std::move(w));
+		};
+		if (!s.modInfoError.empty()) warn(s.source + ": " + s.modInfoError);
+		if (s.modInfo.empty()) return {};
+		sc::Script info;
+		try
+		{
+			info = sc::Parse(s.modInfo, s.source, s.folder);
+		}
+		catch (const sc::ScriptError& e)
+		{
+			warn(std::string(e.what()) + " (in the # amod block)");
+			return {};
+		}
+		// The mod's description only: its changes are the nfsms lines.
+		for (const sc::Statement& st : info.statements)
+		{
+			using K = sc::Statement::Kind;
+			if (st.kind == K::Comment || st.kind == K::Header || st.kind == K::Meta) continue;
+			warn(s.source + ":" + std::to_string(st.pos.line) + ": only game, title, author, version, description and url lines go in the # amod "
+				"block; the mod's changes are its nfsms lines");
+			return {};
+		}
+		return info;
+	}
+
+	InstalledMod DescribeMod(const std::string& path, std::string_view fileText, bool nfsms, const sc::Script& meta)
+	{
+		InstalledMod m;
+		m.title = meta.meta("title");
+		m.author = meta.meta("author");
+		m.version = meta.meta("version");
+		m.script = path;
+		m.sha256 = Sha256Hex(fileText);
+		m.nfsms = nfsms;
+		return m;
+	}
+
+	ModIdentity IdentityOf(const InstalledMod& m)
+	{
+		return ModIdentity{ m.title, m.version, m.sha256, m.script };
+	}
+
+	void CompleteRecord(InstalledMod& m, const Database& db, const std::string& by, const std::map<std::string, std::string>& options,
+		const ns::Choices* choices)
+	{
+		m.game = db.target().id();
+		m.installed = LocalTimestamp();
+		m.by = by;
+		m.options.clear();
+		for (const auto& [id, v] : options) m.options.emplace_back(id, v);
+		if (choices)
+		{
+			for (const auto& [name, on] : choices->checkboxes) m.options.emplace_back(name, on ? "on" : "off");
+			for (const auto& [group, name] : choices->radios) m.options.emplace_back(group, name);
+		}
+	}
+
 	Mod ReadMod(const std::string& path)
 	{
 		const fs::path p = FromUtf8(path);
@@ -227,29 +301,50 @@ namespace attrib::install
 		if (!in) throw std::runtime_error("can't read " + path);
 		std::ostringstream s;
 		s << in.rdbuf();
+		const std::string text = s.str();
 		Mod m;
 		m.path = path;
 		const fs::path folder = p.parent_path();
 		m.isNfsms = Lower(ToUtf8(p.extension())) == ns::kExtension;
 		if (m.isNfsms)
 		{
-			m.nfsms = ns::Parse(s.str(), ToUtf8(p.filename()), ToUtf8(folder));
-			m.title = ToUtf8(p.stem());
+			m.nfsms = ns::Parse(text, ToUtf8(p.filename()), ToUtf8(folder));
+			m.info = ModInfoOf(m.nfsms, &m.warnings);
+		}
+		else
+		{
+			m.amod = sc::Parse(text, ToUtf8(p.filename()), folder.empty() ? std::string(".") : ToUtf8(folder));
+			sc::LoadIncludes(m.amod);
+		}
+		const InstalledMod d = DescribeMod(path, text, m.isNfsms, m.isNfsms ? m.info : m.amod);
+		m.sha256 = d.sha256;
+		m.titled = d.title.find_first_not_of(" \t") != std::string::npos;
+		m.title = m.titled ? d.title : ToUtf8(p.stem());
+		m.author = d.author;
+		m.version = d.version;
+		m.description = m.meta("description");
+		if (m.isNfsms && m.description.empty())
+		{
 			std::vector<std::string> lines;
 			for (const ns::SetupItem& item : m.nfsms.setup)
 				if (item.kind == ns::SetupItem::Kind::Text) lines.push_back(item.text);
 			while (!lines.empty() && lines.back().find_first_not_of(" \t") == std::string::npos) lines.pop_back();
 			m.description = Joined(lines, "\n");
-			return m;
 		}
-		m.amod = sc::Parse(s.str(), ToUtf8(p.filename()), folder.empty() ? std::string(".") : ToUtf8(folder));
-		sc::LoadIncludes(m.amod);
-		m.title = m.amod.meta("title").empty() ? ToUtf8(p.stem()) : m.amod.meta("title");
-		m.author = m.amod.meta("author");
-		m.version = m.amod.meta("version");
-		m.description = m.amod.meta("description");
 		return m;
 	}
+
+	namespace
+	{
+		// A mod script's `game` line (or an nfsms script's # amod block's).
+		std::string GameLineProblem(const std::string& game, const Target& here)
+		{
+			const std::optional<ScriptTarget> written = ParseScriptTarget(game);
+			if (written && here.known() && written->game != here.game)
+				return std::string("This mod is for ") + InfoOf(written->game).name + ", and the folder holds " + InfoOf(here.game).name + ".";
+			return {};
+		}
+	} // namespace
 
 	std::string ModProblem(const Mod& mod, const Database& db)
 	{
@@ -266,23 +361,18 @@ namespace attrib::install
 				for (const std::string& g : c.args) names.push_back(CodeName(g));
 				return "This mod is for " + Joined(names, ", ") + ", and the folder holds " + InfoOf(here.game).name + ".";
 			}
-			return {};
 		}
-		const std::string game = mod.amod.meta("game");
-		const std::optional<ScriptTarget> written = ParseScriptTarget(game);
-		if (written && here.known() && written->game != here.game)
-			return std::string("This mod is for ") + InfoOf(written->game).name + ", and the folder holds " + InfoOf(here.game).name + ".";
-		return {};
+		return GameLineProblem(mod.meta("game"), here);
 	}
 
 	std::string ModWarning(const Mod& mod, const Database& db)
 	{
-		if (mod.isNfsms) return {};
-		const std::string game = mod.amod.meta("game");
+		const std::string game = mod.meta("game");
 		if (game.empty()) return {};
 		const std::optional<ScriptTarget> written = ParseScriptTarget(game);
 		if (!written) return "The mod names its game as " + game + ", which isn't a game and platform Attribulina knows.";
-		if (db.target().known() && written->game == db.target().game && !written->fits(db.target()))
+		// nfsms words lead to the members by name on every platform.
+		if (db.target().known() && written->game == db.target().game && !written->fits(db.target()) && !mod.isNfsms)
 			return "The mod was written for " + written->name() + "; this is " + db.target().name() +
 				". Its values go in by the fields' types, so it should still fit.";
 		return {};
@@ -379,9 +469,9 @@ namespace attrib::install
 	SaveResult SaveChanges(const Database& db, const Changes& changes, const SaveSettings& settings,
 		const std::function<void(const SaveNote&)>& note)
 	{
-		auto say = [&](SaveNote::Kind k, std::string text)
+		auto say = [&](SaveNote::Kind k, std::string text, std::vector<std::string> files = {})
 		{
-			if (note) note(SaveNote{ k, std::move(text) });
+			if (note) note(SaveNote{ k, std::move(text), std::move(files) });
 		};
 		SaveResult result;
 		const std::string& outDir = settings.outDir;
@@ -403,15 +493,17 @@ namespace attrib::install
 			// A new event vault file's folder may not be there yet.
 			if (std::error_code ec; !fs::exists(FromUtf8(target).parent_path(), ec)) fs::create_directories(FromUtf8(target).parent_path(), ec);
 			const std::string source = p->path; // SavePack moves it to `target`
+			std::vector<std::string> written;
 			for (SavedFile& f : SavePack(db, *p, target))
 			{
 				result.written.push_back(f.path);
+				written.push_back(f.path);
 				// With an outDir, the memory files that count are the ones the
 				// game has beside the original.
 				if (!outDir.empty()) f.path = ToUtf8(FromUtf8(source).parent_path() / FromUtf8(f.path).filename());
 				saved.push_back(std::move(f));
 			}
-			say(SaveNote::Kind::Saved, "saved " + target + (twin ? " and " + ToUtf8(FromUtf8(*twin).filename()) : std::string()));
+			say(SaveNote::Kind::Saved, "saved " + target + (twin ? " and " + ToUtf8(FromUtf8(*twin).filename()) : std::string()), std::move(written));
 		}
 		for (const std::string& f : changes.removed)
 		{
@@ -427,12 +519,12 @@ namespace attrib::install
 			if (settings.backup && !fs::exists(bak, ec))
 			{
 				fs::rename(t, bak, ec);
-				if (!ec) say(SaveNote::Kind::Removed, "removed " + f + ", kept as " + ToUtf8(bak));
+				if (!ec) say(SaveNote::Kind::Removed, "removed " + f + ", kept as " + ToUtf8(bak), { f });
 			}
 			else
 			{
 				fs::remove(t, ec);
-				if (!ec) say(SaveNote::Kind::Removed, "removed " + f);
+				if (!ec) say(SaveNote::Kind::Removed, "removed " + f, { f });
 			}
 			if (ec) throw std::runtime_error("could not remove " + f + ": " + ec.message());
 			result.removed.push_back(f);
@@ -460,7 +552,7 @@ namespace attrib::install
 			if (!outDir.empty()) text += " (from " + from + ")";
 			for (size_t i = 0; i < u.updated.size(); ++i) text += (i ? ", " : ": its copy of ") + u.updated[i];
 			for (size_t i = 0; i < u.dropped.size(); ++i) text += (i ? ", " : u.updated.empty() ? ": dropped its copy of " : "; dropped its copy of ") + u.dropped[i];
-			say(SaveNote::Kind::MemoryFile, text);
+			say(SaveNote::Kind::MemoryFile, text, { u.path });
 		}
 		return result;
 	}

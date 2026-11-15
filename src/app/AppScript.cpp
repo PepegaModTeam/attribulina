@@ -231,6 +231,7 @@ namespace app
 
 	bool App::requestApplyScript(const std::string& text, const std::string& source, const std::string& folder)
 	{
+		modDraft_.reset(); // File > Apply Script drafts one after this
 		try
 		{
 			// The included scripts too, for their options.
@@ -734,6 +735,8 @@ namespace app
 			const std::optional<ScriptTarget> written = ParseScriptTarget(game);
 			if (!game.empty() && !here.empty() && !(written && written->fits(db_->target())))
 				ImGui::TextColored(kWarn, "Written for %s; this database is %s.", game.c_str(), here.c_str());
+			// On the list of installed mods already.
+			if (const std::string note = draftNote(); !note.empty()) ImGui::TextColored(kWarn, "%s", note.c_str());
 
 			// The configurator: one control per option.
 			const auto options = s.options();
@@ -761,6 +764,7 @@ namespace app
 			if (cancel)
 			{
 				pendingScript_.reset();
+				modDraft_.reset();
 				done();
 			}
 			else if (apply)
@@ -771,6 +775,7 @@ namespace app
 				const sc::ApplyReport r = applyScript(s, st, false);
 				if (r.ok)
 				{
+					modApplied(r, scriptOptions_, nullptr);
 					scriptStatus_ = s.source + ": applied, " + r.summary() + (r.warnings() ? " (" + std::to_string(r.warnings()) + " warning(s))" : "");
 					scriptStatusError_ = false;
 					scriptMessages_ = r.messages;

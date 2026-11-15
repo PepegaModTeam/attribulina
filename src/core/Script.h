@@ -337,6 +337,7 @@ namespace attrib::script
 		// the database removes their files.
 		std::vector<std::string> removedFiles;
 		std::vector<std::string> newNames; // names the dictionary didn't have
+		std::vector<std::string> copiedFiles; // nfsms file_copy: the files it wrote, in order
 		std::string summary() const;       // "3 values set, 1 collection created"
 		size_t warnings() const;
 		size_t errors() const; // nfsms goes on after a failing line; mod scripts stop at the first

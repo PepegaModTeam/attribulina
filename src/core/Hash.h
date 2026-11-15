@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 #include <string_view>
 
 namespace attrib
@@ -21,5 +22,11 @@ namespace attrib
 	// collections, export types, dependency names. Attribulina doesn't read their
 	// vaults yet.
 	uint64_t StringHash64(std::string_view s);
+
+	// SHA-256 (FIPS 180-4) of `data`, as 64 lowercase hex digits. Not one of the
+	// games' hashes: the mod list (ModList.h) names a mod without a title by
+	// its script file's, which Windows' `certutil -hashfile <file> SHA256`
+	// prints too.
+	std::string Sha256Hex(std::string_view data);
 
 } // namespace attrib

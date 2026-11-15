@@ -10,6 +10,7 @@
 #include "Database.h"
 #include "Game.h"
 #include "MemoryFile.h"
+#include "ModList.h"
 #include "Nfsms.h"
 #include "Script.h"
 
@@ -62,15 +63,44 @@ namespace attrib::install
 		bool isNfsms = false;
 		script::Script amod; // a mod script's
 		nfsms::Script nfsms; // an nfsms script's
-		// From a mod script's title, author, version and description lines; an
-		// nfsms script's title is its file name and its description its ui_text lines.
+		// An nfsms script's # amod block (nfsms::Script::modInfo): its game,
+		// title, author, version, description and url lines.
+		script::Script info;
+		// From a mod script's title, author, version and description lines, or
+		// an nfsms script's # amod block. Without a title there, the title is
+		// the file's name (`titled` false); an nfsms script without a
+		// description there has its ui_text lines as one.
 		std::string title, author, version, description;
+		bool titled = false;
+		std::string sha256; // the script file's (Sha256Hex), which names a mod without a title
+		// What to know about the file that doesn't stop it: a # amod block that
+		// doesn't read, with its file and line.
+		std::vector<std::string> warnings;
 		bool hasOptions() const; // a mod script's options, an nfsms script's setup
+		// A mod script's line (game, title, ...), or the # amod block's.
+		std::string meta(const std::string& key) const;
+		ModIdentity identity() const;
 	};
 	// Reads `path` as an nfsms script when its extension is .nfsms, else as a
 	// mod script. Throws std::runtime_error for a file that can't be read and
 	// script::ScriptError for a mod script (or one it includes) that doesn't read.
 	Mod ReadMod(const std::string& path);
+	// An nfsms script's # amod block as a mod script: only its header lines
+	// (game, title, author, version, description, url) count. What doesn't
+	// read goes to `warnings` ("<file>:<line>: ..."), and the block is empty then.
+	script::Script ModInfoOf(const nfsms::Script& s, std::vector<std::string>* warnings = nullptr);
+
+	// What the mod list (ModList.h) keeps of a script file, before it is
+	// installed: its title, author and version (`meta`: the mod script, or an
+	// nfsms script's ModInfoOf), its path and sha256 (of `fileText`, the file
+	// as read), and whether it is nfsms.
+	InstalledMod DescribeMod(const std::string& path, std::string_view fileText, bool nfsms, const script::Script& meta);
+	ModIdentity IdentityOf(const InstalledMod& m);
+	// The rest of the entry for installing a mod into `db`: the game, the time
+	// now, the program (`by`) and the options chosen (a mod script's values by
+	// id, or an nfsms setup's choices). The result and files are the caller's.
+	void CompleteRecord(InstalledMod& m, const Database& db, const std::string& by, const std::map<std::string, std::string>& options,
+		const nfsms::Choices* choices = nullptr);
 
 	// Why `mod` can't be installed into `db`: its game line names another game
 	// (a mod script's `game`, an nfsms script's), or it is nfsms and NFS-VltEd
@@ -141,6 +171,7 @@ namespace attrib::install
 			MemoryFileLeft, // with memoryFiles off: a copy that stays as it was
 		} kind;
 		std::string text;
+		std::vector<std::string> files; // Saved, Removed, MemoryFile: the files written or removed
 	};
 	struct SaveResult
 	{

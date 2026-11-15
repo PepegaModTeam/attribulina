@@ -342,11 +342,112 @@ namespace attrib::nfsms
 		return c;
 	}
 
+	namespace
+	{
+		// The comment marker a line starts with (# or //, after spaces): its
+		// length, or 0.
+		size_t CommentMark(std::string_view line, size_t i)
+		{
+			if (i < line.size() && line[i] == '#') return 1;
+			return line.substr(i, 2) == "//" ? 2 : 0;
+		}
+
+		// "# amod begin" and "# amod end" (or // ...), in any case, spaced any way.
+		bool IsModInfoMark(std::string_view line, std::string_view word)
+		{
+			auto skip = [&](size_t i)
+			{
+				while (i < line.size() && (line[i] == ' ' || line[i] == '\t' || line[i] == '\r')) ++i;
+				return i;
+			};
+			auto take = [&](size_t i, std::string_view w) -> size_t
+			{
+				if (line.size() - i < w.size()) return std::string_view::npos;
+				for (size_t j = 0; j < w.size(); ++j)
+					if (std::tolower(static_cast<unsigned char>(line[i + j])) != w[j]) return std::string_view::npos;
+				return i + w.size();
+			};
+			size_t i = skip(0);
+			const size_t mark = CommentMark(line, i);
+			if (!mark) return false;
+			i = take(skip(i + mark), "amod");
+			if (i == std::string_view::npos || i >= line.size() || (line[i] != ' ' && line[i] != '\t')) return false;
+			i = take(skip(i), word);
+			return i != std::string_view::npos && skip(i) == line.size();
+		}
+
+		// Collects Script::modInfo line by line.
+		struct ModInfoReader
+		{
+			Script& s;
+			enum
+			{
+				Before, Inside, After
+			} at = Before;
+			std::string text;
+
+			void line(std::string_view l, int n)
+			{
+				if (at == After)
+				{
+					if (IsModInfoMark(l, "begin") && s.modInfoError.empty())
+						s.modInfoError = "line " + std::to_string(n) + ": a second # amod begin; only the first block counts";
+					return;
+				}
+				if (at == Before)
+				{
+					if (IsModInfoMark(l, "begin"))
+					{
+						at = Inside;
+						s.modInfoLine = n;
+					}
+					text += '\n';
+					return;
+				}
+				if (IsModInfoMark(l, "end"))
+				{
+					at = After;
+					text += '\n';
+					return;
+				}
+				size_t i = 0;
+				while (i < l.size() && (l[i] == ' ' || l[i] == '\t')) ++i;
+				std::string_view rest = l.substr(i);
+				if (!rest.empty() && rest.back() == '\r') rest.remove_suffix(1);
+				if (rest.empty())
+				{
+					text += '\n';
+					return;
+				}
+				const size_t mark = CommentMark(rest, 0);
+				if (!mark)
+				{
+					// NFS-VltEd runs it: the block ends before it.
+					s.modInfoError = "line " + std::to_string(n) + " is in the # amod block, but isn't a comment (NFS-VltEd runs it)";
+					at = After;
+					return;
+				}
+				rest.remove_prefix(mark);
+				if (!rest.empty() && rest[0] == ' ') rest.remove_prefix(1);
+				text += rest;
+				text += '\n';
+			}
+			void end()
+			{
+				if (at == Before) return;
+				if (at == Inside && s.modInfoError.empty())
+					s.modInfoError = "line " + std::to_string(s.modInfoLine) + ": # amod begin has no # amod end";
+				s.modInfo = std::move(text);
+			}
+		};
+	} // namespace
+
 	Script Parse(std::string_view text, const std::string& source, const std::string& folder)
 	{
 		Script s;
 		s.source = source;
 		s.folder = folder;
+		ModInfoReader info{ s, ModInfoReader::Before, {} };
 		int n = 0;
 		size_t b = 0;
 		int radioPanel = -1; // the setup item the last radio button went into
@@ -355,6 +456,7 @@ namespace attrib::nfsms
 			size_t e = text.find('\n', b);
 			if (e == std::string_view::npos) e = text.size();
 			++n;
+			info.line(text.substr(b, e - b), n);
 			Command c = ParseLine(text.substr(b, e - b), n);
 			b = e + 1;
 			if (c.name.empty())
@@ -415,6 +517,7 @@ namespace attrib::nfsms
 			s.commands.push_back(std::move(c));
 			if (e >= text.size()) break;
 		}
+		info.end();
 		return s;
 	}
 
@@ -995,9 +1098,13 @@ namespace attrib::nfsms
 			}
 			void need(const Command& c, size_t lo, size_t hi) const
 			{
-				if (c.args.size() < lo || c.args.size() > hi)
-					fail(c.name + " takes " + (lo == hi ? std::to_string(lo) : std::to_string(lo) + " to " + std::to_string(hi)) +
-						 " parameters, not " + std::to_string(c.args.size()));
+				if (c.args.size() >= lo && c.args.size() <= hi) return;
+				std::string why = c.name + " takes " + (lo == hi ? std::to_string(lo) : std::to_string(lo) + " to " + std::to_string(hi)) +
+					" parameters, not " + std::to_string(c.args.size());
+				// Only # ends a command's parameters, in NFS-VltEd too.
+				if (c.args.size() > hi && std::any_of(c.args.begin(), c.args.end(), [](const std::string& a) { return a.rfind("//", 0) == 0; }))
+					why += " (// starts a comment only at the start of a line: after a command, use #)";
+				fail(why);
 			}
 			std::string name(uint32_t k) const
 			{
@@ -1766,6 +1873,7 @@ namespace attrib::nfsms
 				fs::create_directories(to.parent_path(), ec);
 				fs::copy_file(from, to, fs::copy_options::overwrite_existing, ec);
 				if (ec) fail("can't copy " + c.args[0] + " to " + c.args[1] + ": " + ec.message());
+				rep_.copiedFiles.push_back(ToUtf8(to));
 				note("copied " + c.args[0] + " to " + c.args[1]);
 			}
 
@@ -3174,9 +3282,21 @@ namespace attrib::nfsms
 		while (!description.empty() && (description.back() == '\n' || description.back() == ' ')) description.pop_back();
 
 		std::string stem = ToUtf8(FromUtf8(script.source).stem());
+		// The mod's own title, author and version, from its # amod block.
+		sc::Script info;
+		try
+		{
+			if (!script.modInfo.empty()) info = sc::Parse(script.modInfo, script.source);
+		}
+		catch (const sc::ScriptError&)
+		{
+		}
+		if (!info.meta("description").empty()) description = info.meta("description");
 		std::string head = "attribulina 1\n";
 		if (const std::string game = sc::GameId(scratch); !game.empty()) head += "game " + game + "\n";
-		head += "title " + sc::Quote(stem) + "\n";
+		head += "title " + sc::Quote(info.meta("title").empty() ? stem : info.meta("title")) + "\n";
+		for (const char* key : { "author", "version", "url" })
+			if (!info.meta(key).empty()) head += std::string(key) + " " + sc::Quote(info.meta(key)) + "\n";
 		if (!description.empty()) head += "description " + sc::Quote(description) + "\n";
 		head += "# Converted from " + script.source + ", an nfsms script, by Attribulina.\n" + options;
 		sc::Script out = sc::Parse(head, stem + ".amod");

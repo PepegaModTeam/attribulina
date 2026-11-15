@@ -215,8 +215,9 @@ namespace app
 		return folder;
 	}
 
-	bool App::runNfsms(int firstLine, int lastLine)
+	bool App::runNfsms(int firstLine, int lastLine, bool asMod)
 	{
+		if (!asMod) modDraft_.reset(); // the window's own Run: a script being written
 		if (!db_ || db_->packs().empty())
 		{
 			nfsmsStatus_ = "Open a database first.";
@@ -305,6 +306,8 @@ namespace app
 			structureChanged();
 			updateTitle();
 		}
+		if (firstLine == 0 && changed && modDraft_ && modDraft_->nfsms) modApplied(r, {}, &st.choices);
+		modDraft_.reset();
 		nfsmsMessages_ = r.messages;
 		for (const sc::Message& m : r.messages)
 			log(m.level == sc::Message::Level::Error ? LogLevel::Error : m.level == sc::Message::Level::Warning ? LogLevel::Warning : LogLevel::Info,
@@ -924,6 +927,7 @@ namespace app
 		if (cancel)
 		{
 			pendingNfsms_.reset();
+			modDraft_.reset();
 			done();
 		}
 		else if (run)

@@ -4,6 +4,7 @@
 #include "core/Edit.h"
 #include "core/Folder.h"
 #include "core/Hash.h"
+#include "core/Install.h"
 #include "core/LogFile.h"
 #include "core/VaultLib.h"
 #include "core/Writer.h"
@@ -222,6 +223,7 @@ namespace app
 			else if (k == "ArraysPastLimit") self->arraysPastLimit_ = v == "1";
 			else if (k == "SaveOnlyChanged") self->saveOnlyChanged_ = v == "1";
 			else if (k == "UpdateMemoryFiles") self->updateMemoryFiles_ = v != "0";
+			else if (k == "TrackMods") self->trackMods_ = v != "0";
 		};
 		h.WriteAllFn = [](ImGuiContext*, ImGuiSettingsHandler* hh, ImGuiTextBuffer* out)
 		{
@@ -233,6 +235,7 @@ namespace app
 			out->appendf("ArraysPastLimit=%d\n", self->arraysPastLimit_ ? 1 : 0);
 			out->appendf("SaveOnlyChanged=%d\n", self->saveOnlyChanged_ ? 1 : 0);
 			out->appendf("UpdateMemoryFiles=%d\n", self->updateMemoryFiles_ ? 1 : 0);
+			out->appendf("TrackMods=%d\n", self->trackMods_ ? 1 : 0);
 			out->appendf("OpenPanels=%s\n", self->openPanels().c_str());
 			out->appendf("NfsmsFollow=%d\nNfsmsStrict=%d\nNfsmsVltEd=%d\nRecordScript=%d\nRecordNfsms=%d\n", self->nfsmsFollow_ ? 1 : 0,
 				self->nfsmsStrict_ ? 1 : 0, self->nfsmsVltEd_ ? 1 : 0, self->recordAmod_ ? 1 : 0, self->recordNfsms_ ? 1 : 0);
@@ -674,6 +677,8 @@ namespace app
 		if (db_ && db_->packs().size() != packsBefore) resetUndo();
 		// Favourites are the database folder's, whether the folder or one of its files was opened.
 		if (const std::string f = databaseFolder(), n = f.empty() ? f : NormalPath(f); n != favoritesFor_) useFavoritesOf(n);
+		// So is the list of installed mods, when the folder has one.
+		if (databaseFolder() != modListFor_) readModList();
 		// A folder counts as opened when anything in it did: one unreadable file
 		// shouldn't keep it off the recent list.
 		if (ok || (folder && db_ && !db_->packs().empty())) addRecent(path);
@@ -1079,6 +1084,8 @@ namespace app
 		}
 		// Each memory file once, with every pack it holds a copy of.
 		ok &= syncMemoryFiles(saved, removed);
+		// The mods applied since the last save, onto the list of installed mods.
+		writePendingMods();
 		return ok;
 	}
 
@@ -1364,6 +1371,12 @@ namespace app
 		dropSource_ = dropParent_ = nullptr;
 		dropClass_ = nullptr;
 		designer_.open = false; // its design was of the database that went
+		modList_.reset();
+		modListFor_.clear();
+		modListError_.clear();
+		pendingMods_.clear();
+		modDraft_.reset();
+		modsView_.forget();
 		designer_.editing = 0;
 		cut_.clear();
 		cutText_.clear();
@@ -1610,6 +1623,7 @@ namespace app
 		add(showScript_, "Script");
 		add(showSequence_, "StateGraphBuilder");
 		add(showNfsms_, "NfsmsScript");
+		add(showMods_, "InstalledMods");
 		return s;
 	}
 
@@ -1628,6 +1642,7 @@ namespace app
 		showScript_ = has("Script");
 		showSequence_ = has("StateGraphBuilder");
 		showNfsms_ = has("NfsmsScript");
+		showMods_ = has("InstalledMods");
 		panelsSeen_ = openPanels();
 	}
 
@@ -1667,6 +1682,7 @@ namespace app
 		drawStateGraphBuilder();
 		drawClassDesigner();
 		drawUserLuaWindow();
+		drawModsPanel();
 		if (showDemo_) ImGui::ShowDemoWindow(&showDemo_);
 		drawModals();
 		if (typedName_.box && ImGui::GetActiveID() != typedName_.box) commitTypedName();
@@ -1940,6 +1956,11 @@ namespace app
 					"(GlobalMemoryFile.bin holds attributes.bin), which the game reads in place of the file.\n"
 					"The first original of each is kept as .bak. Off: they stay as they are, and the game\n"
 					"goes on reading the copies they hold.");
+			if (ImGui::MenuItem("Keep a List of Installed Mods", nullptr, &trackMods_)) ImGui::MarkIniSettingsDirty();
+			if (ImGui::IsItemHovered())
+				ImGui::SetTooltip("On (the default): a mod applied with Apply Script or Run nfsms Script goes on the database folder's\n"
+					"list of installed mods (attribulina_mods.txt) when the changes are saved, as the mod installer adds\n"
+					"the mods it installs, and applying one the list has already warns. View > Installed Mods shows the list.");
 			LoadedPack* selPack = selected_ && selected_->vault ? selected_->vault->pack : nullptr;
 			if (ImGui::MenuItem("Save Pack As...", nullptr, false, selPack != nullptr))
 			{
@@ -1994,7 +2015,9 @@ namespace app
 				if (auto p = host_.openFileDialog("Apply script", { {"Mod scripts", "*.amod"}, {"All files", "*.*"} }))
 				{
 					std::string text;
-					if (loadScriptFile(*p, text)) requestApplyScript(text, ToUtf8(FromUtf8(*p).filename()), ToUtf8(FromUtf8(*p).parent_path()));
+					// A mod from a file: it goes on the list of installed mods once saved.
+					if (loadScriptFile(*p, text) && requestApplyScript(text, ToUtf8(FromUtf8(*p).filename()), ToUtf8(FromUtf8(*p).parent_path())))
+						draftMod(*p, text, false, *pendingScript_);
 				}
 			}
 			if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
@@ -2007,8 +2030,10 @@ namespace app
 					std::string text;
 					if (loadScriptFile(*p, text))
 					{
+						const nfsms::Script parsed = nfsms::Parse(text, ToUtf8(FromUtf8(*p).filename()), ToUtf8(FromUtf8(*p).parent_path()));
+						draftMod(*p, text, true, install::ModInfoOf(parsed));
 						setNfsmsText(std::move(text), *p);
-						runNfsms(0, 0);
+						runNfsms(0, 0, true);
 					}
 				}
 			}
@@ -2045,6 +2070,10 @@ namespace app
 			ImGui::MenuItem(kWindowClass, nullptr, &showClass_);
 			ImGui::MenuItem(kWindowLog, nullptr, &showLog_);
 			ImGui::MenuItem("State Graph Builder", nullptr, &showSequence_);
+			ImGui::MenuItem("Installed Mods", nullptr, &showMods_);
+			if (ImGui::IsItemHovered())
+				ImGui::SetTooltip("The mods the database folder's attribulina_mods.txt lists, as the mod installer and\n"
+					"File > Apply Script and Run nfsms Script add them");
 			if (ImGui::MenuItem("Class Designer", nullptr, designer_.open, db_ && db_->hasSchema()))
 			{
 				if (designer_.open) designer_.open = false;

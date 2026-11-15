@@ -177,6 +177,7 @@ namespace installer
 		{
 			if (!l.empty() && l.back() == '\r') l.pop_back();
 			if (l.rfind("GameFolder=", 0) == 0 && l.size() > 11 && recentGames_.size() < kMaxRecent) recentGames_.push_back(l.substr(11));
+			else if (l.rfind("TrackMods=", 0) == 0) trackMods_ = l.substr(10) != "0";
 		}
 	}
 
@@ -185,7 +186,18 @@ namespace installer
 		if (paths_.userDir.empty()) return;
 		std::ofstream out(FromUtf8(paths_.userDir) / kSettingsFileName, std::ios::binary | std::ios::trunc);
 		out << "[" << kTitle << "]\n";
+		out << "TrackMods=" << (trackMods_ ? 1 : 0) << "\n";
 		for (const std::string& g : recentGames_) out << "GameFolder=" << g << "\n";
+	}
+
+	void Installer::setTrackMods(bool on)
+	{
+		if (trackMods_ == on) return;
+		trackMods_ = on;
+		saveSettings();
+		post(Level::Info, on ? "The game's list of installed mods (attribulina_mods.txt) is kept again: installing adds to it."
+			: "The list of installed mods is off: installing neither checks attribulina_mods.txt nor adds to it.");
+		refreshModChecks();
 	}
 
 	void Installer::rememberGame(const std::string& folder)
@@ -287,6 +299,12 @@ namespace installer
 		{
 			result_ = std::move(*result);
 			outcome_ = result_.outcome;
+			if (result_.mods)
+			{
+				game_.mods = result_.mods;
+				game_.modsError.clear();
+				modsView_.forget();
+			}
 		}
 	}
 
@@ -294,9 +312,16 @@ namespace installer
 	{
 		modProblem_.clear();
 		modWarning_.clear();
+		installedNote_.clear();
+		installAnyway_ = false;
 		if (!mod_ || !db_ || !game_.ok || busy_) return;
 		modProblem_ = install::ModProblem(*mod_, *db_);
 		modWarning_ = install::ModWarning(*mod_, *db_);
+		if (trackMods_ && game_.mods)
+		{
+			installedNote_ = InstalledNote(FindInstalled(*game_.mods, mod_->identity()), mod_->identity());
+			if (!installedNote_.empty()) post(Level::Warning, installedNote_);
+		}
 		if (!modProblem_.empty())
 		{
 			post(Level::Error, modProblem_);
@@ -355,9 +380,16 @@ namespace installer
 		if (!modPath.empty()) openMod(modPath);
 	}
 
+	bool Installer::refuseFinished()
+	{
+		if (!finished()) return false;
+		setStatus(Level::Info, "This installation is done. Install Another Mod starts over.");
+		return true;
+	}
+
 	void Installer::dropped(const std::string& path)
 	{
-		if (busy_) return;
+		if (busy_ || refuseFinished()) return;
 		std::error_code ec;
 		if (!fs::is_directory(FromUtf8(path), ec))
 		{
@@ -374,7 +406,7 @@ namespace installer
 
 	bool Installer::openMod(std::string path)
 	{
-		if (busy_) return false;
+		if (busy_ || refuseFinished()) return false;
 		modInput_ = path;
 		outcome_ = Outcome::None;
 		result_ = {};
@@ -402,7 +434,9 @@ namespace installer
 		if (mod_->isNfsms) images_.load(host_, mod_->nfsms);
 		std::string what = mod_->isNfsms ? "an nfsms script" : "a mod script";
 		if (mod_->hasOptions()) what += " with options";
-		post(Level::Info, "Read " + path + ": " + mod_->title + ", " + what + ".");
+		post(Level::Info, "Read " + path + ": " + mod_->title + (mod_->version.empty() ? "" : " " + mod_->version) + ", " + what +
+			(mod_->titled ? "." : "; it names no title, so its file's SHA-256 (" + mod_->sha256.substr(0, 12) + "...) tells it apart."));
+		for (const std::string& w : mod_->warnings) post(Level::Warning, w);
 		host_.setWindowTitle(std::string(kTitle) + " - " + mod_->title);
 		refreshModChecks();
 		step_ = Step::Game;
@@ -428,13 +462,15 @@ namespace installer
 
 	void Installer::chooseGame(std::string folder, std::optional<Target> target)
 	{
-		if (busy_) return;
+		if (busy_ || refuseFinished()) return;
 		gameInput_ = folder;
 		outcome_ = Outcome::None;
 		result_ = {};
 		game_ = {};
 		modProblem_.clear();
 		modWarning_.clear();
+		installedNote_.clear();
+		installAnyway_ = false;
 		std::string why;
 		const std::optional<install::GameFolder> found = install::FindGameFolder(folder, &why);
 		if (!found)
@@ -463,6 +499,22 @@ namespace installer
 			std::string how = found.chosen ? "as chosen" : found.detection.certain ? "from its files" : "a guess: " + found.detection.reason;
 			post(Level::Info, "Found " + found.target.name() + " (" + how + ") in " + f.global + ": " + Joined(found.packs, ", "));
 			for (const std::string& c : found.copies) post(Level::Info, c + "; installing updates it too.");
+			try
+			{
+				found.mods = ReadModList(f.global);
+				if (found.mods)
+				{
+					std::vector<std::string> names;
+					for (const InstalledMod& m : found.mods->mods) names.push_back(m.name() + (m.version.empty() ? "" : " " + m.version));
+					post(Level::Info, ModListPath(f.global) + " lists " + std::to_string(names.size()) + (names.size() == 1 ? " mod" : " mods") +
+						" installed here" + (names.empty() ? "." : ": " + Joined(names, ", ")));
+				}
+			}
+			catch (const std::exception& e)
+			{
+				found.modsError = e.what();
+				post(Level::Warning, "The list of installed mods doesn't read, so installing leaves it as it is: " + found.modsError);
+			}
 			db_ = std::move(db);
 			movedFrom_ = std::move(moved);
 			dbStale_ = false;
@@ -485,18 +537,26 @@ namespace installer
 
 	bool Installer::canInstall() const
 	{
-		return mod_ && game_.ok && modProblem_.empty() && !busy_;
+		return mod_ && game_.ok && modProblem_.empty() && (installedNote_.empty() || installAnyway_) && !busy_ && !finished();
+	}
+
+	bool Installer::finished() const
+	{
+		return step_ == Step::Install && outcome_ != Outcome::None;
 	}
 
 	bool Installer::canGoTo(Step s) const
 	{
 		if (busy_) return false;
+		// Done: the steps before stay as they were installed, and Install
+		// Another Mod is the way to start over.
+		if (finished()) return s == Step::Install;
 		switch (s)
 		{
 			case Step::Mod: return true;
 			case Step::Game: return mod_ != nullptr;
 			case Step::Options:
-			case Step::Install: return mod_ && game_.ok && modProblem_.empty();
+			case Step::Install: return mod_ && game_.ok && modProblem_.empty() && (installedNote_.empty() || installAnyway_);
 		}
 		return false;
 	}
@@ -504,12 +564,6 @@ namespace installer
 	void Installer::goTo(Step s)
 	{
 		if (!canGoTo(s) || s == step_) return;
-		// Leaving a finished installation: the next one starts afresh.
-		if (step_ == Step::Install && outcome_ != Outcome::None)
-		{
-			outcome_ = Outcome::None;
-			result_ = {};
-		}
 		step_ = s;
 		switch (s)
 		{
@@ -560,11 +614,12 @@ namespace installer
 		st.gameFolder = game_.folder.game;
 		st.vltEd = true; // nfsms mods are made for NFS-VltEd
 		setStatus(Level::Info, "Installing " + mod_->title + "...");
-		startWork(Work::Installing, [this, mod = mod_, st, game = game_]() { installJob(*mod, st, game); });
+		startWork(Work::Installing, [this, mod = mod_, st, game = game_, track = trackMods_]() { installJob(*mod, st, game, track); });
 	}
 
-	void Installer::installJob(const install::Mod& mod, const install::ModSettings& st, const FoundGame& game)
+	void Installer::installJob(const install::Mod& mod, const install::ModSettings& st, const FoundGame& game, bool track)
 	{
+		std::vector<std::string> changed; // full paths, for the list of installed mods
 		Result r;
 		const std::string source = mod.isNfsms ? mod.nfsms.source : mod.amod.source;
 		post(Level::Info, "Installing " + mod.title + " (" + mod.path + ") into " + game.folder.game);
@@ -611,9 +666,11 @@ namespace installer
 				const size_t failed = rep.errors(), warnings = rep.warnings();
 				post(Level::Info, source + ": " + rep.summary() + (failed ? "; " + std::to_string(failed) + " line(s) failed" : "") +
 					(warnings ? " (" + std::to_string(warnings) + " warning(s))" : ""));
+				changed = rep.copiedFiles;
 				const install::SaveResult res = install::SaveChanges(*db_, changes, {}, [&](const install::SaveNote& n)
 				{
 					saved += n.kind == install::SaveNote::Kind::Saved;
+					changed.insert(changed.end(), n.files.begin(), n.files.end()); // known even when saving fails halfway
 					post(Level::Info, n.text);
 				});
 				for (const std::string& f : res.written) r.files.push_back(Shown(f, game.folder.game));
@@ -633,6 +690,9 @@ namespace installer
 						: "The first time a file is changed, its original is kept beside it as a .bak file.";
 				}
 				if (warnings) r.detail += "\nThe script gave " + std::to_string(warnings) + (warnings == 1 ? " warning" : " warnings") + "; the Log lists them.";
+				if (track)
+					recordInstall(mod, st, game, failed ? "installed, " + std::to_string(failed) + (failed == 1 ? " line" : " lines") + " failed" : "installed",
+						changed, r);
 			}
 		}
 		catch (const std::exception& e)
@@ -643,6 +703,8 @@ namespace installer
 			if (saved) r.detail += "\nSome files were saved before this; the Log lists them, and their originals are kept beside them as .bak files.";
 			else r.detail += "\nNothing was saved: the game's files are as they were.";
 			post(Level::Error, e.what());
+			// Files changed all the same: the list says so.
+			if (track && !changed.empty()) recordInstall(mod, st, game, std::string("saving failed halfway: ") + e.what(), changed, r);
 		}
 		const Level level = r.outcome == Outcome::Succeeded ? Level::Success : r.outcome == Outcome::Partly ? Level::Warning : Level::Error;
 		const char* word = r.outcome == Outcome::Succeeded ? "Installation successful" : r.outcome == Outcome::Partly ? "Installation finished with errors"
@@ -651,6 +713,37 @@ namespace installer
 		setStatus(level, std::string(word) + ".");
 		std::lock_guard lock(m_);
 		installDone_ = std::move(r);
+	}
+
+	void Installer::recordInstall(const install::Mod& mod, const install::ModSettings& st, const FoundGame& game, const std::string& result,
+		const std::vector<std::string>& files, Result& r)
+	{
+		InstalledMod m;
+		m.title = mod.titled ? mod.title : std::string();
+		m.author = mod.author;
+		m.version = mod.version;
+		m.script = mod.path;
+		m.sha256 = mod.sha256;
+		m.nfsms = mod.isNfsms;
+		install::CompleteRecord(m, *db_, std::string(kTitle) + " " + Version::GetAppVersionString(),
+			mod.isNfsms ? std::map<std::string, std::string>() : st.options, mod.isNfsms ? &st.choices : nullptr);
+		m.result = result;
+		for (const std::string& f : files)
+		{
+			const std::string name = ModListFileName(f, game.folder.game);
+			if (std::find(m.files.begin(), m.files.end(), name) == m.files.end()) m.files.push_back(name);
+		}
+		std::sort(m.files.begin(), m.files.end());
+		try
+		{
+			r.mods = AddToModList(game.folder.global, { m });
+			post(Level::Info, "Added " + m.name() + " to the list of installed mods, " + ModListPath(game.folder.global));
+			r.detail += "\nIt is on the game's list of installed mods (attribulina_mods.txt in GLOBAL).";
+		}
+		catch (const std::exception& e)
+		{
+			post(Level::Warning, std::string("The mod isn't on the list of installed mods: ") + e.what());
+		}
 	}
 
 	bool Installer::requestClose()
@@ -708,6 +801,7 @@ namespace installer
 		ImGui::Separator();
 		drawStatus();
 		drawButtons();
+		drawModsWindow();
 		ImGui::End();
 	}
 
@@ -846,6 +940,21 @@ namespace installer
 			ImGui::TextUnformatted(modWarning_.c_str());
 			ImGui::PopStyleColor();
 		}
+		if (trackMods_ && !game_.modsError.empty())
+		{
+			ImGui::Spacing();
+			ImGui::PushStyleColor(ImGuiCol_Text, kWarn);
+			ImGui::TextUnformatted(("The list of installed mods doesn't read, so installing leaves it as it is: " + game_.modsError).c_str());
+			ImGui::PopStyleColor();
+		}
+		if (!installedNote_.empty() && modProblem_.empty())
+		{
+			ImGui::Spacing();
+			ImGui::PushStyleColor(ImGuiCol_Text, kWarn);
+			ImGui::TextUnformatted(installedNote_.c_str());
+			ImGui::PopStyleColor();
+			app::Checkbox("Install it anyway", &installAnyway_);
+		}
 	}
 
 	void Installer::drawOptionsPage()
@@ -956,6 +1065,15 @@ namespace installer
 			ImGui::Spacing();
 			ImGui::Text("The mod also copies files into %s.", game_.folder.game.c_str());
 		}
+		ImGui::Spacing();
+		if (!trackMods_) ImGui::TextDisabled("The list of installed mods is off (Advanced Options): the mod isn't added to it.");
+		else if (!game_.modsError.empty()) ImGui::TextDisabled("The list of installed mods doesn't read, so the mod isn't added to it.");
+		else ImGui::TextDisabled("The mod goes on the game's list of installed mods, attribulina_mods.txt in GLOBAL.");
+		if (!installedNote_.empty())
+		{
+			ImGui::Spacing();
+			ImGui::TextColored(kWarn, "%s", "It installs over the same mod, which the list has already (the Game step says more).");
+		}
 	}
 
 	void Installer::drawStatus()
@@ -1023,10 +1141,12 @@ namespace installer
 		const ImGuiStyle& style = ImGui::GetStyle();
 		const float em = ImGui::GetFontSize();
 		const ImVec2 size(em * 7, 0);
-		const bool finished = step_ == Step::Install && outcome_ != Outcome::None;
-		const int count = finished ? 1 : 3;
+		const bool done = finished();
+		const int count = done ? 1 : 3;
+		drawAdvanced();
+		ImGui::SameLine();
 		ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - (size.x * float(count) + style.ItemSpacing.x * float(count - 1)));
-		if (finished)
+		if (done)
 		{
 			if (ImGui::Button("Close", size)) host_.quit();
 			return;
@@ -1052,6 +1172,63 @@ namespace installer
 		ImGui::BeginDisabled(busy_ && work_ == Work::Installing);
 		if (ImGui::Button("Cancel", size)) host_.quit();
 		ImGui::EndDisabled();
+	}
+
+	void Installer::drawAdvanced()
+	{
+		if (ImGui::Button("Advanced Options")) ImGui::OpenPopup("##advanced");
+		if (!ImGui::BeginPopup("##advanced")) return;
+		const float em = ImGui::GetFontSize();
+		ImGui::PushTextWrapPos(em * 26);
+		ImGui::BeginDisabled(busy_);
+		bool track = trackMods_;
+		if (app::Checkbox("Keep a list of installed mods", &track)) setTrackMods(track);
+		ImGui::EndDisabled();
+		ImGui::TextDisabled("On (the default), each mod installed goes on the game's list, attribulina_mods.txt in its GLOBAL folder, and a mod "
+			"the list has already asks before it is installed again. The game doesn't read the file.");
+		ImGui::Spacing();
+		ImGui::BeginDisabled(!game_.ok || busy_);
+		if (ImGui::Button("Installed Mods..."))
+		{
+			showMods_ = true;
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::EndDisabled();
+		if (!game_.ok) ImGui::TextDisabled("Choose the game's folder first.");
+		ImGui::PopTextWrapPos();
+		ImGui::EndPopup();
+	}
+
+	void Installer::drawModsWindow()
+	{
+		const char* name = "Installed Mods";
+		if (showMods_ && !ImGui::IsPopupOpen(name))
+		{
+			ImGui::OpenPopup(name);
+			modsView_.forget();
+		}
+		const ImGuiViewport* vp = ImGui::GetMainViewport();
+		ImGui::SetNextWindowPos(vp->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+		ImGui::SetNextWindowSize(ImVec2(vp->WorkSize.x * 0.85f, vp->WorkSize.y * 0.8f), ImGuiCond_Appearing);
+		if (!ImGui::BeginPopupModal(name, &showMods_)) return;
+		const std::string path = game_.ok ? ModListPath(game_.folder.global) : std::string();
+		ImGui::PushTextWrapPos(0.0f);
+		if (!game_.ok) ImGui::TextUnformatted("Choose the game's folder first.");
+		else if (!game_.modsError.empty()) ImGui::TextColored(kWarn, "%s doesn't read: %s", path.c_str(), game_.modsError.c_str());
+		else ImGui::TextDisabled("The mods installed in %s, oldest first, from %s.", game_.target.name().c_str(), path.c_str());
+		if (!trackMods_) ImGui::TextColored(kWarn, "%s", "The list is off (Advanced Options): installing doesn't add to it.");
+		ImGui::PopTextWrapPos();
+		ImGui::Spacing();
+		const float button = ImGui::GetFrameHeightWithSpacing() + ImGui::GetStyle().ItemSpacing.y;
+		if (game_.ok && game_.modsError.empty())
+			modsView_.draw(game_.mods ? &*game_.mods : nullptr, {}, std::max(ImGui::GetFontSize() * 6, ImGui::GetContentRegionAvail().y - button));
+		ImGui::Spacing();
+		if (ImGui::Button("Close") || ImGui::IsKeyPressed(ImGuiKey_Escape))
+		{
+			showMods_ = false;
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::EndPopup();
 	}
 
 } // namespace installer

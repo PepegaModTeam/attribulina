@@ -10,6 +10,7 @@
 #include "core/Hash.h"
 #include "core/Install.h"
 #include "core/MemoryFile.h"
+#include "core/ModList.h"
 #include "core/Script.h"
 #include "installer/Installer.h"
 #include "platform/headless/HeadlessHost.h"
@@ -267,7 +268,8 @@ TEST("installer: a mod script installs through the steps: its options, the packs
         CHECK(s.onScreen("Close"));
         CHECK(s.onScreen("Show the Log"));
         CHECK(s.inst.log().back().level == installer::Level::Success);
-        CHECK_EQ(s.inst.log().back().text, std::string("Installation successful: The mod is installed."));
+        const std::string last = s.inst.log().back().text; // log() is a copy: keep the line, not a reference into it
+        CHECK_EQ(last, std::string("Installation successful: The mod is installed."));
         CHECK(s.click("Open the Log File"));
         CHECK(s.host.openedPaths == std::vector<std::string>{s.inst.logFilePath()});
         CHECK(s.click("Close"));
@@ -314,7 +316,8 @@ TEST("installer: an nfsms mod runs NFS-VltEd compatible with the setup's choices
                                       "update_field audio_revlimiter default total_frames_short 21\n"
                                       "ui_option loud\nupdate_field audio_revlimiter default total_frames_long 99\nui_option loud\n"
                                       "update_field audio_revlimiter no_such_node total_frames_long 1\n"
-                                      "file_copy \"readme.txt\" \"Loud Mod readme.txt\"\n");
+                                      "file_copy \"readme.txt\" \"Loud Mod readme.txt\"\n"
+                                      "# amod begin\n# title \"Loud\"\n# version \"2\"\n# amod end\n");
     {
         // In the background, as the program runs it: the command line's game folder and mod.
         Session s(PathsIn(root), true);
@@ -351,6 +354,19 @@ TEST("installer: an nfsms mod runs NFS-VltEd compatible with the setup's choices
     CHECK(Get(global / "ATTRIBUTES.BIN", "audio_revlimiter/default", "total_frames_short").find("total_frames_short = 21") != std::string::npos);
     CHECK(Get(global / "ATTRIBUTES.BIN", "audio_revlimiter/default", "total_frames_long").find("total_frames_long = 99") != std::string::npos);
     CHECK_EQ(ReadText(game / "Loud Mod readme.txt"), std::string("Loud.\n"));
+    // On the game's list by the title and version its # amod block gives, with the files it wrote.
+    const auto list = ReadModList(global.string());
+    CHECK(list && list->mods.size() == 1);
+    if (list && !list->mods.empty()) {
+        const InstalledMod& m = list->mods[0];
+        CHECK_EQ(m.title, std::string("Loud"));
+        CHECK_EQ(m.version, std::string("2"));
+        CHECK(m.nfsms);
+        CHECK_EQ(m.result, std::string("installed, 1 line failed"));
+        CHECK(std::find(m.options.begin(), m.options.end(), std::make_pair(std::string("loud"), std::string("on"))) != m.options.end());
+        for (const char* f : {"Loud Mod readme.txt", "GLOBAL\\ATTRIBUTES.BIN", "GLOBAL\\GlobalMemoryFile.bin"})
+            CHECK(std::find(m.files.begin(), m.files.end(), std::string(f)) != m.files.end());
+    }
     const std::vector<fs::path> logs = LogFiles(root);
     CHECK_EQ(logs.size(), size_t(1));
     if (!logs.empty()) {
@@ -419,5 +435,167 @@ TEST("installer: a mod script that stops saves nothing; a mod for another game c
     }
     // Each run wrote its own log.
     CHECK_EQ(LogFiles(root).size(), size_t(2));
+    fs::remove_all(root);
+}
+
+TEST("installer: once installed, the steps before stay locked until Install Another Mod; the mod goes on GLOBAL's list, and installing it again asks first") {
+    const fs::path root = MakeGame("attribulina_installer_list");
+    const fs::path game = root / "game", global = game / "GLOBAL";
+    const std::string louder = "attribulina 1\ngame prostreet_pc\ntitle \"Louder\"\nauthor \"Someone\"\nversion \"1.0\"\n"
+                               "option frames integer \"Frames\" default 5 min 1 max 50\n"
+                               "edit audio_revlimiter/default { total_frames_short = $frames }\n";
+    WriteText(root / "louder.amod", louder);
+    WriteText(root / "louder 1.1.amod", "attribulina 1\ngame prostreet_pc\ntitle \"LOUDER\"\nversion \"1.1\"\n"
+                                        "edit audio_revlimiter/default { total_frames_short = 11 }\n");
+    // A mod without a title: its file's SHA-256 names it.
+    WriteText(root / "plain.amod", "attribulina 1\nedit audio_revlimiter/default { total_frames_long = 12 }\n");
+    auto installed = [&](Session& s) {
+        CHECK(s.click("Install"));
+        s.inst.wait();
+        s.frames(2);
+        CHECK(s.inst.outcome() == Outcome::Succeeded);
+    };
+    {
+        Session s(PathsIn(root));
+        CHECK(s.inst.trackMods()); // on by default
+        CHECK(s.inst.openMod((root / "louder.amod").string()));
+        s.inst.chooseGame(game.string());
+        s.frames(1);
+        CHECK(s.inst.gameLoaded());
+        CHECK(!s.inst.game().mods); // no list yet
+        CHECK(s.inst.installedNote().empty());
+        s.inst.goTo(Step::Install);
+        s.frames(1);
+        installed(s);
+        CHECK(s.inst.result().detail.find("It is on the game's list of installed mods") != std::string::npos);
+        CHECK(s.inst.game().mods && s.inst.game().mods->mods.size() == 1);
+
+        // Done: the steps before can't be gone back to, by the list, Back, a dropped file or a folder.
+        CHECK(s.inst.finished());
+        for (Step st : {Step::Mod, Step::Game, Step::Options}) CHECK(!s.inst.canGoTo(st));
+        CHECK(!s.drawn("< Back"));
+        CHECK(s.click("1   Mod"));
+        CHECK(s.inst.step() == Step::Install);
+        s.inst.dropped((root / "plain.amod").string());
+        s.inst.dropped(game.string());
+        s.inst.goTo(Step::Game);
+        s.frames(1);
+        CHECK(s.inst.step() == Step::Install);
+        CHECK(s.inst.outcome() == Outcome::Succeeded);
+        CHECK_EQ(s.inst.mod()->title, std::string("Louder"));
+        CHECK(s.inst.status() == "This installation is done. Install Another Mod starts over.");
+        CHECK(!s.inst.canInstall());
+
+        // Install Another Mod starts over, the game kept; the same mod again asks first.
+        CHECK(s.click("Install Another Mod"));
+        CHECK(s.inst.step() == Step::Mod);
+        CHECK(s.inst.openMod((root / "louder.amod").string()));
+        s.frames(1);
+        CHECK(s.inst.installedNote().find("Louder 1.0 is installed here already (installed ") == 0);
+        CHECK(!s.inst.canGoTo(Step::Options));
+        CHECK(!s.inst.canInstall());
+        CHECK(s.click("Next >")); // greyed out
+        CHECK(s.inst.step() == Step::Game);
+        CHECK(s.click("Install it anyway"));
+        CHECK(s.inst.installAnyway());
+        CHECK(s.click("Next >"));
+        CHECK(s.inst.step() == Step::Options);
+        s.inst.options()["frames"] = "8";
+        s.inst.goTo(Step::Install);
+        s.frames(1);
+        installed(s);
+
+        // Another version of it: the same question, in other words.
+        CHECK(s.click("Install Another Mod"));
+        CHECK(s.inst.openMod((root / "louder 1.1.amod").string()));
+        s.frames(1);
+        CHECK(s.inst.installedNote().find("Louder 1.0 is installed here (installed ") == 0);
+        CHECK(s.inst.installedNote().find("Installing version 1.1 over it") != std::string::npos);
+
+        // Advanced Options: the list off, so nothing asks and nothing is added.
+        CHECK(s.click("Advanced Options"));
+        CHECK(s.drawn("Keep a list of installed mods"));
+        CHECK(s.click("Keep a list of installed mods"));
+        CHECK(!s.inst.trackMods());
+        CHECK(s.inst.installedNote().empty());
+        CHECK(s.inst.canGoTo(Step::Options));
+        CHECK(ReadText(root / "user" / installer::kSettingsFileName).find("TrackMods=0\n") != std::string::npos);
+        // The window with the list.
+        CHECK(s.drawn("Installed Mods..."));
+        CHECK(s.click("Installed Mods..."));
+        s.frames(1);
+        CHECK(test::UiProbe::get().find("Louder", "Installed Mods")); // a row each time it was installed
+        CHECK_EQ(test::UiProbe::get().count("Louder", "Installed Mods"), 2);
+        CHECK(!s.drawn("Copy##sha256"));
+        CHECK(s.click("Louder"));
+        s.frames(1);
+        CHECK(s.drawn("Copy##sha256")); // the picked mod in full
+        CHECK(s.click("Copy##sha256"));
+        CHECK_EQ(std::string(ImGui::GetClipboardText()), Sha256Hex(louder));
+        CHECK(s.click("Close"));
+        s.frames(1);
+        CHECK(!test::UiProbe::get().find("Louder", "Installed Mods"));
+        s.inst.goTo(Step::Install);
+        s.frames(1);
+        installed(s);
+        CHECK(test::UiProbe::get().conflicts.empty());
+    }
+    auto list = ReadModList(global.string());
+    CHECK(list && list->mods.size() == 2); // the third went in with the list off
+    if (list && list->mods.size() == 2) {
+        const InstalledMod& m = list->mods[0];
+        CHECK_EQ(m.title, std::string("Louder"));
+        CHECK_EQ(m.author, std::string("Someone"));
+        CHECK_EQ(m.version, std::string("1.0"));
+        CHECK(!m.nfsms);
+        CHECK_EQ(m.sha256, Sha256Hex(louder));
+        CHECK_EQ(fs::path(m.script), root / "louder.amod");
+        CHECK_EQ(m.game, std::string("prostreet_pc"));
+        CHECK(m.by.rfind("Attribulina Mod Installer ", 0) == 0);
+        CHECK_EQ(m.result, std::string("installed"));
+        CHECK(m.options == (std::vector<std::pair<std::string, std::string>>{{"frames", "5"}}));
+        CHECK(m.files == (std::vector<std::string>{"GLOBAL\\ATTRIBUTES.BIN", "GLOBAL\\GlobalMemoryFile.bin"}));
+        CHECK_EQ(m.installed.size(), size_t(19));
+        CHECK(list->mods[1].options == (std::vector<std::pair<std::string, std::string>>{{"frames", "8"}}));
+    }
+    {
+        // The next run keeps the list off; on again, a mod without a title is named by its file.
+        Session s(PathsIn(root));
+        CHECK(!s.inst.trackMods());
+        s.inst.setTrackMods(true);
+        CHECK(s.inst.openMod((root / "plain.amod").string()));
+        s.frames(1);
+        CHECK(s.inst.gameLoaded());
+        CHECK(s.inst.installedNote().empty());
+        CHECK(s.logText().find("it names no title, so its file's SHA-256") != std::string::npos);
+        s.inst.goTo(Step::Install);
+        s.frames(1);
+        installed(s);
+        CHECK(s.click("Install Another Mod"));
+        CHECK(s.inst.openMod((root / "plain.amod").string()));
+        s.frames(1);
+        CHECK(s.inst.installedNote().find("plain.amod is installed here already") == 0);
+    }
+    list = ReadModList(global.string());
+    CHECK(list && list->mods.size() == 3);
+    if (list && list->mods.size() == 3) {
+        CHECK(list->mods[2].title.empty());
+        CHECK_EQ(list->mods[2].name(), std::string("plain.amod"));
+    }
+    {
+        // A list that doesn't read is left as it is, and says so.
+        WriteText(global / kModListFile, "attribulina mods 1\nmod \"Broken\n");
+        Session s(PathsIn(root));
+        CHECK(s.inst.openMod((root / "louder.amod").string()));
+        s.frames(1);
+        CHECK(s.inst.gameLoaded());
+        CHECK(!s.inst.game().modsError.empty());
+        CHECK(s.inst.installedNote().empty());
+        s.inst.goTo(Step::Install);
+        s.frames(1);
+        installed(s);
+        CHECK(s.logText().find("The mod isn't on the list of installed mods") != std::string::npos);
+        CHECK_EQ(ReadText(global / kModListFile), std::string("attribulina mods 1\nmod \"Broken\n"));
+    }
     fs::remove_all(root);
 }

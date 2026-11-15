@@ -5,7 +5,9 @@
 
 #include "cli/Cli.h"
 #include "core/Compression.h"
+#include "core/Hash.h"
 #include "core/MemoryFile.h"
+#include "core/ModList.h"
 #include "core/Script.h"
 
 #include <filesystem>
@@ -441,4 +443,62 @@ TEST("cli: saving a pack changes nothing in the memory files but its copy, in ev
         }
         fs::remove_all(root);
     }
+}
+
+TEST("cli: apply puts each script file on the game's list of installed mods once saved; again warns; --no-mod-list, --out, --dry-run") {
+    const std::string vanilla = test::DataPath("attrib/databases/pc/prostreet-vanilla");
+    const fs::path root = fs::temp_directory_path() / "attribulina_cli_modlist";
+    const fs::path global = root / "GLOBAL";
+    fs::remove_all(root);
+    fs::create_directories(global);
+    for (const char* f : {"ATTRIBUTES.BIN", "FE_ATTRIB.BIN"}) fs::copy_file(fs::path(vanilla) / f, global / f);
+    for (const auto& e : fs::directory_iterator(test::DataPath("attrib/memoryfiles/pc/prostreet"))) fs::copy_file(e.path(), global / e.path().filename());
+    Cli run(root);
+    const std::string tune = "attribulina 1\ntitle \"Tune\"\nversion \"1\"\noption frames integer \"Frames\" default 5 min 1 max 50\n"
+                             "edit audio_revlimiter/default { total_frames_short = $frames }\n";
+    WriteText(root / "tune.amod", tune);
+    WriteText(root / "long.nfsms", "version 4.6\ngame PS\n// amod begin\n// title \"Long\"\n// amod end\n"
+                                   "update_field audio_revlimiter default total_frames_long 77\n");
+    const std::string mod = (root / "tune.amod").string();
+    auto list = [&]() { return attrib::ReadModList(global.string()); };
+
+    CHECK_EQ(run({"apply", global.string(), mod, "--dry-run"}), 0);
+    CHECK(run.out.find("would add Tune 1 to " + attrib::ModListPath(global.string())) != std::string::npos);
+    CHECK(!list());
+
+    CHECK_EQ(run({"apply", global.string(), mod, "--set", "frames=7"}), 0);
+    CHECK(run.out.find("added Tune 1 to " + attrib::ModListPath(global.string())) != std::string::npos);
+    auto l = list();
+    CHECK(l && l->mods.size() == 1);
+    if (l && l->mods.size() == 1) {
+        const attrib::InstalledMod& m = l->mods[0];
+        CHECK_EQ(m.title, std::string("Tune"));
+        CHECK_EQ(m.sha256, attrib::Sha256Hex(tune));
+        CHECK(m.by.rfind("attribcli ", 0) == 0);
+        CHECK_EQ(m.game, std::string("prostreet_pc"));
+        CHECK(m.options == (std::vector<std::pair<std::string, std::string>>{{"frames", "7"}}));
+        CHECK(m.files == (std::vector<std::string>{"GLOBAL\\ATTRIBUTES.BIN", "GLOBAL\\GlobalMemoryFile.bin"}));
+    }
+
+    // Again: a warning, and a second entry.
+    CHECK_EQ(run({"apply", global.string(), mod}), 0);
+    CHECK(run.err.find("attribcli: warning: Tune 1 is installed here already") != std::string::npos);
+    CHECK(list()->mods.size() == 2);
+
+    // An nfsms script by its // amod block; -e statements are no mod.
+    CHECK_EQ(run({"apply", global.string(), (root / "long.nfsms").string(), "-e", "edit audio_revlimiter/default { total_frames_short = 3 }"}), 0);
+    l = list();
+    CHECK(l && l->mods.size() == 3 && l->mods[2].title == "Long" && l->mods[2].nfsms);
+
+    CHECK_EQ(run({"apply", global.string(), mod, "--no-mod-list"}), 0);
+    CHECK(run.err.find("installed here already") == std::string::npos);
+    CHECK(list()->mods.size() == 3);
+
+    // --out: the list with this one goes there; the game's stays.
+    const fs::path out = root / "out";
+    CHECK_EQ(run({"apply", global.string(), mod, "--out", out.string()}), 0);
+    const auto outList = attrib::ReadModList(out.string());
+    CHECK(outList && outList->mods.size() == 4);
+    CHECK(list()->mods.size() == 3);
+    fs::remove_all(root);
 }

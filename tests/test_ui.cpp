@@ -6627,3 +6627,133 @@ TEST("ui: an event vault OGVI saved beside World's attributes.bin opens in place
     for (const FolderFile& f : files) CHECK(f.saveAs.empty());
     fs::remove_all(dir);
 }
+
+TEST("ui: installed mods: the folder's list opens with it; File > Apply Script and Run nfsms Script put the mod on it when saved, and undo takes it back") {
+    namespace fs = std::filesystem;
+    platform::HeadlessImGui imgui;
+    imgui.beforeFrame = ProbeBefore;
+    imgui.afterFrame = ProbeAfter;
+    test::UiProbe& probe = test::UiProbe::get();
+    probe.conflicts.clear();
+    const fs::path root = fs::temp_directory_path() / "attribulina_ui_modlist";
+    fs::remove_all(root);
+    const fs::path global = root / "GLOBAL";
+    fs::create_directories(global);
+    for (const char* f : {"ATTRIBUTES.BIN", "FE_ATTRIB.BIN"}) fs::copy_file(fs::path(ProStreetDir()) / f, global / f);
+    {
+        ModList old;
+        InstalledMod m;
+        m.title = "Old Mod";
+        m.version = "1.0";
+        old.mods.push_back(m);
+        WriteModList(global.string(), old);
+    }
+    const std::string louder = "attribulina 1\ntitle \"Louder\"\nversion \"2\"\nedit audio_revlimiter/default { total_frames_short = 9 }\n";
+    std::ofstream(root / "louder.amod", std::ios::binary) << louder;
+    std::ofstream(root / "long.nfsms", std::ios::binary)
+        << "version 4.6\ngame PS\n# amod begin\n# title \"Long\"\n# amod end\nupdate_field audio_revlimiter default total_frames_long 77\n";
+
+    platform::HeadlessHost host;
+    app::App a(host);
+    a.setup(1.0f, "");
+    a.setUserKeysPath("");
+    CHECK(a.open(global.string()));
+    CHECK(a.modList() && a.modList()->mods.size() == 1);
+    CHECK(a.trackMods());
+    imgui.run(a, 2);
+
+    // A mod script from a file, through its prompt.
+    host.nextOpenFile = (root / "louder.amod").string();
+    ClickItem(imgui, a, probe.find("File"));
+    ClickItem(imgui, a, probe.find("Apply Script..."));
+    imgui.run(a, 2);
+    ClickItem(imgui, a, probe.find("Apply", "Apply Script"));
+    imgui.run(a, 2);
+    CHECK_EQ(a.pendingMods().size(), size_t(1));
+    if (!a.pendingMods().empty()) {
+        const InstalledMod& m = a.pendingMods()[0];
+        CHECK_EQ(m.title, std::string("Louder"));
+        CHECK_EQ(m.sha256, Sha256Hex(louder));
+        CHECK(m.by.rfind("Attribulina ", 0) == 0);
+        CHECK(std::find(m.files.begin(), m.files.end(), std::string("GLOBAL\\ATTRIBUTES.BIN")) != m.files.end());
+    }
+    // Undone, it goes; redone, it comes back.
+    CHECK(a.undo());
+    CHECK(a.pendingMods().empty());
+    CHECK(a.redo());
+    CHECK_EQ(a.pendingMods().size(), size_t(1));
+
+    // An nfsms script from a file, named by its # amod block.
+    host.nextOpenFile = (root / "long.nfsms").string();
+    ClickItem(imgui, a, probe.find("File"));
+    ClickItem(imgui, a, probe.find("Run nfsms Script..."));
+    imgui.run(a, 2);
+    CHECK_EQ(a.pendingMods().size(), size_t(2));
+    if (a.pendingMods().size() == 2) {
+        CHECK_EQ(a.pendingMods()[1].title, std::string("Long"));
+        CHECK(a.pendingMods()[1].nfsms);
+    }
+    // The Script panels' own Apply and Run are scripts being written: not listed.
+    a.setScriptText("attribulina 1\ntitle \"Draft\"\nedit audio_revlimiter/default { total_frames_short = 10 }\n");
+    imgui.run(a, 2);
+    FrontTab(imgui, a, "Script");
+    ClickItem(imgui, a, probe.find("Apply...", "Script"));
+    imgui.run(a, 2);
+    ClickItem(imgui, a, probe.find("Apply", "Apply Script"));
+    imgui.run(a, 2);
+    CHECK(a.runNfsms(0, 0));
+    imgui.run(a, 1);
+    CHECK_EQ(a.pendingMods().size(), size_t(2));
+
+    // The panel lists the file's mods and the ones not saved yet.
+    a.showInstalledMods() = true;
+    imgui.run(a, 2);
+    CHECK(probe.find("Old Mod", "Installed Mods"));
+    CHECK(probe.find("Louder (not saved yet)", "Installed Mods"));
+    CHECK(probe.find("Reload", "Installed Mods"));
+
+    // Saved: onto the list, in the order applied.
+    CHECK(a.saveAll());
+    CHECK(a.pendingMods().empty());
+    auto list = ReadModList(global.string());
+    CHECK(list && list->mods.size() == 3);
+    if (list && list->mods.size() == 3) {
+        CHECK_EQ(list->mods[1].title, std::string("Louder"));
+        CHECK_EQ(list->mods[2].title, std::string("Long"));
+    }
+    CHECK(a.modList() && a.modList()->mods.size() == 3);
+    imgui.run(a, 1);
+    CHECK(probe.find("Louder", "Installed Mods"));
+
+    // Applying it again warns, as it is on the list.
+    host.nextOpenFile = (root / "louder.amod").string();
+    ClickItem(imgui, a, probe.find("File"));
+    ClickItem(imgui, a, probe.find("Apply Script..."));
+    imgui.run(a, 2);
+    bool warned = false;
+    for (const app::LogLine& l : a.log()) warned |= l.level == app::LogLevel::Warning && l.text.find("Louder 2 is installed here already") == 0;
+    CHECK(warned);
+    ClickItem(imgui, a, probe.find("Cancel", "Apply Script"));
+    imgui.run(a, 2);
+
+    // With the list off, nothing goes on it.
+    a.trackMods() = false;
+    host.nextOpenFile = (root / "louder.amod").string();
+    ClickItem(imgui, a, probe.find("File"));
+    ClickItem(imgui, a, probe.find("Apply Script..."));
+    imgui.run(a, 2);
+    ClickItem(imgui, a, probe.find("Apply", "Apply Script"));
+    imgui.run(a, 2);
+    CHECK(a.pendingMods().empty());
+    CHECK(a.saveAll());
+    list = ReadModList(global.string());
+    CHECK(list && list->mods.size() == 3);
+
+    // Closing forgets the list.
+    a.closeAll();
+    CHECK(!a.modList());
+    imgui.run(a, 2);
+    for (const auto& c : probe.conflicts) std::printf("        ID conflict: %s\n", c.c_str());
+    CHECK(probe.conflicts.empty());
+    fs::remove_all(root);
+}

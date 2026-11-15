@@ -12,6 +12,7 @@ Lines are read the way NFS-VltEd reads them, which real mods rely on:
 
 - The command needs no space after it: `ui_text#` is a blank line of text, and `script"Main\AI Curves.nfsms"` includes a file.
 - A line that doesn't start with a known command is a comment. Mods leave notes (`Balance!`) and stray characters (`-`) between commands, so a misspelled command is skipped without a word too. The editor shows such lines in the comment colour.
+- That is why `//` works at the start of a line, as many mods write their notes (`// RX-7`): no command starts with it. After a command it is no comment. NFS-VltEd's parameters run to a `#`, so in `update_field pvehicle a HornType 3 // louder` the `//` and `louder` are two more parameters, and the line fails. The error says to use `#` there.
 - Paths are written with `\`.
 - A file saved with a byte order mark reads as one without it, as in NFS-VltEd.
 
@@ -23,6 +24,27 @@ add_node pvehicle 911gt3 911gt3_race
 ```
 
 Scripts run line by line, as NFS-VltEd runs them: a line that fails (an unknown command, a node that isn't there, a value that doesn't fit) is reported at its line, and the next line runs. `attribcli --strict` stops at the first one instead.
+
+## The mod's title and version
+
+An nfsms script has no line for its title, author or version, which the mod installer and the list of installed mods need to tell one mod from another (`doc/installer.md`). A block of comments holds them as a mod script's lines (`doc/scripts.md`), between `# amod begin` and `# amod end`:
+
+```
+version 4.6
+game PS
+# amod begin
+# game prostreet_pc
+# title "Shifted"
+# author "someone"
+# version "1.2"
+# description "Shifts faster, louder."
+# amod end
+update_field ...
+```
+
+NFS-VltEd reads every line of it as a comment, so the script still runs there as it did. Each line starts with `#` or `//` (`// amod begin` too); what follows it, one space dropped, is a mod script line. Only `game`, `title`, `author`, `version`, `description` and `url` go in it, and an `attribulina 1` line may: the mod's changes are its nfsms lines. Without a `description` there, the mod's `ui_text` lines describe it. A `game` line there is checked as a mod script's is, after the nfsms `game` line: a mod for another game can't be installed.
+
+Only the first block counts. A block that doesn't read (a quote that doesn't end, a statement that isn't one of those, a line inside that isn't a comment, no `# amod end`) is a warning with its line: the script still runs, and without a title the installer names the mod by its file's SHA-256. Converting the script to a mod script (`attribcli convert`) takes the block's title, author, version and description for its own.
 
 ## Commands
 
