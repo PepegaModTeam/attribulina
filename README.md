@@ -71,6 +71,20 @@ If you want to run Attribulina in a portable fashion, simply place/create a "att
 
 Please note that attribcli mentioned below is always portable, so you will need to place your keys and data right next to it.
 
+## Mod Installer
+
+`AttribulinaModInstaller.exe` is a tool which is a dedicated tool for installing `nfsms` and `amod` scripts.
+
+It is designed for users of the mods to easily install and apply mods without the cruft of a whole editor in front of them.
+
+Simply select your game directory and the mod you wish to install, any options it has and install the mod.
+
+You may also drag and drop the `nfsms`/`amod` file into the window (or onto the app itself - it reads the path to the script file as the first argument).
+
+Should you wish to uninstall any mods, press the "Installed Mods..." button to get a list of the previously installed mods. You should be able to revert any changes done by the mods (as long as the Attribulina trace files are kept in the game's GLOBAL directory).
+
+NOTE: If you install a conflicting mod (i.e. mod that applies the same changes as a mod that has been installed before), you will create a dependency chain, so you will have to remove the mod it was conflicting with as well if you wish to remove it. This is still a work in progress.
+
 ## attribcli
 
 `attribcli.exe` builds next to the editor and does the same with mod scripts from a console or a batch file:
