@@ -248,12 +248,15 @@ namespace attrib
 				attach(b, blockStart, elemOffset, type->pointers());
 			}
 
-			void attach(DataBlock& b, uint32_t blockStart, uint32_t elemOffset, const PointerLayout* pl)
+			// `from`: pointers before it in `b` are attached already (a block grown in nested()).
+			void attach(DataBlock& b, uint32_t blockStart, uint32_t elemOffset, const PointerLayout* pl, uint32_t from = 0)
 			{
 				if (!pl) return;
-				for (uint32_t s : pl->unfollowed) null(b, blockStart, elemOffset + s);
+				for (uint32_t s : pl->unfollowed)
+					if (elemOffset + s >= from) null(b, blockStart, elemOffset + s);
 				for (uint32_t s : pl->strings)
 				{
+					if (elemOffset + s < from) continue;
 					const uint32_t loc = blockStart + elemOffset + s;
 					const uint32_t* target = raw_.binPtr(loc);
 					if (!target)
@@ -267,6 +270,7 @@ namespace attrib
 				}
 				for (const NestedField& n : pl->nested)
 				{
+					if (elemOffset + n.offset < from) continue;
 					const uint32_t loc = blockStart + elemOffset + n.offset;
 					const uint32_t* target = raw_.binPtr(loc);
 					if (!target)
@@ -374,11 +378,40 @@ namespace attrib
 				return it == m.end() ? kNewPtr : it->second;
 			}
 
+			// The pointers of the elements a nested field points at: the hand table's,
+			// else the type table's (a RefSpec's Collection*, which Most Wanted's layout
+			// lists as null).
+			const PointerLayout* elementPointers(const NestedField& n) const
+			{
+				if (const PointerLayout* pl = PointerLayoutFor(n.elemType, n.elemSize)) return pl;
+				if (const TypeInfo* t = db_.typeByHash(StringHash32(n.elemType)); t && t->size == n.elemSize) return t->pointers();
+				return nullptr;
+			}
+
 			std::shared_ptr<DataBlock> nested(uint32_t target, const NestedField& n, uint32_t count)
 			{
 				auto it = nested_.find(target);
 				if (it != nested_.end())
+				{
+					// Another pointer read fewer bytes here. NFS-VltEd and VaultLib give an
+					// empty list no bytes, so an FEPartData's empty camera list points at the
+					// PartDetails after it: that list came first and took the address with
+					// an empty block, and PartDetails lost its values (and the file their
+					// bytes, saved again). The block takes the longer reading, and the list
+					// still reads its count of it.
+					DataBlock& b = *it->second;
+					const uint32_t size = count * n.elemSize, had = uint32_t(b.bytes.size());
+					if (size > had)
+					{
+						const DataBlock more = read(target + had, size - had);
+						b.bytes.insert(b.bytes.end(), more.bytes.begin(), more.bytes.end());
+						b.align = std::max(b.align, n.align);
+						if (const PointerLayout* pl = elementPointers(n))
+							for (uint32_t k = 0; k < count; ++k)
+								if ((k + 1) * n.elemSize > had) attach(b, target, k * n.elemSize, pl, had);
+					}
 					return it->second;
+				}
 				uint32_t size = count * n.elemSize;
 				if (n.toLzEnd && target < raw_.bin.size())
 					if (auto h = ParseLzHeader(ByteSpan(raw_.bin.data() + target, raw_.bin.size() - target)))
@@ -390,12 +423,7 @@ namespace attrib
 				// Most Wanted puts every compiled Lua block on 16 bytes.
 				block->align = n.toLzEnd && raw_.mostWantedOwn() ? 16 : n.align;
 				nested_[target] = block;
-				// The element type's pointers: the hand table's, else the type table's
-				// (a RefSpec's Collection*, which Most Wanted's layout lists as null).
-				const PointerLayout* pl = PointerLayoutFor(n.elemType, n.elemSize);
-				if (!pl)
-					if (const TypeInfo* t = db_.typeByHash(StringHash32(n.elemType)); t && t->size == n.elemSize) pl = t->pointers();
-				if (pl)
+				if (const PointerLayout* pl = elementPointers(n))
 					for (uint32_t k = 0; k < count; ++k)
 						attach(*block, target, k * n.elemSize, pl);
 				return block;

@@ -76,6 +76,24 @@ namespace attrib
 			while (!out.empty() && (out.back() == ' ' || out.back() == '.')) out.pop_back();
 			return out.empty() ? "mod" : out;
 		}
+
+		// Takes out the sets whose value is the `was` they check: such a line changes
+		// nothing back. Builds before 2026-11-15 wrote `partData[1].PartDetails = null
+		// was null` into traces of mods installed over files NFS-VltEd or VaultLib saved
+		// (the reader gave each FEPartDetail its empty camera list's block), and setting
+		// that would take the pointer away; `was` can't check a pointer either.
+		void DropUnchanged(std::vector<sc::Statement>& ss)
+		{
+			for (sc::Statement& s : ss)
+			{
+				DropUnchanged(s.body);
+				DropUnchanged(s.elseBody);
+			}
+			ss.erase(std::remove_if(ss.begin(), ss.end(), [](const sc::Statement& s)
+			{
+				return s.kind == K::Set && s.op == '=' && s.value && s.was && sc::PrintValue(*s.value) == sc::PrintValue(*s.was);
+			}), ss.end());
+		}
 	} // namespace
 
 	// ----------------------------------------------------------------- making ---
@@ -370,7 +388,9 @@ namespace attrib
 			s << in.rdbuf();
 			try
 			{
-				t.trace = std::make_shared<const sc::Script>(sc::Parse(s.str(), path));
+				sc::Script trace = sc::Parse(s.str(), path);
+				DropUnchanged(trace.statements);
+				t.trace = std::make_shared<const sc::Script>(std::move(trace));
 			}
 			catch (const std::exception& e)
 			{

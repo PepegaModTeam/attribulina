@@ -330,10 +330,17 @@ namespace attrib::script
 					}
 					return;
 				}
-				// A leaf (or a curve, a blob: whole). `was` only on small values.
+				// A leaf (or a curve, a blob: whole). `was` only on small values. A block
+				// too short for its type holds no value to write: value() would call it
+				// null, and setting that would take the pointer away. (The reader gave
+				// NFS-VltEd's PartDetails an empty camera list's block before 2026-11-15,
+				// and traces said `PartDetails = null was null`.)
+				const auto fits = [&](const DataBlock& b, uint32_t off) { return uint64_t(off) + size <= b.bytes.size(); };
+				if (!fits(nb, noff)) return;
 				ValuePtr now = value(nb, noff, vt, e);
 				ValuePtr old;
-				if (was && vt.kind != TypeKind::Curve && vt.kind != TypeKind::Blob && vt.kind != TypeKind::Matrix) old = value(ob, ooff, vt, e);
+				if (was && vt.kind != TypeKind::Curve && vt.kind != TypeKind::Blob && vt.kind != TypeKind::Matrix && fits(ob, ooff))
+					old = value(ob, ooff, vt, e);
 				set(out, path, now, old);
 			}
 

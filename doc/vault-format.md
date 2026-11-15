@@ -548,7 +548,12 @@ the PC's size; another size takes its layout from the schema.
 | Undercover's index table (16 bytes, no type table lists it) | `u32[u32 @0]` @4, `ISet[u32 @0]` @8 (8 bytes each), `u32[sum of the ISets' counts]` @12 |
 
 `FEPartData`'s three `MiniRefSpec` pointers may target one shared block, so
-the model keeps nested blocks shared.
+the model keeps nested blocks shared. Retail points an empty list at another
+list's block. NFS-VltEd and VaultLib give an empty list no bytes, so an empty
+third list points at the `FEPartDetail` after it (151 parts of
+`pc/prostreet-vlted`'s `FE_ATTRIB.BIN`). Pointers to one address share the
+block of the longest reading: the list reads none of it, `PartDetails` its 8
+bytes, and the writer places it once, as those files have it.
 
 On PS2 its four bools (`drift`, `drag`, `grip`, `speed`) take 4 bytes each, which
 moves everything after them by 12: the counts are at 40/41/42, the arrays at
