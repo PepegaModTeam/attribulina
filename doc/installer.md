@@ -20,7 +20,7 @@ Once the mod is installed, or failed to be, the steps before are locked: the lis
 ## How it runs scripts
 
 - A mod script runs as Apply Script does without Strict: it stops at its first error, and then nothing is saved.
-- An nfsms script always runs NFS-VltEd compatible (`nfsms::RunSettings::vltEd`, `doc/nfsms.md`), as nfsms mods are made for NFS-VltEd (the user's call). A line that fails is logged and the next one runs, as in NFS-VltEd. A script NFS-VltEd's installer refuses runs none of its lines. `file_copy` and `folder_create` write into the game's folder.
+- An nfsms script runs NFS-VltEd compatible (`nfsms::RunSettings::vltEd`, `doc/nfsms.md`), as nfsms mods are made for NFS-VltEd (the user's call), unless Advanced Options turns it off. A line that fails is logged and the next one runs, as in NFS-VltEd. A script NFS-VltEd's installer refuses runs none of its lines. `file_copy` and `folder_create` write into the game's folder.
 - Names a script gives new collections go to `user_keys.txt` in the user's folder, as attribcli adds them, so the editor shows them.
 
 ## The list of installed mods
@@ -62,7 +62,10 @@ end
 
 **Installed Mods...**, the button at the bottom left beside Advanced Options, on every step, opens the list of the game chosen, with or without a mod: a table of the mods with their version, author, time and result, and the one clicked in full below it (its script, SHA-256 with a Copy button, game, program, options, files and what uninstalling it sets back). `certutil -hashfile <script> SHA256` prints the same SHA-256 for the same file on Windows. Uninstall... and Remove from List... act on the mod clicked, each after asking.
 
-**Advanced Options** has a check box for the list, Keep a list of installed mods (on by default, `TrackMods` in `mod_installer.ini`). Off, installing neither reads the list nor adds to it, and nothing is traced or checked.
+**Advanced Options** has two check boxes, both on by default and kept in `mod_installer.ini`:
+
+- Keep a list of installed mods (`TrackMods`). Off, installing neither reads the list nor adds to it, and nothing is traced or checked.
+- NFS-VltEd compatible (`NfsmsVltEd`, the editor's name for its own switch). Off, an nfsms script runs as the editor's nfsms window runs it with the switch off: our member names and VaultLib's come before NFS-VltEd's words, and NFS-VltEd's value widths and quirks don't apply. The Log says which way each nfsms mod was read. Mod scripts don't change.
 
 ## What a mod changed: its trace
 

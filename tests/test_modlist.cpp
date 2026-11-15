@@ -592,3 +592,49 @@ TEST("mod traces: the list's traces are written beside it, follow its entries an
 }
 
 
+
+TEST("mod traces: a line setting the value it checks (an earlier build's `PartDetails = null was null`) is left out, and the mod uninstalls") {
+    // Builds before 2026-11-15 read an FEPartDetail of files NFS-VltEd saved as the
+    // empty camera list's block that points at it too, and traced it so: `was`
+    // can't check a pointer, and the user's uninstall stopped there.
+    const std::string vlted = test::DataPath("attrib/databases/pc/prostreet-vlted/");
+    if (!fs::exists(vlted + "FE_ATTRIB.BIN")) return;
+    const fs::path dir = fs::temp_directory_path() / "attribulina_mod_traces_unchanged";
+    fs::remove_all(dir);
+    fs::create_directories(dir);
+    auto db = std::make_unique<Database>();
+    db->addTypeSchema(TypeSchema::Load(test::DataPath("data/schema/prostreet_pc.txt")));
+    db->names().loadFile(test::DataPath("data/attrib_keys.txt"));
+    for (const char* f : {"ATTRIBUTES.BIN", "FE_ATTRIB.BIN"}) db->loadPack(vlted + f);
+    const std::map<std::string, Bytes> original = PackBytes(*db);
+    TracedMod m = InstallTraced(*db, "Prices", "attribulina 2\nedit part_fedata/generic_wheel_group_03 { partData[1].price = 1500 }\n");
+    std::string text = sc::Print(*m.trace);
+    CHECK(text.find("PartDetails") == std::string::npos); // this build traces only the price
+    const size_t at = text.find("    partData[1].price = ");
+    CHECK(at != std::string::npos);
+    if (at == std::string::npos) return;
+    text.insert(text.find('\n', at) + 1, "    partData[1].PartDetails = null was null\n");
+    m.trace = std::make_shared<const sc::Script>(sc::Parse(text, "trace.amod"));
+    {
+        // As written, the line stops the uninstall.
+        auto copy = sc::CloneDatabase(*db);
+        const UninstallResult r = Uninstall(*copy, {m}, {0});
+        CHECK(!r.ok && r.error.find("was checks a single value") != std::string::npos);
+    }
+    ModListUpdate u;
+    u.add.push_back({m.mod, m.trace});
+    std::vector<std::string> problems;
+    const ModList list = UpdateModList(dir.string(), u, &problems);
+    CHECK(problems.empty());
+    const std::vector<TracedMod> rows = ReadTraces(dir.string(), list);
+    CHECK(rows.size() == 1 && rows[0].trace);
+    if (rows.size() != 1 || !rows[0].trace) return;
+    const std::string read = sc::Print(*rows[0].trace);
+    CHECK(read.find("PartDetails") == std::string::npos && read.find("partData[1].price = ") != std::string::npos);
+    const UninstallResult r = Uninstall(*db, rows, {0});
+    if (!r.ok) std::fprintf(stderr, "%s\n", r.error.c_str());
+    CHECK(r.ok);
+    const std::map<std::string, Bytes> now = PackBytes(*db);
+    for (const auto& [path, bytes] : original) CHECK(now.count(path) && now.at(path) == bytes);
+    fs::remove_all(dir);
+}

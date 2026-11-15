@@ -331,13 +331,12 @@ TEST("vaults: a vault made in each pack of every game folder, with a collection 
     for (const auto& platform : fs::directory_iterator(root))
         if (platform.is_directory())
             for (const auto& f : fs::directory_iterator(platform.path()))
-                // Not the -vlted re-saves: the user's edits in prostreet-vlted make two of
-                // its packs write shorter the second time, which is expected. Nor Pro Street's OGVI save, whose
-                // empty camera lists VaultLib points at the block after them (not repaired, the user's call:
-                // VaultLib.h). Nor a folder of builds (pc/world-various: some 9800 packs of the final build's
-                // format, which test_writer covers).
-                if (f.is_directory() && f.path().filename().string().find("-vlted") == std::string::npos && f.path().filename() != "prostreet-ogvi" &&
-                    FindFileNoCase(f.path().string(), "attributes.bin"))
+                // The -vlted and -ogvi re-saves too: NFS-VltEd and VaultLib point an
+                // FEPartData's empty camera list at the PartDetails after it, which wrote
+                // shorter each time until the reader gave PartDetails its own bytes
+                // (2026-11-15). Not a folder of builds (pc/world-various: some 9800 packs of
+                // the final build's format, which test_writer covers).
+                if (f.is_directory() && FindFileNoCase(f.path().string(), "attributes.bin"))
                     folders.push_back(f.path());
     std::sort(folders.begin(), folders.end());
     for (const fs::path& folder : folders) {

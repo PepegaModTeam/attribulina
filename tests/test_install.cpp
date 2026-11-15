@@ -389,6 +389,63 @@ TEST("installer: an nfsms mod runs NFS-VltEd compatible with the setup's choices
     fs::remove_all(root);
 }
 
+TEST("installer: Advanced Options' NFS-VltEd compatible switch is on by default, kept in mod_installer.ini, and an nfsms mod reads by it") {
+    const fs::path root = MakeGame("attribulina_installer_vlted");
+    const fs::path game = root / "game", global = game / "GLOBAL", mod = root / "Kit.nfsms";
+    // mKitNumber is our member's name: NFS-VltEd has KitNumber only.
+    WriteText(mod, "version 4.6\ngame PS\nupdate_field presetride player_d_day Parts[7] mKitNumber 4\n"
+                   "# amod begin\n# title \"Kit\"\n# amod end\n");
+    auto install = [&](Session& s) {
+        s.inst.openArguments({game.string(), mod.string()});
+        s.frames(1);
+        s.inst.wait();
+        s.frames(1);
+        CHECK(s.inst.gameLoaded());
+        if (!s.inst.installedNote().empty()) s.inst.installAnyway() = true;
+        CHECK(s.click("Next >"));
+        CHECK(s.inst.step() == Step::Options);
+        CHECK(s.click("Next >"));
+        CHECK(s.click("Install"));
+        s.inst.wait();
+        s.frames(1);
+    };
+    {
+        // On: the line fails, as in NFS-VltEd.
+        Session s(PathsIn(root));
+        CHECK(s.inst.vltEd());
+        install(s);
+        CHECK(s.inst.outcome() == Outcome::Partly);
+        CHECK(s.logText().find("  read as NFS-VltEd 4.6 reads it (NFS-VltEd compatible)\n") != std::string::npos);
+        CHECK(s.logText().find("Kit.nfsms:3:") != std::string::npos);
+    }
+    CHECK(Get(global / "ATTRIBUTES.BIN", "presetride/player_d_day", "Parts").find("mKitNumber = 4") == std::string::npos);
+    {
+        // Off in Advanced Options, before a mod is chosen: the editor's own reading takes our member names.
+        Session s(PathsIn(root));
+        CHECK(s.click("Advanced Options"));
+        CHECK(s.drawn("NFS-VltEd compatible"));
+        CHECK(s.click("NFS-VltEd compatible"));
+        CHECK(!s.inst.vltEd());
+        CHECK(ReadText(root / "user" / installer::kSettingsFileName).find("NfsmsVltEd=0\n") != std::string::npos);
+        CHECK(s.inst.trackMods()); // the other switch stays as it was
+        s.imgui.key([&]() { s.inst.frame(); }, ImGuiKey_Escape); // closes the popup
+        s.frames(1);
+        install(s);
+        CHECK(s.inst.outcome() == Outcome::Succeeded);
+        CHECK(s.logText().find("  read the editor's own way (NFS-VltEd compatible is off)\n") != std::string::npos);
+        CHECK(test::UiProbe::get().conflicts.empty());
+    }
+    CHECK(Get(global / "ATTRIBUTES.BIN", "presetride/player_d_day", "Parts").find("mKitNumber = 4") != std::string::npos);
+    {
+        // The next run starts with it off, and turning it on again is kept.
+        Session s(PathsIn(root));
+        CHECK(!s.inst.vltEd());
+        s.inst.setVltEd(true);
+        CHECK(ReadText(root / "user" / installer::kSettingsFileName).find("NfsmsVltEd=1\n") != std::string::npos);
+    }
+    fs::remove_all(root);
+}
+
 TEST("installer: a mod script that stops saves nothing; a mod for another game can't be installed; the folder chosen before loads with the next mod") {
     const fs::path root = MakeGame("attribulina_installer_fail");
     const fs::path game = root / "game", global = game / "GLOBAL";

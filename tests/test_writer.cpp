@@ -90,6 +90,52 @@ TEST("writer: FE_ATTRIB.BIN round trips byte for byte") {
     CheckIdentical(WritePack(db, fe), ReadFile(PS("FE_ATTRIB.BIN")), "FE_ATTRIB.BIN");
 }
 
+TEST("writer: files NFS-VltEd and VaultLib saved keep each FEPartData's PartDetails, where an empty camera list points too") {
+    // An empty list takes no bytes in their files, so an FEPartData's empty third
+    // camera list points at the FEPartDetail after it. The reader gave PartDetails
+    // that list's empty block, so each save lost 8 bytes a part (the user's mod
+    // traces read `PartDetails = null was null`, 2026-11-15), and the next more.
+    for (const char* folder : {"prostreet-vlted", "prostreet-ogvi"}) {
+        const std::string dir = test::DataPath(std::string("attrib/databases/pc/") + folder + "/");
+        if (!std::filesystem::exists(dir + "FE_ATTRIB.BIN")) continue;
+        Database db;
+        db.loadPack(dir + "ATTRIBUTES.BIN");
+        LoadedPack& fe = db.loadPack(dir + "FE_ATTRIB.BIN");
+        const ClassDef* cls = db.findClass(StringHash32("part_fedata"));
+        CHECK(cls);
+        if (!cls) continue;
+        size_t parts = 0, shared = 0, shortBlocks = 0;
+        for (const Collection* c : cls->collections)
+            for (const Attribute& a : c->attributes) {
+                if (!a.type || a.type->name != "FEPartData" || a.elemSize != 56) continue;
+                for (uint32_t i = 0; i < a.count; ++i) {
+                    const uint32_t e = i * a.elemSize;
+                    const PtrSlot* details = a.data.ptrAt(e + 48);
+                    const PtrSlot* camera3 = a.data.ptrAt(e + 40);
+                    if (!details || !details->data) continue;
+                    ++parts;
+                    shortBlocks += details->data->bytes.size() < 8;
+                    shared += camera3 && camera3->data == details->data && a.data.bytes[e + 30] == 0;
+                }
+            }
+        std::printf("        %s: %zu parts, %zu PartDetails where an empty camera list points\n", folder, parts, shared);
+        CHECK(parts > 0 && shared > 0);
+        CHECK_EQ(shortBlocks, size_t(0));
+        // Written, read and written again: the same values and the same bytes.
+        const Bytes once = WritePack(db, fe);
+        Database again;
+        again.loadPack(dir + "ATTRIBUTES.BIN");
+        LoadedPack& back = again.loadPack(fe.path, once);
+        size_t differ = 0;
+        for (const Collection* c : cls->collections) {
+            const Collection* d = again.findCollection(cls->key, c->key);
+            differ += !d || Snapshot(*c) != Snapshot(*d);
+        }
+        CHECK_EQ(differ, size_t(0));
+        CheckIdentical(WritePack(again, back), once, folder);
+    }
+}
+
 TEST("writer: Pro Street 360 packs round trip byte for byte") {
     auto x = [](const char* f) { return test::DataPath(std::string("attrib/databases/360/prostreet-vanilla/") + f); };
     // Without the type schema (pointers from the hand table) and with it.
