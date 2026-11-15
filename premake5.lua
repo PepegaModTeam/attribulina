@@ -141,7 +141,7 @@ project "ModInstaller"
     links { "attribui", "attribcore", "lua50", "lua51", "lzcompress", "imgui" }
     filter "system:windows"
         resincludedirs { "res" }
-        files { "res/attribulina.rc", "res/attribulina.ico" }
+        files { "res/modinstaller.rc", "res/modinstaller.ico" }
         files { "src/platform/win32/Win32Host.*", "src/platform/win32/D3D11Device.*", "src/platform/win32/installer/**.cpp" }
         defines { "UNICODE", "_UNICODE" }
         links { "d3d11", "dxgi", "d3dcompiler", "dwmapi", "user32", "gdi32", "ole32", "shell32", "uuid", "comdlg32", "imm32", "windowscodecs" }
