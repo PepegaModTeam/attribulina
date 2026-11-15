@@ -177,6 +177,7 @@ namespace installer
 			if (!l.empty() && l.back() == '\r') l.pop_back();
 			if (l.rfind("GameFolder=", 0) == 0 && l.size() > 11 && recentGames_.size() < kMaxRecent) recentGames_.push_back(l.substr(11));
 			else if (l.rfind("TrackMods=", 0) == 0) trackMods_ = l.substr(10) != "0";
+			else if (l.rfind("NfsmsVltEd=", 0) == 0) vltEd_ = l.substr(11) != "0";
 		}
 	}
 
@@ -186,6 +187,7 @@ namespace installer
 		std::ofstream out(FromUtf8(paths_.userDir) / kSettingsFileName, std::ios::binary | std::ios::trunc);
 		out << "[" << kTitle << "]\n";
 		out << "TrackMods=" << (trackMods_ ? 1 : 0) << "\n";
+		out << "NfsmsVltEd=" << (vltEd_ ? 1 : 0) << "\n";
 		for (const std::string& g : recentGames_) out << "GameFolder=" << g << "\n";
 	}
 
@@ -197,6 +199,15 @@ namespace installer
 		post(Level::Info, on ? "The game's list of installed mods (attribulina_mods.txt) is kept again: installing adds to it."
 			: "The list of installed mods is off: installing neither checks attribulina_mods.txt nor adds to it.");
 		refreshModChecks();
+	}
+
+	void Installer::setVltEd(bool on)
+	{
+		if (vltEd_ == on) return;
+		vltEd_ = on;
+		saveSettings();
+		post(Level::Info, on ? "nfsms scripts run NFS-VltEd compatible again, as NFS-VltEd 4.6 reads them."
+			: "NFS-VltEd compatible is off: nfsms scripts read our member names and VaultLib's before NFS-VltEd's words, as the editor's own reading does.");
 	}
 
 	void Installer::rememberGame(const std::string& folder)
@@ -687,7 +698,7 @@ namespace installer
 		st.options = options_;
 		st.choices = choices_;
 		st.gameFolder = game_.folder.game;
-		st.vltEd = true; // nfsms mods are made for NFS-VltEd
+		st.vltEd = vltEd_; // on by default: nfsms mods are made for NFS-VltEd
 		setStatus(Level::Info, "Installing " + mod_->title + "...");
 		startWork(Work::Installing, [this, mod = mod_, st, game = game_, track = trackMods_, plan = std::move(plan)]()
 		{
@@ -743,6 +754,7 @@ namespace installer
 		post(Level::Info, "Installing " + mod.title + " (" + mod.path + ") into " + game.folder.game);
 		if (mod.isNfsms)
 		{
+			post(Level::Info, st.vltEd ? "  read as NFS-VltEd 4.6 reads it (NFS-VltEd compatible)" : "  read the editor's own way (NFS-VltEd compatible is off)");
 			for (const auto& [name, on] : st.choices.checkboxes) post(Level::Info, "  " + name + ": " + (on ? "on" : "off"));
 			for (const auto& [group, name] : st.choices.radios) post(Level::Info, "  " + group + ": " + name);
 		}
@@ -1278,7 +1290,9 @@ namespace installer
 			if (!mod_->author.empty()) by = "by " + mod_->author;
 			if (!mod_->version.empty()) by += (by.empty() ? "version " : ", version ") + mod_->version;
 			if (!by.empty()) ImGui::TextDisabled("%s", by.c_str());
-			ImGui::TextDisabled("%s", mod_->isNfsms ? "An nfsms script, run as NFS-VltEd 4.6 runs it." : "An Attribulina mod script.");
+			ImGui::TextDisabled("%s", !mod_->isNfsms ? "An Attribulina mod script."
+				: vltEd_ ? "An nfsms script, run as NFS-VltEd 4.6 runs it."
+				: "An nfsms script, run the editor's own way (NFS-VltEd compatible is off in Advanced Options).");
 			if (!mod_->isNfsms)
 				if (const auto t = ParseScriptTarget(mod_->amod.meta("game"))) ImGui::TextDisabled("Written for %s.", t->name().c_str());
 			if (!mod_->description.empty())
@@ -1403,7 +1417,8 @@ namespace installer
 		if (!mod_) return;
 		if (mod_->isNfsms)
 		{
-			ImGui::TextDisabled("nfsms scripts run as NFS-VltEd 4.6 runs them.");
+			ImGui::TextDisabled("%s", vltEd_ ? "nfsms scripts run as NFS-VltEd 4.6 runs them."
+				: "nfsms scripts run the editor's own way (NFS-VltEd compatible is off in Advanced Options).");
 			ImGui::Spacing();
 			if (!mod_->nfsms.hasSetup())
 			{
@@ -1693,6 +1708,14 @@ namespace installer
 			"a trace of what it changed in attribulina_traces beside it. A mod the list has already asks before it is installed again, and "
 			"one that changes what a listed mod changed asks whether to uninstall that one first. The game reads neither. The Installed "
 			"Mods button shows the list and uninstalls a mod.");
+		ImGui::Spacing();
+		ImGui::BeginDisabled(busy_);
+		bool vltEd = vltEd_;
+		if (app::Checkbox("NFS-VltEd compatible", &vltEd)) setVltEd(vltEd);
+		ImGui::EndDisabled();
+		ImGui::TextDisabled("On (the default), nfsms scripts run as NFS-VltEd 4.6 runs them: its words for the parts of values, "
+			"its value widths and its quirks, which the mods were made for. Off, they run as the editor's nfsms window runs them "
+			"with its switch off: our member names and VaultLib's come before NFS-VltEd's words. Mod scripts don't change.");
 		ImGui::PopTextWrapPos();
 		ImGui::EndPopup();
 	}

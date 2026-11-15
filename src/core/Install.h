@@ -131,7 +131,8 @@ namespace attrib::install
 		std::string gameFolder;                     // where nfsms file_copy and folder_create write
 		bool doFiles = true;                        // off: they are checked and skipped
 		// nfsms read the way NFS-VltEd 4.6 reads it (nfsms::RunSettings::vltEd).
-		// The installer always runs it so: nfsms mods are made for NFS-VltEd.
+		// The installer runs it so unless its Advanced Options turn it off:
+		// nfsms mods are made for NFS-VltEd.
 		bool vltEd = true;
 		bool strict = false; // warnings stop the script
 	};

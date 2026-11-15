@@ -8,8 +8,9 @@
 // mod's options, and installs it:
 // the script runs on the game's packs, and the ones it changed are saved with
 // the copies the game's memory files hold of them, each file's first
-// original kept as .bak (core/Install.h). nfsms scripts always run NFS-VltEd
-// compatible, as the mods were made for NFS-VltEd (the user's call).
+// original kept as .bak (core/Install.h). nfsms scripts run NFS-VltEd
+// compatible unless Advanced Options turns it off, as the mods were made for
+// NFS-VltEd (the user's call).
 //
 // The window shows the step, a status line and, on request, the Log, which
 // ends with how the installation went. Every run also writes a timestamped
@@ -21,8 +22,9 @@
 // uninstall those first, or install over them. The Installed Mods button
 // shows the list; its window uninstalls a mod (with the mods that build on
 // it, which the confirmation lists first) or takes it off the list. Advanced
-// Options turns the list off. Platform independent: a Host (app/Host.h)
-// gives the window and the dialogs. doc/installer.md.
+// Options turns the list off, and NFS-VltEd compatible nfsms. Platform
+// independent: a Host (app/Host.h) gives the window and the dialogs.
+// doc/installer.md.
 
 #include "app/CodeEditor.h"
 #include "app/Host.h"
@@ -257,6 +259,15 @@ namespace installer
 			return trackMods_;
 		}
 		void setTrackMods(bool on);
+		// Advanced Options: nfsms read as NFS-VltEd 4.6 reads it (on by
+		// default, NfsmsVltEd in mod_installer.ini, as the editor's ini names
+		// it). Off, the editor's own reading: our member names and VaultLib's
+		// before NFS-VltEd's words (nfsms::RunSettings::vltEd).
+		bool vltEd() const
+		{
+			return vltEd_;
+		}
+		void setVltEd(bool on);
 		// The Installed Mods window, with the game's list.
 		void showInstalledMods()
 		{
@@ -416,6 +427,7 @@ namespace installer
 			None, Uninstall, Forget
 		} confirm_ = Confirm::None;
 		bool trackMods_ = true;
+		bool vltEd_ = true;
 		bool showMods_ = false;
 		bool loadedFirst_ = false; // the folder chosen last loads once, at the first frame
 		app::ModListView modsView_;
