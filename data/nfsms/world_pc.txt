@@ -1216,93 +1216,3133 @@ type Attrib::StringKey(MODEL)
   Visual 4 :string mString
 end
 
-# VaultLib's names (quirk-analysis/VaultLib, heyitsleo's library, which the
-# community Attribulator's mod scripts and OGVI use) for the parts of World values
-# whose name isn't our member's, case and an m prefix aside:
-# scripts/nfsms/vaultlib.py reads each class's Read method for the bytes a name
-# reads and gives our member there. Attribulina's own reading takes them after our
-# member names and before NFS-VltEd's words; NFS-VltEd compatible runs never do. A
-# VaultLib name that is one of our member names at other bytes isn't taken, and
-# neither are the type's other names then.
+# OGVI's reading of World values (NFS-VltEd compatible off): the classes VaultLib
+# (quirk-analysis/VaultLib, heyitsleo's library, which OGVI and the community
+# Attribulator are built on) registers for each type the game's fields have, as
+# scripts/nfsms/ogvi.py reads them. Attribulator's update_field takes the words
+# after the field as those C# property names, exactly as written, and converts the
+# value by the property's C# type (doc/nfsms.md, "OGVI").
 #
-# vaultlib <AttribSys type name>
-#   <VaultLib name>[.<part>] <path>   a part of one of its properties: Attribulator's next word
+# Each property is listed down to the C# primitives, an object's parts as Name.Part
+# and an array's elements as Name[i], at the byte VaultLib's Read method reads it
+# from in the PC's layout. The path after it names our member there, as the words
+# above do; without one the bytes go over our members at that offset. A property
+# Read doesn't fill has - for its offset; ro marks one without a public setter,
+# which Attribulator refuses.
+#
+# ogvi <AttribSys type name> <kind> <C# class>
+#                          <kind>: prim/<C# type>, enum/<C# enum>, refspec, string (IStringValue),
+#                          matrix, colour or struct
+#   <property> <offset>|- :<C# type> [<path>] [ro]
 # end
+# ogvienum <C# enum> <C# underlying type>
+#   <name> <value>
+# end
+# 
+# <C# type>: bool, sbyte, byte, short, ushort, int, uint, long, ulong, float, double,
+# string (a RefSpec's part, hashed, or a Text), enum/<name>, obj/<class> (an object,
+# its parts follow), <type>[<n>] (an array, its elements follow)
 
-vaultlib Commerce::HatBonus
+ogvi AICollisionReactionRecord struct AICollisionReactionRecord
+  # VaultLib.Frameworks.Speed/AICollisionReactionRecord.cs
+  Goal 0 :uint Goal
+  Reaction 4 :obj/RefSpec
+  Reaction.ClassKey 4 :string Reaction.mClassKey
+  Reaction.CollectionKey 8 :string Reaction.mCollectionKey
+end
+
+ogvi AirSupport struct AirSupport
+  # VaultLib.Frameworks.Speed/AirSupport.cs
+  HeliStrategy 0 :enum/AirSupportStrategy HeliStrategy
+  Chance 4 :uint Chance
+  Duration 8 :float Duration
+end
+
+ogvi Attrib::Gen::ClassRefSpec_aud_moment refspec ClassRefSpec_aud_moment
+  # VaultLib.Support.World/VLT/Attrib/Gen/ClassRefSpec_aud_moment.cs
+  CollectionKey 0 :string
+  ClassKey - :string
+end
+
+ogvi Attrib::Gen::ClassRefSpec_aud_wall_reverb refspec ClassRefSpec_aud_wall_reverb
+  # VaultLib.Support.World/VLT/Attrib/Gen/ClassRefSpec_aud_wall_reverb.cs
+  CollectionKey 0 :string
+  ClassKey - :string
+end
+
+ogvi Attrib::Gen::ClassRefSpec_aud_world_reverb refspec ClassRefSpec_aud_world_reverb
+  # VaultLib.Support.World/VLT/Attrib/Gen/ClassRefSpec_aud_world_reverb.cs
+  CollectionKey 0 :string
+  ClassKey - :string
+end
+
+ogvi Attrib::Gen::ClassRefSpec_coplights_flashpattern refspec ClassRefSpec_coplights_flashpattern
+  # VaultLib.Support.World/VLT/Attrib/Gen/ClassRefSpec_coplights_flashpattern.cs
+  CollectionKey 0 :string
+  ClassKey - :string
+end
+
+ogvi Attrib::Gen::ClassRefSpec_emittergroup refspec ClassRefSpec_emittergroup
+  # VaultLib.Support.World/VLT/Attrib/Gen/ClassRefSpec_emittergroup.cs
+  CollectionKey 0 :string
+  ClassKey - :string
+end
+
+ogvi Attrib::Gen::ClassRefSpec_fe_flashers refspec ClassRefSpec_fe_flashers
+  # VaultLib.Support.World/VLT/Attrib/Gen/ClassRefSpec_fe_flashers.cs
+  CollectionKey 0 :string
+  ClassKey - :string
+end
+
+ogvi Attrib::Gen::ClassRefSpec_nosfx refspec ClassRefSpec_nosfx
+  # VaultLib.Support.World/VLT/Attrib/Gen/ClassRefSpec_nosfx.cs
+  CollectionKey 0 :string
+  ClassKey - :string
+end
+
+ogvi Attrib::Gen::ClassRefSpec_timeofdaylighting refspec ClassRefSpec_timeofdaylighting
+  # VaultLib.Support.World/VLT/Attrib/Gen/ClassRefSpec_timeofdaylighting.cs
+  CollectionKey 0 :string
+  ClassKey - :string
+end
+
+ogvi Attrib::RefSpec refspec RefSpec
+  # VaultLib.Core/Types/Attrib/RefSpec.cs
+  ClassKey 0 :string mClassKey
+  CollectionKey 4 :string mCollectionKey
+end
+
+ogvi Attrib::StringKey string StringKey
+  # VaultLib.ModernBase/StringKey.cs
+  Value 4 :string mString
+end
+
+ogvi Attrib::Types::FloatColour struct FloatColour
+  # VaultLib.Core/Types/Attrib/Types/FloatColour.cs
+  R 0 :float
+  G 4 :float
+  B 8 :float
+  A 12 :float
+end
+
+ogvi Attrib::Types::Matrix matrix Matrix
+  # VaultLib.Core/Types/Attrib/Types/Matrix.cs
+  Data 0 :float[16]
+  Data[0] 0 :float
+  Data[1] 4 :float
+  Data[2] 8 :float
+  Data[3] 12 :float
+  Data[4] 16 :float
+  Data[5] 20 :float
+  Data[6] 24 :float
+  Data[7] 28 :float
+  Data[8] 32 :float
+  Data[9] 36 :float
+  Data[10] 40 :float
+  Data[11] 44 :float
+  Data[12] 48 :float
+  Data[13] 52 :float
+  Data[14] 56 :float
+  Data[15] 60 :float
+end
+
+ogvi Attrib::Types::Vector2 struct Vector2
+  # VaultLib.Core/Types/Attrib/Types/Vector2.cs
+  X 0 :float
+  Y 4 :float
+end
+
+ogvi Attrib::Types::Vector3 struct Vector3
+  # VaultLib.Core/Types/Attrib/Types/Vector3.cs
+  X 0 :float
+  Y 4 :float
+  Z 8 :float
+end
+
+ogvi Attrib::Types::Vector4 struct Vector4
+  # VaultLib.Core/Types/Attrib/Types/Vector4.cs
+  X 0 :float
+  Y 4 :float
+  Z 8 :float
+  W 12 :float
+end
+
+ogvi AUDENGLOOPVOLUMESst struct AUDENGLOOPVOLUMESst
+  # VaultLib.Frameworks.Speed/AUDENGLOOPVOLUMESst.cs
+  IDLE_VOL 0 :int IDLE_VOL
+  CRZ_LOW_VOL 4 :int CRZ_LOW_VOL
+  CRZ_MED_VOL 8 :int CRZ_MED_VOL
+  CRZ_HI_VOL 12 :int CRZ_HI_VOL
+  LD_LOW_VOL 16 :int LD_LOW_VOL
+  LD_MED_VOL 20 :int LD_MED_VOL
+  LD_HI_VOL 24 :int LD_HI_VOL
+  REVLMT_VOL 28 :int REVLMT_VOL
+end
+
+ogvi AUDENGRPMRANGEst struct AUDENGRPMRANGEst
+  # VaultLib.Frameworks.Speed/AUDENGRPMRANGEst.cs
+  IDLE_RPM 0 :int IDLE_RPM
+  CRZ_LO_RPM 4 :int CRZ_LO_RPM
+  CRZ_MED_RPM 8 :int CRZ_MED_RPM
+  CRZ_HI_RPM 12 :int CRZ_HI_RPM
+  LD_LOW_RPM 16 :int LD_LOW_RPM
+  LD_MED_RPM 20 :int LD_MED_RPM
+  LD_HI_RPM 24 :int LD_HI_RPM
+  REVLMT_RPM 28 :int REVLMT_RPM
+end
+
+ogvi AxlePair struct AxlePair
+  # VaultLib.Frameworks.Speed/AxlePair.cs
+  Front 0 :float Front
+  Rear 4 :float Rear
+end
+
+ogvi CAR_SLOT_ID enum/CAR_SLOT_ID CAR_SLOT_ID
+  # VaultLib.Frameworks.Speed/CAR_SLOT_ID.cs
+end
+
+ogvi CarBodyMotion struct CarBodyMotion
+  # VaultLib.Frameworks.Speed/CarBodyMotion.cs
+  DegPerG 0 :float DegPerG
+  MaxGs 4 :float MaxGs
+  DegPerSec 8 :float DegPerSec
+end
+
+ogvi CollisionReactionRecord struct CollisionReactionRecord
+  # VaultLib.Frameworks.Speed/CollisionReactionRecord.cs
+  Elasticity 0 :float Elasticity
+  RollHeight 4 :float RollHeight
+  WeightBias 8 :float WeightBias
+  MassScale 12 :float MassScale
+  StunSpeed 16 :float StunSpeed
+  StunTime 20 :float StunTime
+end
+
+ogvi COLLISIONSFX_LAYERS enum/COLLISIONSFX_LAYERS COLLISIONSFX_LAYERS
+  # VaultLib.Frameworks.Speed/COLLISIONSFX_LAYERS.cs
+end
+
+ogvi Commerce::HatBonus struct HatBonus
   # VaultLib.Support.World/VLT/Commerce/HatBonus.cs
-  # not taken: VaultLib reads Handling at byte 0, where our Acceleration is; our Handling is at 4. Our names win.
-  # not taken: VaultLib reads Acceleration at byte 4, where our Handling is; our Acceleration is at 0. Our names win.
+  Handling 0 :int Acceleration
+  Acceleration 4 :int Handling
+  TopSpeed 8 :int TopSpeed
+  RequiredPartCount 12 :int RequiredPartCount
 end
 
-vaultlib ControllerDataRecord
+ogvi Commerce::LocalizedString string LocalizedString
+  # VaultLib.Support.World/VLT/Commerce/LocalizedString.cs
+  Value 0 :string String
+end
+
+ogvi ControllerDataRecord struct ControllerDataRecord
   # VaultLib.Support.World/VLT/ControllerDataRecord.cs
-  LowerDeadZone mLowerDZ
-  UpperDeadZone mUpperDZ
+  DeviceId 0 :string mDeviceID.mHash32
+  UpdateType 8 :enum/InputUpdateType mUpdateType
+  LowerDeadZone 12 :float mLowerDZ
+  UpperDeadZone 16 :float mUpperDZ
 end
 
-vaultlib CopFormationRecord
+ogvi CopCountRecord struct CopCountRecord
+  # VaultLib.Frameworks.Speed/CopCountRecord.cs
+  CopType 0 :string CopType
+  Count 8 :uint Count
+  Chance 12 :uint Chance
+end
+
+ogvi CopFormationRecord struct CopFormationRecord
   # VaultLib.Frameworks.Speed/CopFormationRecord.cs
-  FormationType Formation
+  FormationType 0 :enum/FormationTypeEnum Formation
+  Duration 4 :float Duration
+  Frequency 8 :float Frequency
 end
 
-vaultlib Curve
+ogvi Csis::Type_arrest_line_number prim/uint Type_arrest_line_number
+  # VaultLib.Support.World/VLT/Csis/Type_arrest_line_number.cs
+  Value 0 :uint
+end
+
+ogvi Csis::Type_car_type enum/Type_car_type Type_car_type
+  # VaultLib.Frameworks.Speed/Csis/Type_car_type.cs
+end
+
+ogvi Csis::Type_NIS_Camera enum/Type_NIS_Camera Type_NIS_Camera
+  # VaultLib.Support.World/VLT/Csis/Type_NIS_Camera.cs
+end
+
+ogvi Csis::Type_NIS_Scene_End enum/Type_NIS_Scene_End Type_NIS_Scene_End
+  # VaultLib.Support.World/VLT/Csis/Type_NIS_Scene_End.cs
+end
+
+ogvi Csis::Type_NIS_Scene_Intro enum/Type_NIS_Scene_Intro Type_NIS_Scene_Intro
+  # VaultLib.Support.World/VLT/Csis/Type_NIS_Scene_Intro.cs
+end
+
+ogvi Csis::Type_P_Breaker_Code enum/Type_P_Breaker_Code Type_P_Breaker_Code
+  # VaultLib.Support.World/VLT/Csis/Type_P_Breaker_Code.cs
+end
+
+ogvi Csis::Type_P_Breaker_Type enum/Type_P_Breaker_Type Type_P_Breaker_Type
+  # VaultLib.Support.World/VLT/Csis/Type_P_Breaker_Type.cs
+end
+
+ogvi Csis::Type_SoundFX_Param enum/Type_SoundFX_Param Type_SoundFX_Param
+  # VaultLib.Frameworks.Speed/Csis/Type_SoundFX_Param.cs
+end
+
+ogvi Csis::Type_SoundFX_Type enum/Type_SoundFX_Type Type_SoundFX_Type
+  # VaultLib.Frameworks.Speed/Csis/Type_SoundFX_Type.cs
+end
+
+ogvi Csis::Type_speaker_battalion prim/int Type_speaker_battalion
+  # VaultLib.Support.World/VLT/Csis/Type_speaker_battalion.cs
+  Value 0 :int
+end
+
+ogvi Csis::Type_UCAP_Assembly enum/Type_UCAP_Assembly Type_UCAP_Assembly
+  # VaultLib.Support.World/VLT/Csis/Type_UCAP_Assembly.cs
+end
+
+ogvi Curve struct Curve
   # VaultLib.Support.World/VLT/Curve.cs
-  MinX xMin
-  MaxX xMax
-  MinY yMin
-  MaxY yMax
-  XValues X
-  YValues Y
-  Y2Values Y2
+  MinX 0 :float xMin
+  MaxX 4 :float xMax
+  MinY 8 :float yMin
+  MaxY 12 :float yMax
+  GraphScale 16 :float graphScale
+  XValues 20 :obj/VariableArray!
+  YValues 28 :obj/VariableArray!
+  Y2Values 36 :obj/VariableArray!
 end
 
-vaultlib EmittedGeometryRecord
+ogvi DamageScaleRecord struct DamageScaleRecord
+  # VaultLib.Frameworks.Speed/DamageScaleRecord.cs
+  VisualScale 0 :float VisualScale
+  HitPointScale 4 :float HitPointScale
+end
+
+ogvi DISTORTION_BASIS prim/int DISTORTION_BASIS
+  # VaultLib.Support.World/VLT/DISTORTION_BASIS.cs
+  Value 0 :int
+end
+
+ogvi EA::Reflection::Bool prim/bool Bool
+  # VaultLib.Core/Types/EA/Reflection/Bool.cs
+  Value 0 :bool
+end
+
+ogvi EA::Reflection::Float prim/float Float
+  # VaultLib.Core/Types/EA/Reflection/Float.cs
+  Value 0 :float
+end
+
+ogvi EA::Reflection::Int16 prim/short Int16
+  # VaultLib.Core/Types/EA/Reflection/Int16.cs
+  Value 0 :short
+end
+
+ogvi EA::Reflection::Int32 prim/int Int32
+  # VaultLib.Core/Types/EA/Reflection/Int32.cs
+  Value 0 :int
+end
+
+ogvi EA::Reflection::Int64 prim/long Int64
+  # VaultLib.Core/Types/EA/Reflection/Int64.cs
+  Value 0 :long
+end
+
+ogvi EA::Reflection::Int8 prim/sbyte Int8
+  # VaultLib.Core/Types/EA/Reflection/Int8.cs
+  Value 0 :sbyte
+end
+
+ogvi EA::Reflection::Text prim/string Text
+  # VaultLib.Core/Types/EA/Reflection/Text.cs
+  Value 0 :string
+end
+
+ogvi EA::Reflection::UInt16 prim/ushort UInt16
+  # VaultLib.Core/Types/EA/Reflection/UInt16.cs
+  Value 0 :ushort
+end
+
+ogvi EA::Reflection::UInt32 prim/uint UInt32
+  # VaultLib.Core/Types/EA/Reflection/UInt32.cs
+  Value 0 :uint
+end
+
+ogvi EA::Reflection::UInt8 prim/byte UInt8
+  # VaultLib.Core/Types/EA/Reflection/UInt8.cs
+  Value 0 :byte
+end
+
+ogvi EA::WorldMap::eWMFeatureType enum/eWMFeatureType eWMFeatureType
+  # VaultLib.Support.World/VLT/EA/WorldMap/eWMFeatureType.cs
+end
+
+ogvi EA::WorldMap::MiniMapIconHash struct MiniMapIconHash
+  # VaultLib.Support.World/VLT/EA/WorldMap/MiniMapIconHash.cs
+  Hash 0 :uint
+end
+
+ogvi EA::WorldMap::POIType enum/POIType POIType
+  # VaultLib.Support.World/VLT/EA/WorldMap/POIType.cs
+end
+
+ogvi EAIBreakerType enum/EAIBreakerType EAIBreakerType
+  # VaultLib.Frameworks.Speed/EAIBreakerType.cs
+end
+
+ogvi eControllerHudType enum/eControllerHudType eControllerHudType
+  # VaultLib.Frameworks.Speed/eControllerHudType.cs
+end
+
+ogvi eControllerTypeMask enum/eControllerTypeMask eControllerTypeMask
+  # VaultLib.Frameworks.Speed/eControllerTypeMask.cs
+end
+
+ogvi eDecalType enum/eDecalType eDecalType
+  # VaultLib.Frameworks.Speed/eDecalType.cs
+end
+
+ogvi eDRIVE_BY_TYPE enum/eDRIVE_BY_TYPE eDRIVE_BY_TYPE
+  # VaultLib.Frameworks.Speed/eDRIVE_BY_TYPE.cs
+end
+
+ogvi eENGINE_GROUP enum/eENGINE_GROUP eENGINE_GROUP
+  # VaultLib.Frameworks.Speed/eENGINE_GROUP.cs
+end
+
+ogvi EffectLinkageRecord struct EffectLinkageRecord
+  # VaultLib.Support.World/VLT/EffectLinkageRecord.cs
+  Surface 0 :obj/RefSpec
+  Surface.ClassKey 0 :string mSurface.mClassKey
+  Surface.CollectionKey 4 :string mSurface.mCollectionKey
+  Effect 12 :obj/RefSpec
+  Effect.ClassKey 12 :string mEffect.mClassKey
+  Effect.CollectionKey 16 :string mEffect.mCollectionKey
+  Audio 24 :obj/RefSpec
+  Audio.ClassKey 24 :string mAudio.mClassKey
+  Audio.CollectionKey 28 :string mAudio.mCollectionKey
+  MinSpeed 36 :float mMinSpeed
+  MaxSpeed 40 :float mMaxSpeed
+  SFXMinSpeed 44 :float mSFXMinSpeed
+  SFXMaxSpeed 48 :float mSFXMaxSpeed
+end
+
+ogvi EffectParticleConstraint enum/EffectParticleConstraint EffectParticleConstraint
+  # VaultLib.Frameworks.Speed/EffectParticleConstraint.cs
+end
+
+ogvi EmittedGeometryRecord struct EmittedGeometryRecord
   # VaultLib.Frameworks.Speed/EmittedGeometryRecord.cs
-  Value mEnum
+  Value 0 :enum/EmittedGeo mEnum
+  Index 4 :uint mIndex
 end
 
-vaultlib FEMsgToMixTrigger
+ogvi EngineLFOParams struct EngineLFOParams
+  # VaultLib.Frameworks.Speed/EngineLFOParams.cs
+  frequency_start 0 :float frequency_start
+  frequency_end 4 :float frequency_end
+  RPM_amplitude 8 :float RPM_amplitude
+  vol_amplitude 12 :float vol_amplitude
+  lifespan 16 :float lifespan
+end
+
+ogvi eSFXOBJ_BLACKBOARD_MIXINPUT prim/int eSFXOBJ_BLACKBOARD_MIXINPUT
+  # VaultLib.Support.World/VLT/eSFXOBJ_BLACKBOARD_MIXINPUT.cs
+  Value 0 :int
+end
+
+ogvi eSFXOBJ_MOMENT_MIXINPUT enum/eSFXOBJ_MOMENT_MIXINPUT eSFXOBJ_MOMENT_MIXINPUT
+  # VaultLib.Support.World/VLT/eSFXOBJ_MOMENT_MIXINPUT.cs
+end
+
+ogvi eSFXOBJ_MOMENT_MIXOUT enum/eSFXOBJ_MOMENT_MIXOUT eSFXOBJ_MOMENT_MIXOUT
+  # VaultLib.Support.World/VLT/eSFXOBJ_MOMENT_MIXOUT.cs
+end
+
+ogvi eSFXOBJ_MUSICPLAYER_MIXINPUT prim/int eSFXOBJ_MUSICPLAYER_MIXINPUT
+  # VaultLib.Support.World/VLT/eSFXOBJ_MUSICPLAYER_MIXINPUT.cs
+  Value 0 :int
+end
+
+ogvi eSFXOBJ_MUSICPLAYER_MIXOUT prim/int eSFXOBJ_MUSICPLAYER_MIXOUT
+  # VaultLib.Support.World/VLT/eSFXOBJ_MUSICPLAYER_MIXOUT.cs
+  Value 0 :int
+end
+
+ogvi eVOL_MOMENT enum/eVOL_MOMENT eVOL_MOMENT
+  # VaultLib.Support.World/VLT/eVOL_MOMENT.cs
+end
+
+ogvi FEMsgToMixTrigger struct FEMsgToMixTrigger
   # VaultLib.Support.World/VLT/FEMsgToMixTrigger.cs
-  Value1 FEngMsg
-  Value2 MixTrigger
+  Value1 0 :uint FEngMsg
+  Value2 4 :uint MixTrigger
 end
 
-vaultlib GameCore::BlackBoardSlot
+ogvi FEMsgToSoundTrigger struct FEMsgToSoundTrigger
+  # VaultLib.Support.World/VLT/FEMsgToSoundTrigger.cs
+  FEngMsg 0 :uint FEngMsg.hash
+  SoundTrigger 4 :enum/eMenuSoundTriggers SoundTrigger
+end
+
+ogvi FFBWaveRecord struct FFBWaveRecord
+  # VaultLib.Frameworks.Speed/FFBWaveRecord.cs
+  Frequency_A 0 :float Frequency_A
+  Amplitude_A 4 :float Amplitude_A
+  Offset_A 8 :float Offset_A
+  Threshold_A 12 :float Threshold_A
+  Frequency_B 16 :float Frequency_B
+  Amplitude_B 20 :float Amplitude_B
+  Offset_B 24 :float Offset_B
+  Threshold_B 28 :float Threshold_B
+end
+
+ogvi FXROADNOISE_TRANSITION prim/int FXROADNOISE_TRANSITION
+  # VaultLib.Frameworks.Speed/FXROADNOISE_TRANSITION.cs
+  Value 0 :int
+end
+
+ogvi GameCore::BehaviorSlot struct BehaviorSlot
+  # VaultLib.Support.World/VLT/GameCore/BehaviorSlot.cs
+  mBehaviorChannel 0 :uint mBehaviorChannel.mKey
+  mBehaviorType 4 :uint mBehaviorType.mKey
+  mFlags 8 :enum/BehaviorFlag mFlags.mBits
+end
+
+ogvi GameCore::BlackBoardChannel enum/BlackBoardChannel BlackBoardChannel
+  # VaultLib.Support.World/VLT/GameCore/BlackBoardChannel.cs
+end
+
+ogvi GameCore::BlackBoardSlot struct BlackBoardSlot
   # VaultLib.Support.World/VLT/GameCore/BlackBoardSlot.cs
-  mFlag mFlags
+  mChannel 0 :enum/BlackBoardChannel mChannel
+  mBlackBoardKey 4 :uint mBlackBoardKey.mKey
+  mFlag 8 :enum/BlackBoardFlag mFlags.mBits
 end
 
-vaultlib GMapTriangle
+ogvi GameCore::Collision::TriggerType enum/TriggerType TriggerType
+  # VaultLib.Support.World/VLT/GameCore/Collision/TriggerType.cs
+end
+
+ogvi GameCore::EnhancerPart struct EnhancerPart
+  # VaultLib.Support.World/VLT/GameCore/EnhancerPart.cs
+  Hash 0 :uint
+end
+
+ogvi GameCore::EventMode enum/EventMode EventMode
+  # VaultLib.Support.World/VLT/GameCore/EventMode.cs
+end
+
+ogvi GameCore::EventType enum/EventType EventType
+  # VaultLib.Support.World/VLT/GameCore/EventType.cs
+end
+
+ogvi GameCore::KeyValuePair struct KeyValuePair
+  # VaultLib.Support.World/VLT/GameCore/KeyValuePair.cs
+  KeyString 0 :string KeyString
+  Value 8 :float Value
+end
+
+ogvi GameCore::LocalizationHash prim/uint LocalizationHash
+  # VaultLib.Support.World/VLT/GameCore/LocalizationHash.cs
+  Value 0 :uint Hash
+end
+
+ogvi GameCore::MilestoneType enum/MilestoneType MilestoneType
+  # VaultLib.Support.World/VLT/GameCore/MilestoneType.cs
+end
+
+ogvi GameCore::ObjFlags enum/ObjFlag ObjFlag
+  # VaultLib.Support.World/VLT/GameCore/ObjFlag.cs
+end
+
+ogvi GameCore::ObjType enum/ObjType ObjType
+  # VaultLib.Support.World/VLT/GameCore/ObjType.cs
+end
+
+ogvi GameCore::PhysicsEntityPair struct PhysicsEntityPair
+  # VaultLib.Support.World/VLT/GameCore/PhysicsEntityPair.cs
+  Entity1 0 :enum/PhysicsEntity Entity1
+  Entity2 4 :enum/PhysicsEntity Entity2
+end
+
+ogvi GameCore::PoiBehaviorFlags enum/PoiBehavior PoiBehavior
+  # VaultLib.Support.World/VLT/GameCore/PoiBehavior.cs
+end
+
+ogvi GameCore::PowerupConfiguration enum/PowerupConfiguration PowerupConfiguration
+  # VaultLib.Support.World/VLT/GameCore/PowerupConfiguration.cs
+end
+
+ogvi GameCore::Pursuit::CopCountRecord struct CopCountRecord
+  # VaultLib.Support.World/VLT/GameCore/Pursuit/CopCountRecord.cs
+  CopType 0 :string CopType ro
+  Count 8 :uint Count ro
+  Chance 12 :uint Chance ro
+end
+
+ogvi GameCore::Pursuit::CopFormationRecord struct CopFormationRecord
+  # VaultLib.Support.World/VLT/GameCore/Pursuit/CopFormationRecord.cs
+  FormationType 0 :enum/FormationTypeEnum Formation ro
+  Duration 4 :float Duration ro
+  Frequency 8 :float Frequency ro
+end
+
+ogvi GameCore::RewardMode enum/RewardMode RewardMode
+  # VaultLib.Support.World/VLT/GameCore/RewardMode.cs
+end
+
+ogvi GameCore::StringKey prim/uint StringKey
+  # VaultLib.Support.World/VLT/GameCore/StringKey.cs
+  Value 4 :string
+end
+
+ogvi GCollectionKey refspec GCollectionKey
+  # VaultLib.Frameworks.Speed/GCollectionKey.cs
+  CollectionKey 0 :string mCollectionKey
+  ClassKey - :string
+end
+
+ogvi GMapCurve struct GMapCurve
+  # VaultLib.Frameworks.Speed/GMapCurve.cs
+  mPointStart 0 :ushort mPointStart
+  mPointCount 2 :ushort mPointCount
+end
+
+ogvi GMapCurvePoint struct GMapCurvePoint
+  # VaultLib.Frameworks.Speed/GMapCurvePoint.cs
+  X 0 :float mX
+  Y 4 :float mY
+end
+
+ogvi GMapCurveRef struct GMapCurveRef
+  # VaultLib.Frameworks.Speed/GMapCurveRef.cs
+  mCurveIndex 0 :ushort mCurveIndex
+  Flags 2 :enum/GMapCurveRefFlags mFlags
+end
+
+ogvi GMapRegionInfo struct GMapRegionInfo
+  # VaultLib.Frameworks.Speed/GMapRegionInfo.cs
+  Name 0 :string mName
+  mCurveStart 4 :ushort mCurveStart
+  mCurveCount 6 :ushort mCurveCount
+  mTriangleStart 8 :ushort mTriangleStart
+  mTriangleCount 10 :ushort mTriangleCount
+end
+
+ogvi GMapTriangle struct GMapTriangle
   # VaultLib.Frameworks.Speed/GMapTriangle.cs
-  # not taken: VaultLib reads mPoint1 at byte 0, where our mPoint0 is; our mPoint1 is at 2. Our names win.
-  # not taken: VaultLib reads mPoint2 at byte 2, where our mPoint1 is; our mPoint2 is at 4. Our names win.
+  mPoint1 0 :ushort mPoint0
+  mPoint2 2 :ushort mPoint1
+  mPoint3 4 :ushort mPoint2
 end
 
-vaultlib HudSFXStringIdToSoundTrigger
+ogvi GRace::Boss enum/Boss Boss
+  # VaultLib.Frameworks.Speed/GRace/Boss.cs
+end
+
+ogvi GRace::RaceCarClass enum/RaceCarClass RaceCarClass
+  # VaultLib.Frameworks.Speed/GRace/RaceCarClass.cs
+end
+
+ogvi GRace::Tier enum/Tier Tier
+  # VaultLib.Frameworks.Speed/GRace/Tier.cs
+end
+
+ogvi GRace::Type enum/Type Type
+  # VaultLib.Frameworks.Speed/GRace/Type.cs
+end
+
+ogvi HeavySupport struct HeavySupport
+  # VaultLib.Frameworks.Speed/HeavySupport.cs
+  HeavyStrategy 0 :enum/HeavySupportStrategy HeavyStrategy
+  Chance 4 :uint Chance
+  Duration 8 :float Duration
+  ChanceBigSUV 12 :uint ChanceBigSUV
+end
+
+ogvi HudSFXStringIdToSoundTrigger struct HudSFXStringIdToSoundTrigger
   # VaultLib.Support.World/VLT/HudSFXStringIdToSoundTrigger.cs
-  Value1 StringId
-  Value2 SoundTrigger
+  Value1 0 :uint StringId
+  Value2 4 :uint SoundTrigger
 end
 
-vaultlib MovieVolume
+ogvi IndexedBarrierName prim/int IndexedBarrierName
+  # VaultLib.Support.World/VLT/IndexedBarrierName.cs
+  Value 0 :int mIndex
+end
+
+ogvi IntegratedKitWheelOffset struct IntegratedKitWheelOffset
+  # VaultLib.Support.World/VLT/IntegratedKitWheelOffset.cs
+  KitName 4 :string Kit.mString
+  Offset 8 :uint Offset
+end
+
+ogvi Interop::FEState enum/FEState FEState
+  # VaultLib.Support.World/VLT/Interop/FEState.cs
+end
+
+ogvi Interop::FLASHER_ALIGNMENT enum/FLASHER_ALIGNMENT FLASHER_ALIGNMENT
+  # VaultLib.Support.World/VLT/Interop/FLASHER_ALIGNMENT.cs
+end
+
+ogvi JunkmanMod struct JunkmanMod
+  # VaultLib.Frameworks.Speed/JunkmanMod.cs
+  ClassKey 0 :uint ClassKey
+  DefinitionKey 4 :uint DefinitionKey
+  ScaleF 8 :float ScaleF
+  ScaleR 12 :float ScaleR
+end
+
+ogvi LeaderSupport struct LeaderSupport
+  # VaultLib.Frameworks.Speed/LeaderSupport.cs
+  LeaderStrategy 0 :enum/LeaderSupportStrategy LeaderStrategy
+  Chance 4 :uint Chance
+  Duration 8 :float Duration
+  PriorityChance 12 :uint PriorityChance
+  PriorityTime 16 :float PriorityTime
+end
+
+ogvi LightStreakSplineRecord struct LightStreakSplineRecord
+  # VaultLib.Frameworks.Speed/LightStreakSplineRecord.cs
+  mEnum 0 :uint mEnum
+  mIndex 4 :uint mIndex
+end
+
+ogvi MovieVolume struct MovieVolume
   # VaultLib.Frameworks.Speed/MovieVolume.cs
-  Hash Name
+  Hash 0 :uint Name.hash
+  Volume 4 :byte Volume
 end
 
-vaultlib PowerupTriggerAndTarget
+ogvi NIS::eCAR_COUNT_CATEGORY enum/eCAR_COUNT_CATEGORY eCAR_COUNT_CATEGORY
+  # VaultLib.Frameworks.Speed/NIS/eCAR_COUNT_CATEGORY.cs
+end
+
+ogvi NIS::ePIP_EVENT_CATEGORY enum/ePIP_EVENT_CATEGORY ePIP_EVENT_CATEGORY
+  # VaultLib.Frameworks.Speed/NIS/ePIP_EVENT_CATEGORY.cs
+end
+
+ogvi NIS::ePIPTrigger enum/ePIPTrigger ePIPTrigger
+  # VaultLib.Frameworks.Speed/NIS/ePIPTrigger.cs
+end
+
+ogvi NIS::ePLATFORM_CLASS enum/ePLATFORM_CLASS ePLATFORM_CLASS
+  # VaultLib.Frameworks.Speed/NIS/ePLATFORM_CLASS.cs
+end
+
+ogvi ParticleAnimationInfo struct ParticleAnimationInfo
+  # VaultLib.Frameworks.Speed/ParticleAnimationInfo.cs
+  AnimType 0 :enum/EffectParticleAnimation AnimType
+  FPS 4 :byte FPS
+  RandomStartFrame 5 :bool RandomStartFrame
+end
+
+ogvi ParticleTextureRecord struct ParticleTextureRecord
+  # VaultLib.Frameworks.Speed/ParticleTextureRecord.cs
+  mEnum 0 :enum/eTEG_ParticleTextures mEnum
+  mIndex 4 :uint mIndex
+end
+
+ogvi PathEventEnum prim/int PathEventEnum
+  # VaultLib.Frameworks.Speed/PathEventEnum.cs
+  Value 0 :int
+end
+
+ogvi PerformanceUpgrades::PartZone enum/PartZone PartZone
+  # VaultLib.Support.World/VLT/PerformanceUpgrades/PartZone.cs
+end
+
+ogvi PowerUps::EmitterEffectAndTarget struct EmitterEffectAndTarget
+  # VaultLib.Support.World/VLT/PowerUps/EmitterEffectAndTarget.cs
+  # VaultLib's Read method stops at "RefSpec rs = new RefSpec(Class, Field, Collection)": the properties after it have no bytes here
+  EmitterKey - :string
+  Type - :uint
+  Intensity - :float
+end
+
+ogvi PowerUps::GameplayEffect enum/GameplayEffect GameplayEffect
+  # VaultLib.Support.World/VLT/PowerUps/GameplayEffect.cs
+end
+
+ogvi PowerUps::GameplayEffectAndTarget struct GameplayEffectAndTarget
+  # VaultLib.Support.World/VLT/PowerUps/GameplayEffectAndTarget.cs
+  # VaultLib's Read method stops at "RefSpec rs = new RefSpec(Class, Field, Collection)": the properties after it have no bytes here
+  GroupKey - :string
+  Type - :uint
+end
+
+ogvi PowerUps::Restriction enum/Restriction Restriction
+  # VaultLib.Support.World/VLT/PowerUps/Restriction.cs
+end
+
+ogvi PowerupTriggerAndTarget struct PowerupTriggerAndTarget
   # VaultLib.Support.World/VLT/PowerupTriggerAndTarget.cs
-  Value1 Trigger
-  Value2 Target
+  Value1 0 :uint Trigger
+  Value2 4 :uint Target
 end
 
-vaultlib Sound::BinarySequence
+ogvi RoadNoiseRecord struct RoadNoiseRecord
+  # VaultLib.Frameworks.Speed/RoadNoiseRecord.cs
+  Frequency 0 :float Frequency
+  Amplitude 4 :float Amplitude
+  MinSpeed 8 :float MinSpeed
+  MaxSpeed 12 :float MaxSpeed
+end
+
+ogvi ROLLFX_LOOP enum/ROLLFX_LOOP ROLLFX_LOOP
+  # VaultLib.Frameworks.Speed/ROLLFX_LOOP.cs
+end
+
+ogvi RPMLOOPPOINTSst struct RPMLOOPPOINTSst
+  # VaultLib.Frameworks.Speed/RPMLOOPPOINTSst.cs
+  RPM_LD_LOW_PEAK 0 :int RPM_LD_LOW_PEAK
+  RPM_LD_LOW_OUT 4 :int RPM_LD_LOW_OUT
+  RPM_LD_MED_IN 8 :int RPM_LD_MED_IN
+  RPM_LD_MED_PEAK 12 :int RPM_LD_MED_PEAK
+  RPM_LD_MED_OUT 16 :int RPM_LD_MED_OUT
+  RPM_LD_HI_IN 20 :int RPM_LD_HI_IN
+  RPM_LD_HI_PEAK 24 :int RPM_LD_HI_PEAK
+  RPM_LD_HI_OUT 28 :int RPM_LD_HI_OUT
+  RPM_IDLE_PEAK 32 :int RPM_IDLE_PEAK
+  RPM_IDLE_OUT 36 :int RPM_IDLE_OUT
+  RPM_CRZ_LOW_IN 40 :int RPM_CRZ_LOW_IN
+  RPM_CRZ_LOW_PEAK 44 :int RPM_CRZ_LOW_PEAK
+  RPM_CRZ_LOW_OUT 48 :int RPM_CRZ_LOW_OUT
+  RPM_CRZ_MED_IN 52 :int RPM_CRZ_MED_IN
+  RPM_CRZ_MED_PEAK 56 :int RPM_CRZ_MED_PEAK
+  RPM_CRZ_MED_OUT 60 :int RPM_CRZ_MED_OUT
+  RPM_CRZ_HI_IN 64 :int RPM_CRZ_HI_IN
+  RPM_CRZ_HI_PEAK 68 :int RPM_CRZ_HI_PEAK
+  RPM_CRZ_HI_OUT 72 :int RPM_CRZ_HI_OUT
+end
+
+ogvi RUMBLEFX enum/RUMBLEFX RUMBLEFX
+  # VaultLib.Frameworks.Speed/RUMBLEFX.cs
+end
+
+ogvi RwacSampleBankAsset struct RwacSampleBankAsset
+  # VaultLib.Support.World/VLT/RwacSampleBankAsset.cs
+  Bank 0 :uint mBank
+  Asset 4 :uint mAsset
+end
+
+ogvi SCRAPE_SURFACES enum/SCRAPE_SURFACES SCRAPE_SURFACES
+  # VaultLib.Frameworks.Speed/SCRAPE_SURFACES.cs
+end
+
+ogvi SkyDomeModelStruct struct SkyDomeModelStruct
+  # VaultLib.Support.World/VLT/SkyDomeModelStruct.cs
+  Hash 0 :uint
+end
+
+ogvi Sound::BattleMusicTuning struct BattleMusicTuning
+  # VaultLib.Support.World/VLT/Sound/BattleMusicTuning.cs
+  TimeAhead_HiToMed 0 :float TimeAhead_HiToMed
+  TimeAhead_MedToLo 4 :float TimeAhead_MedToLo
+  TimeBehind_HiToFail 8 :float TimeBehind_HiToFail
+  TimeAhead_FailToHi 12 :float TimeAhead_FailToHi
+end
+
+ogvi Sound::BinarySequence struct BinarySequence
   # VaultLib.Support.World/VLT/Sound/BinarySequence.cs
-  Value mbValue
-  Duration mfDuration
+  Value 0 :bool mbValue
+  Duration 4 :float mfDuration
 end
 
-vaultlib UpgradeSpecs
+ogvi Sound::ChasedownMusicTuning struct ChasedownMusicTuning
+  # VaultLib.Support.World/VLT/Sound/ChasedownMusicTuning.cs
+  StartTimeLimit 0 :float[2]
+  StartTimeLimit[0] 0 :float StartTimeLimit[0]
+  StartTimeLimit[1] 4 :float StartTimeLimit[1]
+  LowTimeLimit 8 :float[2]
+  LowTimeLimit[0] 8 :float LowTimeLimit[0]
+  LowTimeLimit[1] 12 :float LowTimeLimit[1]
+  FailureTimeLimit 16 :float[2]
+  FailureTimeLimit[0] 16 :float FailureTimeLimit[0]
+  FailureTimeLimit[1] 20 :float FailureTimeLimit[1]
+  MediumTimeLimit 24 :float[2]
+  MediumTimeLimit[0] 24 :float MediumTimeLimit[0]
+  MediumTimeLimit[1] 28 :float MediumTimeLimit[1]
+  HighTimeLimit 32 :float[2]
+  HighTimeLimit[0] 32 :float HighTimeLimit[0]
+  HighTimeLimit[1] 36 :float HighTimeLimit[1]
+  OpponentDamageThreshold 40 :float[2]
+  OpponentDamageThreshold[0] 40 :float OpponentDamageThreshold[0]
+  OpponentDamageThreshold[1] 44 :float OpponentDamageThreshold[1]
+end
+
+ogvi Sound::EMomentChokeGroup enum/EMomentChokeGroup EMomentChokeGroup
+  # VaultLib.Support.World/VLT/Sound/EMomentChokeGroup.cs
+end
+
+ogvi Sound::EMomentPanning enum/EMomentPanning EMomentPanning
+  # VaultLib.Support.World/VLT/Sound/EMomentPanning.cs
+end
+
+ogvi Sound::PursuitMusicTuning struct PursuitMusicTuning
+  # VaultLib.Support.World/VLT/Sound/PursuitMusicTuning.cs
+  PlayerSpeedUR 0 :float PlayerSpeedUR
+  PursuitUR 4 :float PursuitUR
+  PursuitDistThresh 8 :float PursuitDistThresh
+  Evade2OutrunSpeedThresh 12 :float Evade2OutrunSpeedThresh
+  HighTimeLimit 16 :float[2]
+  HighTimeLimit[0] 16 :float HighTimeLimit[0]
+  HighTimeLimit[1] 20 :float HighTimeLimit[1]
+  LowTimeLimit 24 :float[2]
+  LowTimeLimit[0] 24 :float LowTimeLimit[0]
+  LowTimeLimit[1] 28 :float LowTimeLimit[1]
+  EvadeTimeLimit 32 :float[2]
+  EvadeTimeLimit[0] 32 :float EvadeTimeLimit[0]
+  EvadeTimeLimit[1] 36 :float EvadeTimeLimit[1]
+  NormalTimeLimit 40 :float[2]
+  NormalTimeLimit[0] 40 :float NormalTimeLimit[0]
+  NormalTimeLimit[1] 44 :float NormalTimeLimit[1]
+  OutrunTimeLimit 48 :float[2]
+  OutrunTimeLimit[0] 48 :float OutrunTimeLimit[0]
+  OutrunTimeLimit[1] 52 :float OutrunTimeLimit[1]
+  SafeTimeLimit 56 :float[2]
+  SafeTimeLimit[0] 56 :float SafeTimeLimit[0]
+  SafeTimeLimit[1] 60 :float SafeTimeLimit[1]
+  UnsafeTimeLimit 64 :float[2]
+  UnsafeTimeLimit[0] 64 :float UnsafeTimeLimit[0]
+  UnsafeTimeLimit[1] 68 :float UnsafeTimeLimit[1]
+  StartupDelay 72 :float StartupDelay
+  PctMaxVel_Low 76 :float PctMaxVel_Low
+  MinTimeLost 80 :float MinTimeLost
+  MinTimeLastCrashed 84 :float MinTimeLastCrashed
+  PctMaxVel_High 88 :float PctMaxVel_High
+  MaxPursuitDist 92 :float MaxPursuitDist
+  MinCopCohesion 96 :float MinCopCohesion
+end
+
+ogvi Sound::SirenSequence struct SirenSequence
+  # VaultLib.Support.World/VLT/Sound/SirenSequence.cs
+  mMode 0 :enum/SirenMode mMode
+  mDuration 4 :float mDuration
+end
+
+ogvi Sound::SirenTuning struct SirenTuning
+  # VaultLib.Support.World/VLT/Sound/SirenTuning.cs
+  OpRadiusLimit 0 :float[2]
+  OpRadiusLimit[0] 0 :float OpRadiusLimit[0]
+  OpRadiusLimit[1] 4 :float OpRadiusLimit[1]
+  SpeedThresh 8 :float SpeedThresh
+  HornLimit 12 :float[2]
+  HornLimit[0] 12 :float HornLimit[0]
+  HornLimit[1] 16 :float HornLimit[1]
+  PriorityLimit 20 :float[2]
+  PriorityLimit[0] 20 :float PriorityLimit[0]
+  PriorityLimit[1] 24 :float PriorityLimit[1]
+  WailLimit 28 :float[2]
+  WailLimit[0] 28 :float WailLimit[0]
+  WailLimit[1] 32 :float WailLimit[1]
+  YelpLimit 36 :float[2]
+  YelpLimit[0] 36 :float YelpLimit[0]
+  YelpLimit[1] 40 :float YelpLimit[1]
+  LoopXFadeRange 44 :float[2]
+  LoopXFadeRange[0] 44 :float LoopXFadeRange[0]
+  LoopXFadeRange[1] 48 :float LoopXFadeRange[1]
+  Unknown1 52 :int MaxWailing
+  Unknown2 56 :int MaxYelping
+  Unknown3 60 :int MaxPriorityCount
+  Unknown4 64 :float PriorityRadius_Online
+end
+
+ogvi Sound::TriggeredAudioFeature enum/TriggeredAudioFeature TriggeredAudioFeature
+  # VaultLib.Support.World/VLT/Sound/TriggeredAudioFeature.cs
+end
+
+ogvi SPCHType_1_EventID enum/SPCHType_1_EventID SPCHType_1_EventID
+  # VaultLib.Support.World/VLT/SPCHType_1_EventID.cs
+end
+
+ogvi SPLICE_DAMAGE enum/SPLICE_DAMAGE SPLICE_DAMAGE
+  # VaultLib.Frameworks.Speed/SPLICE_DAMAGE.cs
+end
+
+ogvi Splicer_Collision_Core enum/Splicer_Collision_Core Splicer_Collision_Core
+  # VaultLib.Frameworks.Speed/Splicer_Collision_Core.cs
+end
+
+ogvi Splicer_Collision_Mass prim/int Splicer_Collision_Mass
+  # VaultLib.Support.World/VLT/Splicer_Collision_Mass.cs
+  Value 0 :int
+end
+
+ogvi Splicer_Collision_Object enum/Splicer_Collision_Object Splicer_Collision_Object
+  # VaultLib.Frameworks.Speed/Splicer_Collision_Object.cs
+end
+
+ogvi Splicer_Collision_Surface enum/Splicer_Collision_Surface Splicer_Collision_Surface
+  # VaultLib.Frameworks.Speed/Splicer_Collision_Surface.cs
+end
+
+ogvi STICH_COLLISION_TYPE enum/STICH_COLLISION_TYPE STICH_COLLISION_TYPE
+  # VaultLib.Frameworks.Speed/STICH_COLLISION_TYPE.cs
+end
+
+ogvi SURFACE_SFX enum/SURFACE_SFX SURFACE_SFX
+  # VaultLib.Frameworks.Speed/SURFACE_SFX.cs
+end
+
+ogvi SurfaceEffectType enum/SurfaceEffectType SurfaceEffectType
+  # VaultLib.Frameworks.Speed/SurfaceEffectType.cs
+end
+
+ogvi TireEffectRecord struct TireEffectRecord
+  # VaultLib.Support.World/VLT/TireEffectRecord.cs
+  mEmitter 0 :obj/RefSpecPacked
+  mEmitter.ClassKey 0 :string mEmitter.mClassKey
+  mEmitter.CollectionKey 4 :string mEmitter.mCollectionKey
+  mTireCondition 8 :enum/TireCondition mEmitter.mCollectionPtr
+  mMinSpeed 12 :float mMinSpeed
+  mMaxSpeed 16 :float mMaxSpeed
+end
+
+ogvi TireTimeEffectRecord struct TireTimeEffectRecord
+  # VaultLib.Support.World/VLT/TireTimeEffectRecord.cs
+  mTireCondition 0 :enum/TireCondition mTireCondition
+  mEmitter 4 :obj/RefSpec
+  mEmitter.ClassKey 4 :string mEmitter.mClassKey
+  mEmitter.CollectionKey 8 :string mEmitter.mCollectionKey
+  mEmitterLowLod 16 :obj/RefSpec
+  mEmitterLowLod.ClassKey 16 :string mEmitterLowLod.mClassKey
+  mEmitterLowLod.CollectionKey 20 :string mEmitterLowLod.mCollectionKey
+  mMinTime 28 :float mMinTime
+  mMaxTime 32 :float mMaxTime
+end
+
+ogvi TrafficPatternRecord struct TrafficPatternRecord
+  # VaultLib.Frameworks.Speed/TrafficPatternRecord.cs
+  Vehicle 0 :obj/RefSpec
+  Vehicle.ClassKey 0 :string Vehicle.mClassKey
+  Vehicle.CollectionKey 4 :string Vehicle.mCollectionKey
+  Rate 12 :float Rate
+  MaxInstances 16 :uint MaxInstances
+  Percent 20 :uint Percent
+end
+
+ogvi type_bStringHash prim/uint type_bStringHash
+  # VaultLib.Frameworks.Speed/type_bStringHash.cs
+  Value 0 :uint hash
+end
+
+ogvi UpgradeSpecs struct UpgradeSpecs
   # VaultLib.Frameworks.Speed/UpgradeSpecs.cs
-  ReferencedRow Item
+  ReferencedRow 0 :obj/RefSpec
+  ReferencedRow.ClassKey 0 :string Item.mClassKey
+  ReferencedRow.CollectionKey 4 :string Item.mCollectionKey
+  UpgradeLevel 12 :uint Level
+end
+
+ogvi Victory::Data::Objects::Customization::SkillModEffectAmountConversion enum/SkillModEffectAmountConversion SkillModEffectAmountConversion
+  # VaultLib.Support.World/VLT/Victory/Data/Objects/Customization/SkillModEffectAmountConversion.cs
+end
+
+ogvi Victory::Data::Objects::Customization::SkillModEffectType enum/SkillModEffectType SkillModEffectType
+  # VaultLib.Support.World/VLT/Victory/Data/Objects/Customization/SkillModEffectType.cs
+end
+
+ogvi Victory::DataLayer::Serialization::enumPowerUpType enum/enumPowerUpType enumPowerUpType
+  # VaultLib.Support.World/VLT/Victory/DataLayer/Serialization/enumPowerUpType.cs
+end
+
+ogvienum AirSupportStrategy int
+  # VaultLib.Frameworks.Speed/AirSupport.cs
+  HI_PATROL 0
+  PURSUIT 1
+  SKID_HIT 2
+  SPIKE_DROP 3
+end
+
+ogvienum BehaviorFlag int
+  # VaultLib.Support.World/VLT/GameCore/BehaviorSlot.cs
+  kBehavior_Activatable 1
+  kBehavior_AutoActive 2
+end
+
+ogvienum BlackBoardChannel int
+  # VaultLib.Support.World/VLT/GameCore/BlackBoardChannel.cs
+  kBlackBoard_Audio 0
+  kBlackBoard_Frontend 1
+  kBlackBoard_AI 2
+  kBlackBoard_WorldMap 3
+  kBlackBoard_Count 4
+end
+
+ogvienum BlackBoardFlag int
+  # VaultLib.Support.World/VLT/GameCore/BlackBoardSlot.cs
+  kBlackBoardFlag_Loading 1
+  kBlackBoardFlag_Running 2
+  kBlackBoardFlag_Countdown 4
+end
+
+ogvienum Boss int
+  # VaultLib.Frameworks.Speed/GRace/Boss.cs
+  kRaceBoss_None 0
+  kRaceBoss_Angie 1
+  kRaceBoss_Darius 2
+  kRaceBoss_Wolf 3
+  kRaceBoss_Kenji 4
+  kRaceBoss_Neville 5
+  kRaceBoss_NumBosses 6
+end
+
+ogvienum CAR_SLOT_ID int
+  # VaultLib.Frameworks.Speed/CAR_SLOT_ID.cs
+  CARSLOTID_INVALID -1
+  CARSLOTID_BADGING_BUMPER_SET_FRONT 0
+  CARSLOTID_BADGING_BUMPER_SET_REAR 1
+  CARSLOTID_BADGING_FENDER_FRONT_LEFT 2
+  CARSLOTID_BADGING_FENDER_FRONT_RIGHT 3
+  CARSLOTID_BADGING_FENDER_REAR_LEFT 4
+  CARSLOTID_BADGING_FENDER_REAR_RIGHT 5
+  CARSLOTID_BADGING_TRUNK 6
+  CARSLOTID_BASE 7
+  CARSLOTID_BODY 8
+  CARSLOTID_BODY_DOORLINE 9
+  CARSLOTID_BRAKE_CALIPER_FRONT 10
+  CARSLOTID_BRAKE_CALIPER_REAR 11
+  CARSLOTID_BRAKE_ROTOR_FRONT 12
+  CARSLOTID_BRAKE_ROTOR_REAR 13
+  CARSLOTID_BRAKELIGHT_GLASS_LEFT 14
+  CARSLOTID_BRAKELIGHT_GLASS_RIGHT 15
+  CARSLOTID_BRAKELIGHT_LEFT 16
+  CARSLOTID_BRAKELIGHT_RIGHT 17
+  CARSLOTID_BUMPER_FRONT 18
+  CARSLOTID_BUMPER_FRONT_EXTRA 19
+  CARSLOTID_BUMPER_REAR 20
+  CARSLOTID_BUMPER_REAR_EXTRA 21
+  CARSLOTID_CHASSIS 22
+  CARSLOTID_DAMAGE_BODY 23
+  CARSLOTID_DAMAGE_BRAKELIGHT_LEFT 24
+  CARSLOTID_DAMAGE_BRAKELIGHT_RIGHT 25
+  CARSLOTID_DAMAGE_BUMPER_FRONT 26
+  CARSLOTID_DAMAGE_BUMPER_REAR 27
+  CARSLOTID_DAMAGE_DOOR_LEFT 28
+  CARSLOTID_DAMAGE_DOOR_REAR_LEFT 29
+  CARSLOTID_DAMAGE_DOOR_REAR_RIGHT 30
+  CARSLOTID_DAMAGE_DOOR_RIGHT 31
+  CARSLOTID_DAMAGE_FENDER_FRONT_LEFT 32
+  CARSLOTID_DAMAGE_FENDER_FRONT_RIGHT 33
+  CARSLOTID_DAMAGE_HEADLIGHT_LEFT 34
+  CARSLOTID_DAMAGE_HEADLIGHT_RIGHT 35
+  CARSLOTID_DAMAGE_HOOD 36
+  CARSLOTID_DAMAGE_SIDEMIRROR_LEFT 37
+  CARSLOTID_DAMAGE_SIDEMIRROR_RIGHT 38
+  CARSLOTID_DAMAGE_TRUNK 39
+  CARSLOTID_DAMAGE_WIDEBODY 40
+  CARSLOTID_DAMAGE_WIDEBODY_BUMPER_FRONT 41
+  CARSLOTID_DAMAGE_WIDEBODY_BUMPER_REAR 42
+  CARSLOTID_DAMAGE_WIDEBODY_DOOR_LEFT 43
+  CARSLOTID_DAMAGE_WIDEBODY_DOOR_REAR_LEFT 44
+  CARSLOTID_DAMAGE_WIDEBODY_DOOR_REAR_RIGHT 45
+  CARSLOTID_DAMAGE_WIDEBODY_DOOR_RIGHT 46
+  CARSLOTID_DAMAGE_WIDEBODY_FENDER_FRONT_LEFT 47
+  CARSLOTID_DAMAGE_WIDEBODY_FENDER_FRONT_RIGHT 48
+  CARSLOTID_DAMAGE_WINDOW_FRONT 49
+  CARSLOTID_DAMAGE_WINDOW_FRONT_LEFT 50
+  CARSLOTID_DAMAGE_WINDOW_FRONT_RIGHT 51
+  CARSLOTID_DAMAGE_WINDOW_REAR 52
+  CARSLOTID_DAMAGE_WINDOW_REAR_LEFT 53
+  CARSLOTID_DAMAGE_WINDOW_REAR_RIGHT 54
+  CARSLOTID_DECAL_FRONT_WINDOW 55
+  CARSLOTID_DECAL_REAR_WINDOW 56
+  CARSLOTID_DOOR_LEFT 57
+  CARSLOTID_DOOR_REAR_LEFT 58
+  CARSLOTID_DOOR_REAR_RIGHT 59
+  CARSLOTID_DOOR_RIGHT 60
+  CARSLOTID_DOORHANDLE_FRONT_LEFT 61
+  CARSLOTID_DOORHANDLE_FRONT_RIGHT 62
+  CARSLOTID_DOORHANDLE_REAR_LEFT 63
+  CARSLOTID_DOORHANDLE_REAR_RIGHT 64
+  CARSLOTID_DRIVER 65
+  CARSLOTID_ENGINE 66
+  CARSLOTID_EXHAUST 67
+  CARSLOTID_EXHAUST_TIPS_CENTER 68
+  CARSLOTID_EXHAUST_TIPS_LEFT 69
+  CARSLOTID_EXHAUST_TIPS_RIGHT 70
+  CARSLOTID_FENDER_FRONT_LEFT 71
+  CARSLOTID_FENDER_FRONT_RIGHT 72
+  CARSLOTID_HEADLIGHT_GLASS_LEFT 73
+  CARSLOTID_HEADLIGHT_GLASS_RIGHT 74
+  CARSLOTID_HEADLIGHT_LEFT 75
+  CARSLOTID_HEADLIGHT_RIGHT 76
+  CARSLOTID_HOOD 77
+  CARSLOTID_LICENSE_PLATE 78
+  CARSLOTID_LIGHTBAR 79
+  CARSLOTID_ROLL_CAGE 80
+  CARSLOTID_ROOF 81
+  CARSLOTID_ROOF_INSIDE 82
+  CARSLOTID_ROOFSCOOP 83
+  CARSLOTID_SEAT_LEFT 84
+  CARSLOTID_SEAT_RIGHT 85
+  CARSLOTID_SIDEMIRROR_LEFT 86
+  CARSLOTID_SIDEMIRROR_RIGHT 87
+  CARSLOTID_SKIRT_LEFT 88
+  CARSLOTID_SKIRT_RIGHT 89
+  CARSLOTID_SPOILER 90
+  CARSLOTID_STEERINGWHEEL 91
+  CARSLOTID_TRUNK 92
+  CARSLOTID_UNIVERSAL_SPOILER_BASE 93
+  CARSLOTID_WHEEL_FRONT 94
+  CARSLOTID_WHEEL_REAR 95
+  CARSLOTID_WINDOW_FRONT 96
+  CARSLOTID_WINDOW_FRONT_LEFT 97
+  CARSLOTID_WINDOW_FRONT_RIGHT 98
+  CARSLOTID_WINDOW_REAR 99
+  CARSLOTID_WINDOW_REAR_LEFT 100
+  CARSLOTID_WINDOW_REAR_RIGHT 101
+  CARSLOTID_BRAKE_PACKAGE 102
+  CARSLOTID_DRIVETRAIN_PACKAGE 103
+  CARSLOTID_ENGINE_PACKAGE 104
+  CARSLOTID_FORCED_INDUCTION_PACKAGE 105
+  CARSLOTID_INTERIOR 106
+  CARSLOTID_LIVERY 107
+  CARSLOTID_NITROUS_PACKAGE 108
+  CARSLOTID_SUSPENSION_PACKAGE 109
+  CARSLOTID_TIRE_FRONT 110
+  CARSLOTID_TIRE_PACKAGE 111
+  CARSLOTID_TIRE_REAR 112
+  CARSLOTID_VECTORVINYL 113
+  CARSLOTID_NUM 114
+  CARSLOTID_MODEL_FIRST 0
+  CARSLOTID_MODEL_LAST 101
+  CARSLOTID_MODEL_NUM 102
+  CARSLOTID_FIRST_NONRENDER 102
+  CARSLOTID_LAST_NONRENDER 113
+  CARSLOTID_NONRENDER_NUM 12
+  CARSLOTID_DAMAGE_MODEL_FIRST 23
+  CARSLOTID_DAMAGE_MODEL_LAST 54
+  CARSLOTID_DAMAGE_MODEL_NUM 32
+  CARSLOTID_DECAL_MODEL_FIRST 55
+  CARSLOTID_DECAL_MODEL_LAST 56
+  CARSLOTID_DECAL_MODEL_NUM 2
+end
+
+ogvienum COLLISIONSFX_LAYERS uint
+  # VaultLib.Frameworks.Speed/COLLISIONSFX_LAYERS.cs
+  LAYER_NONE 4294967295
+  LAYER_CORE 1
+  LAYER_ZONE 2
+  LAYER_SURFACE 3
+  LAYER_OBJECT 4
+  LAYER_SWEETENERS 5
+end
+
+ogvienum EAIBreakerType int
+  # VaultLib.Frameworks.Speed/EAIBreakerType.cs
+  BT_NONE 0
+  BT_REAR 1
+  BT_SIDE 2
+end
+
+ogvienum eCAR_COUNT_CATEGORY int
+  # VaultLib.Frameworks.Speed/NIS/eCAR_COUNT_CATEGORY.cs
+  ONE 0
+  TWO 1
+  THREE_TO_SIX 2
+  FOUR 3
+  SEVEN_TO_TWELVE 4
+  ANY_CAR_COUNT 5
+end
+
+ogvienum eControllerHudType int
+  # VaultLib.Frameworks.Speed/eControllerHudType.cs
+  eCHT_None 0
+  eCHT_Wheel 1
+end
+
+ogvienum eControllerTypeMask int
+  # VaultLib.Frameworks.Speed/eControllerTypeMask.cs
+  CTM_ANY 0
+  CTM_WII_REMOTE 1
+  CTM_WII_NUNCHUK 3
+  CTM_WII_CLASSIC 5
+end
+
+ogvienum eDecalType int
+  # VaultLib.Frameworks.Speed/eDecalType.cs
+  DECAL_TYPE_NONE 255
+  DECAL_TYPE_SKID_CONCRETE 0
+  DECAL_TYPE_SKID_DIRT 1
+  DECAL_TYPE_SKID_GRASS 2
+  DECAL_TYPE_SKID_SAND 3
+  DECAL_TYPE_SCRAPE_METAL 4
+  DECAL_TYPE_SCRAPE_PLASTIC 5
+  DECAL_TYPE_SCRAPE_WOOD 6
+  DECAL_TYPE_SCRAPE_CONCRETE 7
+end
+
+ogvienum eDRIVE_BY_TYPE int
+  # VaultLib.Frameworks.Speed/eDRIVE_BY_TYPE.cs
+  DRIVE_BY_UNKNOWN 0
+  DRIVE_BY_TREE 1
+  DRIVE_BY_LAMPPOST 2
+  DRIVE_BY_SMOKABLE 3
+  DRIVE_BY_TUNNEL_IN 4
+  DRIVE_BY_TUNNEL_OUT 5
+  DRIVE_BY_OVERPASS_IN 6
+  DRIVE_BY_OVERPASS_OUT 7
+  DRIVE_BY_AI_CAR 8
+  DRIVE_BY_TRAFFIC 9
+  DRIVE_BY_BRIDGE 10
+  DRIVE_BY_PRE_COL 11
+  DRIVE_BY_CAMERA_BY 12
+  DRIVE_BY_POLE_SKINNY 13
+  DRIVE_BY_SUPPORT_OVERPASS 14
+  DRIVE_BY_BILLBOARD 15
+  DRIVE_BY_STRUCTURE 16
+  DRIVE_BY_STAGING 17
+  MAX_DRIVE_BY_TYPES 18
+end
+
+ogvienum eENGINE_GROUP int
+  # VaultLib.Frameworks.Speed/eENGINE_GROUP.cs
+  eENGINE_V4 0
+  eENGINE_V6 1
+  eENGINE_V8 2
+end
+
+ogvienum EffectParticleAnimation int
+  # VaultLib.Frameworks.Speed/ParticleAnimationInfo.cs
+  ANIMATE_PARTICLE_NONE 0
+  ANIMATE_PARTICLE_2x2 2
+  ANIMATE_PARTICLE_4x4 4
+  ANIMATE_PARTICLE_8x8 8
+  ANIMATE_PARTICLE_16x16 16
+end
+
+ogvienum EffectParticleConstraint int
+  # VaultLib.Frameworks.Speed/EffectParticleConstraint.cs
+  CONSTRAIN_PARTICLE_NONE 0
+  CONSTRAIN_PARTICLE_XY_AXIS 6
+  CONSTRAIN_PARTICLE_XZ_AXIS 5
+  CONSTRAIN_PARTICLE_YZ_AXIS 3
+  CONSTRAIN_PARTICLE_CAMERA 8
+end
+
+ogvienum eMenuSoundTriggers int
+  # VaultLib.Frameworks.Speed/eMenuSoundTriggers.cs
+  UISND_NONE -1
+  UISND_COMMON_UP 0
+  UISND_COMMON_DOWN 1
+  UISND_COMMON_SELECT 2
+  UISND_COMMON_BACK 3
+  UISND_COMMON_LEFT_AND_RIGHT 4
+  UISND_COMMON_WRONG 5
+  UISND_COMMON_TRIGGER_LEFT 6
+  UISND_COMMON_TRIGGER_RIGHT 7
+  UISND_COMMON_DLGBOX_APPEAR 8
+  UISND_COMMON_DLGBOX_DISAPPEAR 9
+  UISND_COMMON_DLGBOX_DOWN 10
+  UISND_COMMON_DLGBOX_LEFT 11
+  UISND_COMMON_DLGBOX_RIGHT 12
+  UISND_COMMON_DLGBOX_UP 13
+  UISND_ENTER_TRIGGER 24
+  UISND_COMMON_ExpandingTree_Left_BASIC 31
+  UISND_COMMON_ExpandingTree_Left_P0 32
+  UISND_COMMON_ExpandingTree_Left_P1 33
+  UISND_COMMON_ExpandingTree_Left_P2 34
+  UISND_COMMON_ExpandingTree_Left_P3 35
+  UISND_COMMON_ExpandingTree_Left_P4 36
+  UISND_COMMON_ExpandingTree_Left_P5 37
+  UISND_COMMON_ExpandingTree_Left_P6 38
+  UISND_COMMON_ExpandingTree_Left_P7 39
+  UISND_COMMON_ExpandingTree_Left_P8 40
+  UISND_COMMON_ExpandingTree_Left_P9 41
+  UISND_COMMON_ExpandingTree_Right_BASIC 42
+  UISND_COMMON_ExpandingTree_Right_P0 43
+  UISND_COMMON_ExpandingTree_Right_P1 44
+  UISND_COMMON_ExpandingTree_Right_P2 45
+  UISND_COMMON_ExpandingTree_Right_P3 46
+  UISND_COMMON_ExpandingTree_Right_P4 47
+  UISND_COMMON_ExpandingTree_Right_P5 48
+  UISND_COMMON_ExpandingTree_Right_P6 49
+  UISND_COMMON_ExpandingTree_Right_P7 50
+  UISND_COMMON_ExpandingTree_Right_P8 51
+  UISND_COMMON_ExpandingTree_Right_P9 52
+  UISND_COMMON_e3_Transition 73
+  UISND_COMMON_e3_Move_Left 74
+  UISND_COMMON_LIGHT_TREE_TICK 76
+  UISND_COMMON_LIGHT_TREE_GO 77
+  UISND_COMMON_OPTION_SLIDER_TICK 78
+  UISND_HUD_RACE_COMPLETE_IN 79
+  UISND_HUD_COUNTDOWN 80
+  UISND_HUD_COUNTDOWN_GO 83
+  UISND_HUD_MATCHUP_TEXT_IN 84
+  UISND_HUD_MATCHUP_TEXT_OUT 85
+  UISND_HUD_STUTTER_TEXT_OVERLAY_IN 86
+  UISND_HUD_STUTTER_TEXT_OVERLAY_OUT 87
+  UISND_HUD_BURNOUT_RATING_IN 88
+  UISND_HUD_BURNOUT_RATING_OUT 89
+  UISND_HUD_DRAG_COUNTDOWN 92
+  UISND_HUD_DRAG_COUNTDOWN_GO 93
+  UISND_COMMON_CHYRON_IN 94
+  UISND_COMMON_CHYRON_OUT 95
+  UISND_COMMON_CHYRON_NOTIFICATION 96
+  UISND_HUD_COUNTDOWN_1 97
+  UISND_HUD_COUNTDOWN_2 98
+  UISND_HUD_COUNTDOWN_3 99
+  UISND_COMMON_MUSIC_CHYRON_IN 100
+  UISND_COMMON_MUSIC_CHYRON_OUT 101
+  UISND_COMMON_LARGE_MENU_IN 102
+  UISND_COMMON_LARGE_MENU_OUT 103
+  UISND_COMMON_PAUSE_MENU_IN 104
+  UISND_COMMON_PAUSE_MENU_OUT 105
+  UISND_COMMON_YOU_WON 106
+  UISND_COMMON_MAX_NUM 199
+  UISND_MAIN_UP_AND_DOWN 200
+  UISND_MAIN_LEFT_AND_RIGHT 201
+  UISND_MAIN_SCROLL_LEFT 202
+  UISND_MAIN_SCROLL_RIGHT 203
+  UISND_MAIN_SELECT 204
+  UISND_MAIN_BACK 205
+  UISND_MAIN_WRONG 207
+  UISND_MAIN_TRANSITION_IN 208
+  UISND_MAIN_TRANSITION_OUT 209
+  UISND_MAIN_DLGBOX_IN 210
+  UISND_MAIN_DLGBOX_OUT 211
+  UISND_UGNEW_KBTYPE 224
+  UISND_UGNEW_ENTER 225
+  UISND_UGNEW_DELETE 226
+  UISND_MAIN_END_OF_LIST 228
+  UISND_MAIN_KBCURSOR_UPDOWN 230
+  UISND_MAIN_KBCURSOR_LEFTRIGHT 231
+  UISND_MAIN_TRANSITION_ANIMATION_1 232
+  UISND_MAIN_TRANSITION_ANIMATION_2 233
+  UISND_MAIN_TRANSITION_ANIMATION_3 234
+  UISND_MAIN_TRANSITION_ANIMATION_4 235
+  UISND_MAIN_TRANSITION_ANIMATION_5 236
+  UISND_MAIN_TRANSITION_ANIMATION_6 237
+  UISND_MAIN_TRANSITION_ANIMATION_7 238
+  UISND_MAIN_TRANSITION_ANIMATION_8 239
+  UISND_MAIN_TRANSITION_ANIMATION_9 240
+  UISND_MAIN_CUST_INST_PAINT 306
+  UISND_MAIN_CUST_PAINT_COLOUR_LEFT 307
+  UISND_MAIN_CUST_PAINT_COLOUR_RIGHT 308
+  UISND_MAIN_CUST_PAINT_COLOUR_UP 309
+  UISND_MAIN_CUST_PAINT_COLOUR_DOWN 310
+  UISND_MAIN_CUST_VINYL_INSTALL 311
+  UISND_CUST_INST_EXHAUST 316
+  UISND_CUST_INST_GENERIC 317
+  UISND_CUST_INST_TURBO 318
+  UISND_CUST_INST_NOS 319
+  UISND_CUST_INST_TRANSMISSION 320
+  UISND_CUST_INST_TIRES 321
+  UISND_EA_MSGR_OPEN 322
+  UISND_EA_MSGR_LOGOFF 323
+  UISND_EA_MSGR_CHAT_REQ 324
+  UISND_EA_MSGR_MAIL_RECEIVE 325
+  UISND_EA_MSGR_CHALLENGE_REQ 326
+  UISND_MAIN_MENU_ENTER 346
+  UISND_MAIN_MENU_EXIT 347
+  UISND_MAIN_SUB_ENTER 348
+  UISND_MAIN_SUB_EXIT 349
+  UISND_MAIN_MAP_AREA_SELECT 350
+  UISND_MAIN_MAP_MENU_APPEAR 351
+  UISND_MAIN_MAP_MENU_DISAPPEAR 352
+  UISND_MAIN_MAP_MENU_NAV_UP 353
+  UISND_MAIN_MAP_MENU_NAV_DOWN 354
+  UISND_MAIN_MAP_MENU_NAV_LEFT 355
+  UISND_MAIN_MAP_MENU_NAV_RIGHT 356
+  UISND_MAIN_MAP_ZOOM_IN 357
+  UISND_MAIN_MAP_ZOOM_OUT 358
+  UISND_MAIN_KEYBOARD_ACCEPT 359
+  UISND_MAIN_KEYBOARD_BACK 360
+  UISND_MAIN_KEYBOARD_NAV 361
+  UISND_MAIN_KEYBOARD_SELECT 362
+  UISND_MAIN_MAP_MENU_NAV_LEFTRIGHT 363
+  UISND_MAIN_MAP_MENU_NAV_UPDOWN 364
+  UISND_MAIN_FEICECAM_CAM1 368
+  UISND_MAIN_FEICECAM_CAM1BCK 369
+  UISND_MAIN_FEICECAM_CAM2 370
+  UISND_MAIN_FEICECAM_CAM2BCK 371
+  UISND_MAIN_FEICECAM_CAM3 372
+  UISND_MAIN_FEICECAM_CAM3BCK 373
+  UISND_MAIN_FEICECAM_CAM4 374
+  UISND_MAIN_FEICECAM_CAM4BCK 375
+  UISND_MAIN_FEICECAM_CAM5 376
+  UISND_MAIN_FEICECAM_CAM5BCK 377
+  UISND_MAIN_FEICECAM_CAM6 378
+  UISND_MAIN_FEICECAM_CAM6BCK 379
+  UISND_MAIN_FEICECAM_CAM7 380
+  UISND_MAIN_FEICECAM_CAM7BCK 381
+  UISND_MAIN_FEICECAM_CAM8 382
+  UISND_MAIN_FEICECAM_CAM8BCK 383
+  UISND_MAIN_FEICECAM_CAM9 384
+  UISND_MAIN_FEICECAM_CAM9BCK 385
+  UISND_MAIN_FEICECAM_CAM10 386
+  UISND_MAIN_FEICECAM_CAM10BCK 387
+  UISND_MAIN_SWIRLING_MENU_INTRO 388
+  UISND_MAIN_UNLOCK 389
+  UISND_FRONTEND_MAX_NUM 399
+  UISND_COMMON_DRIFT_NICE 400
+  UISND_COMMON_DRIFT_GOOD 400
+  UISND_COMMON_DRIFT_AWESOME 401
+  UISND_COMMON_DRIFT_AMAZING 401
+  UISND_COMMON_DRIFT_GREAT 401
+  UISND_COMMON_DRIFT_OUTRAGEOUS 402
+  UISND_COMMON_DRIFT_MULTIPLIER 403
+  UISND_COMMON_DRIFT_DRIFT_ENDED 404
+  UISND_COMMON_DRIFT_PERFECT_ENTRY 405
+  UISND_DRIFT_MAX_NUM 420
+end
+
+ogvienum EmittedGeo uint
+  # VaultLib.Frameworks.Speed/EmittedGeometryRecord.cs
+  EmittedGeo_NONE 0
+  EmittedGeo_DEBRISHUNKY_01 1283620681
+  EmittedGeo_DEBRISONCRETE_01 681831914
+  EmittedGeo_DEBRISONCRETE_02 681831915
+  EmittedGeo_DEBRISONCRETE_03 681831916
+  EmittedGeo_DEBRIS_LEAF_01 3969763919
+  EmittedGeo_DEBRIS_PLANK_01 1287431533
+  EmittedGeo_DEBRIS_PLANK_02 1287431534
+  EmittedGeo_DEBRIS_ROCKS_BUNCH_01 2061261448
+  EmittedGeo_DEBRIS_ROCK_01 3522542598
+  EmittedGeo_DEBRIS_STICK_01 2335588757
+  EmittedGeo_FXARDEBRIS_01 2671268491
+  EmittedGeo_FXARDEBRIS_02 2671268492
+  EmittedGeo_FXARDEBRIS_03 2671268493
+  EmittedGeo_FX_TESTDEBRIS_01 3931009013
+  EmittedGeo_FX_TESTDEBRIS_02 3931009014
+  EmittedGeo_FX_TESTDEBRIS_03 3931009015
+  EmittedGeo_PLANE01 3623706992
+  EmittedGeo_XOU_DOLLARICON_1A_00 3410790033
+  EmittedGeo_XP_SMOKEBALLURL 3853337909
+  EmittedGeo_XP_SMOKEBALL_PUFF 3853804688
+  EmittedGeo_XP_SMOKEWII_PUFF01 1680099007
+  EmittedGeo_DEBRIS_SAUSAGE_01 398563776
+  EmittedGeo_FX_MARKER_RING_YELLOW 29846920
+end
+
+ogvienum EMomentChokeGroup int
+  # VaultLib.Support.World/VLT/Sound/EMomentChokeGroup.cs
+  eMOMENT_CHOKE_NONE 0
+  eMOMENT_CHOKE_PURSUIT_BREAKER 1
+  eMOMENT_CHOKE_SPEED_BREAKER 2
+  eMOMENT_CHOKE_CRASH_SWEETENER 3
+  eMOMENT_CHOKE_NIS 4
+  eMOMENT_CHOKE_SPOT_AMBIENCE 5
+  eMOMENT_CHOKE_MISC_FX 6
+end
+
+ogvienum EMomentPanning int
+  # VaultLib.Support.World/VLT/Sound/EMomentPanning.cs
+  eMOMENT_PANNING_NONE 0
+  eMOMENT_PANNING_POINTSOURCE 1
+end
+
+ogvienum enumPowerUpType int
+  # VaultLib.Support.World/VLT/Victory/DataLayer/Serialization/enumPowerUpType.cs
+  None 0
+  EmergencyEvade 1
+  InstantCooldown 2
+  Juggernaut 3
+  NosShot 4
+  OneMoreLap 5
+  Ready 6
+  RunFlatTires 7
+  Shield 8
+  Slingshot 9
+  TeamEmergencyEvade 10
+  TeamSlingshot 11
+  TrafficMagnet 12
+end
+
+ogvienum ePIP_EVENT_CATEGORY int
+  # VaultLib.Frameworks.Speed/NIS/ePIP_EVENT_CATEGORY.cs
+  UNCATEGORIZED 0
+  CRASH_EVENT 1
+  CANYON_SCORE_EVENT 2
+  PASSING_EVENT 3
+  NUM_PIP_EVENT_CATEGORIES 4
+end
+
+ogvienum ePIPTrigger int
+  # VaultLib.Frameworks.Speed/NIS/ePIPTrigger.cs
+  NONE 0
+  PLAYER_HIT_BOSS 1
+  PLAYER_HIT_RIVAL 2
+  PLAYER_CRASHES 3
+  PLAYER_NEAR_FINISH 4
+  PLAYER_PASS_BOSS_LEFT 5
+  PLAYER_PASS_BOSS_RIGHT 6
+  PLAYER_ENTER_COOLDOWN 7
+  PLAYER_DRAFT_PAST_BOSS 8
+  PLAYER_HIT_RACEBREAKER 9
+  PLAYER_STAND_STILL 10
+  BOSS_HIT_PLAYER 11
+  BOSS_CRASHES 12
+  BOSS_CROSS_FINISH 13
+  BOSS_NEAR_FINISH 14
+  BOSS_PASS_PLAYER_LEFT 15
+  BOSS_PASS_PLAYER_RIGHT 16
+  RIVAL_CRASHES 17
+  RIVAL_CROSS_FINISH 18
+  WINGMAN_HIT_RIVAL 19
+  WINGMAN_CRASHES 20
+  WINGMAN_PASS_RIVAL 21
+  WINGMAN_NOS 22
+  WINGMAN_ENTER_FIRSTPLACE 23
+  WINGMAN_ENTER_LASTPLACE 24
+  WINGMAN_JUMPS 25
+  BLOCKER_ACTIVATE 26
+  BLOCKER_ATTACK_BEHIND 27
+  BLOCKER_ATTACK_FRONT 28
+  BLOCKER_HIT_BOSS 29
+  SCOUT_ACTIVATE 30
+  SCOUT_ENTER_SHORTCUT 31
+  DRAFTER_ACTIVATE 32
+  COP_JOIN_PURSUIT 33
+  CANYON_PLAYER_FALLBEHIND 34
+  CANYON_PLAYER_FALLBEHIND_REPEAT 35
+  CANYON_PLAYER_PULLAHEAD 36
+  CANYON_BOSS_BROKE_GUARDRAIL 37
+  CANYON_PLAYER_LOW_SCORE 38
+  CANYON_PLAYER_LOW_SCORE_REPEAT 39
+  CANYON_PLAYER_HIGH_SCORE 40
+  CANYON_PLAYER_HIGH_SCORE_REPEAT 41
+  CANYON_PLAYER_FAST_SCORE 42
+  CANYON_BOSS_OFF_CLIFF 43
+  TUTORIAL_IGNORED_COMMANDS 44
+  TUTORIAL_REPEAT_HIT 45
+  TUTORIAL_FAREWELL 46
+  TUTORIAL_START 47
+  NUM_PIP_TRIGGERS 48
+end
+
+ogvienum ePLATFORM_CLASS int
+  # VaultLib.Frameworks.Speed/NIS/ePLATFORM_CLASS.cs
+  COMMON_PLATFORM 0
+  CURRENT_GEN 1
+  NEXT_GEN 2
+end
+
+ogvienum eSFXOBJ_MOMENT_MIXINPUT int
+  # VaultLib.Support.World/VLT/eSFXOBJ_MOMENT_MIXINPUT.cs
+  eTRG_MOMENT_SPEED_BREAKER 0
+  eTRG_MOMENT_PURSUIT_BREAKER 1
+  eTRG_MOMENT_NIS 2
+  eTRG_MOMENT_CRASH_SWEETNER 3
+end
+
+ogvienum eSFXOBJ_MOMENT_MIXOUT int
+  # VaultLib.Support.World/VLT/eSFXOBJ_MOMENT_MIXOUT.cs
+  eAZI_MOMENT_3DPOS 0
+  eVOL_MOMENT_PURSUIT_BREAKER 1
+  eFLT_MOMENT_LOWPASSROLLOFF 2
+  eVOL_MOMENT_NIS 3
+  eVOL_MOMENT_CRASH_SWEETNER 4
+  eVOL_MOMENT_SPEED_BREAKER 5
+  eVOL_MOMENT_SPOT_AMBIENCE 6
+  eVOL_MOMENT_MISC_FX 7
+end
+
+ogvienum eTEG_ParticleTextures uint
+  # VaultLib.Frameworks.Speed/ParticleTextureRecord.cs
+  FX_GRASS01_BLEND_ANIM 4223432805
+  FX_CONFETTI2 3966805418
+  FX_GRAVEL_BLEND_ANIM 2021970373
+  FX_SMK01_BLEND 2191626924
+  FX_SMK06_BLEND 59032177
+  FX_SMOKESHADER 662316914
+  FX_GLOW02_ADDITIVE 2239853152
+  FX_SMK07_BLEND 1350500146
+  FX_DEBRIS_GREY 4156473643
+  FX_CACTUS_BLEND_ANIM 2050773959
+  FX_BUZZARD_01 1049029982
+  FX_DEBRIS01_BLEND_ANIM 120945470
+  FX_SPARK05_ADDITIVE 3582410507
+  FX_SMK04_BLEND 1771063535
+  FX_SMK05_BLEND 3062531504
+  FX_DEBRISSTONE1_BLEND 373800243
+  FX_STRIPE03_ADDITIVE 2471891391
+  FX_SMK02_BLEND 3483094893
+  FX_SPARK04_ADDITIVE 3514609130
+  FX_SMK03_BLEND 479595566
+  FX_STRIPE01_ADDITIVE 2336288637
+  FX_WOOD_PLANKS_BLEND_ANIM_COLR 2000676916
+  FX_GLASS01_BLEND_ANIM 2325818463
+  FX_GLOW01_ADDITIVE 2172051775
+  FX_SPARK02_ADDITIVE 3379006376
+  FX_HAZE1 2120141685
+  FX_DEBRIS02_BLEND 2657384891
+  FX_SMOKESHADER2 381621732
+  FX_STRIPE01_BLEND 2368629912
+  FX_WOOD_PLANKS_DRK_BLEND_ANIM_COLR 2489119444
+  FX_SPARK01_ADDITIVE 3311204999
+  FX_WATER02_BLEND 2834324005
+  FX_BEAN_BLEND 2373217654
+  FX_HAZE2 2120141686
+  FX_SPARK01_ADDITIVE_ANIM 3930962155
+  FX_FLARE_01_ADDITIVE 2175604367
+  FX_SMK04_ADDITIVE 2429878388
+  FX_WOOD_PLANKS_BLEND_ANIM 2791696805
+  FX_STRIPE02_ADDITIVE 2404090014
+  FX_WATER01_BLEND 1542856036
+  FX_WATER03_BLEND 4125791974
+  FX_CONFETTI 901109368
+  FX_GREYGRAD32 1424136438
+  FX_SPARK03_ADDITIVE 3446807753
+  FX_GREYGRAD32_ADD 3322370430
+end
+
+ogvienum EventMode int
+  # VaultLib.Support.World/VLT/GameCore/EventMode.cs
+  kEventMode_Unknown 0
+  kEventMode_TollBooth 1
+  kEventMode_Canyon 2
+  kEventMode_Challenge 3
+  kEventMode_Circuit 4
+  kEventMode_Drift 5
+  kEventMode_PursuitKnockOut 6
+  kEventMode_PursuitTag 7
+  kEventMode_SpeedTrap 8
+  kEventMode_Sprint 9
+  kEventMode_CanyonDrift 10
+  kEventMode_Pursuit 12
+  kEventMode_LapKnockOut 15
+  kEventMode_Drag 19
+  kEventMode_CoopPursuit 21
+  kEventMode_MeetingPlace 22
+  kEventMode_TeamPursuit 23
+  kEventMode_TeamEscape 24
+  kEventMode_TreasureHunt 25
+end
+
+ogvienum EventType int
+  # VaultLib.Support.World/VLT/GameCore/EventType.cs
+  kEventType_Unknown 0
+  kEventType_P2P 1
+  kEventType_Circuit 2
+  kEventType_Pursuit 3
+  kEventType_MeetingPlace 4
+  kEventType_TeamEscape 5
+  kEventType_Drag 6
+end
+
+ogvienum eVOL_MOMENT int
+  # VaultLib.Support.World/VLT/eVOL_MOMENT.cs
+  eAZI_MOMENT_3DPOS 0
+  eVOL_MOMENT_JACKNIFE 1
+  eVOL_MOMENT_COL_SWT 2
+  eVOL_MOMENT_GASPUMP 3
+  eVOL_MOMENT_BLOWNENGINE 4
+  eVOL_MOMENT_PURSUIT_BREAKER 5
+  eVOL_MOMENT_TOTALLED_ENGINE 6
+  eVOL_MOMENT_JUMPCAM 7
+  eVOL_MOMENT_THUNDER 8
+  eVOL_MOMENT_GAMEPLAY 9
+  eVOL_MOMENT_FLY_IN_CAM 10
+  eVOL_MOMENT_SPOT_COP 11
+  eVOL_MOMENT_PHOTOFINISH 12
+  eFLT_MOMENT_LOWPASSROLLOFF 13
+end
+
+ogvienum eWMFeatureType int
+  # VaultLib.Support.World/VLT/EA/WorldMap/eWMFeatureType.cs
+  WORLDMAP_FEATURE_TYPE_BASICPOINTFEATURE 0
+  WORLDMAP_FEATURE_TYPE_BASICAREAFEATURE 1
+  WORLDMAP_FEATURE_TYPE_RACE_EVENT 2
+  WORLDMAP_FEATURE_TYPE_COP_CARS 3
+  WORLDMAP_FEATURE_TYPE_LOCAL_PLAYER 4
+  WORLDMAP_FEATURE_TYPE_REMOTE_PLAYER 5
+  WORLDMAP_FEATURE_TYPE_POINT_OF_INTEREST 6
+  WORLDMAP_FEATURE_TYPE_TREASURE 7
+  WORLDMAP_FEATURE_TYPE_MAX 8
+end
+
+ogvienum FEState int
+  # VaultLib.Support.World/VLT/Interop/FEState.cs
+  FESTATE_INITIAL 0
+  FESTATE_FREEROAM 1
+  FESTATE_SAFEHOUSE 2
+  FESTATE_EVENT 3
+  FESTATE_PURSUIT 4
+  FESTATE_DISCONNECTED 5
+  FESTATE_LOBBY 6
+  FESTATE_FINAL 7
+  FESTATE_COUNT 8
+end
+
+ogvienum FLASHER_ALIGNMENT int
+  # VaultLib.Support.World/VLT/Interop/FLASHER_ALIGNMENT.cs
+  FLASHER_ALIGN_TOP 0
+  FLASHER_ALIGN_MIDDLE 1
+  FLASHER_ALIGN_BOTTOM 2
+end
+
+ogvienum FormationTypeEnum int
+  # VaultLib.Frameworks.Speed/CopFormationRecord.cs
+  PIT 1
+  BOX_IN 2
+  ROLLING_BLOCK 3
+  FOLLOW 4
+  HELI_PURSUIT 5
+  HERD 6
+  ROLLING_BLOCK_LARGE 7
+  CHASE_UP_FRONT 8
+  CHASE_DIAGONAL 9
+  CHASE_RIGHT_TRIANGLE 10
+  CHASE_TRIANGLE 11
+  CHASE_REVERSE_TRIANGLE 12
+  REAR_RAM 13
+  SIDE_RAM 14
+  FRONT_RAM 15
+end
+
+ogvienum GameplayEffect int
+  # VaultLib.Support.World/VLT/PowerUps/GameplayEffect.cs
+  kGameplayEffect_None 0
+  kGameplayEffect_NOS 1
+  kGameplayEffect_InstantCooldown 2
+  kGameplayEffect_RunFlatTires 3
+  kGameplayEffect_TrafficMagnet 4
+  kGameplayEffect_AddLapsToRace 5
+  kGameplayEffect_NoCollisions 6
+  kGameplayEffect_ShowHidingSpots 7
+  kGameplayEffect_ShowCopsOnMinimap 8
+  kGameplayEffect_ScaleSteering 9
+  kGameplayEffect_ScaleTorque 10
+  kGameplayEffect_ScaleCollisionMass 11
+  kGameplayEffect_PowerupImmunity 12
+  kGameplayEffect_RechargeAllPowerups 13
+  kGameplayEffect_DoCameraPullback 14
+  kGameplayEffect_FreeWorldCameraMover 15
+  kGameplayEffect_ReviveBustedPlayer 16
+  kGameplayEffect_CapBustedTimer 17
+  kGameplayEffect_ScatterCops 18
+  kGameplayEffect_ScatterSmackables 19
+  kGameplayEffect_ScatterTraffic 20
+  kGameplayEffect_DecrementBustMeter 21
+  kGameplayEffect_PerfectStart 22
+end
+
+ogvienum GMapCurveRefFlags ushort
+  # VaultLib.Frameworks.Speed/GMapCurveRef.cs
+  kFlag_Reversed 1
+end
+
+ogvienum HeavySupportStrategy int
+  # VaultLib.Frameworks.Speed/HeavySupport.cs
+  E_BRAKE 1
+  COORDINATED_E_BRAKE 2
+  RAM 3
+  HEAVY_ROADBLOCK 4
+end
+
+ogvienum InputUpdateType int
+  # VaultLib.Frameworks.Speed/InputUpdateType.cs
+  kUpdate 0
+  kPress 1
+  kRelease 2
+  kAnalogPress 3
+  kAnalogRelease 4
+  kCenterControl 5
+end
+
+ogvienum LeaderSupportStrategy int
+  # VaultLib.Frameworks.Speed/LeaderSupport.cs
+  CROSS_FOLLOW 5
+  CROSS_BRAKE 6
+  CROSS_PLUS_V_BLOCK 7
+end
+
+ogvienum MilestoneType int
+  # VaultLib.Support.World/VLT/GameCore/MilestoneType.cs
+  kMilestone_None 0
+  kMilestone_General_AirTime 1
+  kMilestone_General_TopSpeed 2
+  kMilestone_General_FastestTopSpeed 3
+  kMilestone_General_NoPowerupsUsed 4
+  kMilestone_General_PowerupsUsed 5
+  kMilestone_General_PerfectStart 6
+  kMilestone_Circuit_BestLapTime 7
+  kMilestone_Pursuit_CopsDeployed 8
+  kMilestone_Pursuit_CopsEvaded 9
+  kMilestone_Pursuit_CopsRammed 10
+  kMilestone_Pursuit_CopsDestroyed 11
+  kMilestone_Pursuit_RhinosDestroyed 12
+  kMilestone_Pursuit_SpikestripsEvaded 13
+  kMilestone_Pursuit_RoadblocksEvaded 14
+  kMilestone_Pursuit_CostToState 15
+  kMilestone_Pursuit_Infractions 16
+  kMilestone_Pursuit_Bounty 17
+  kMilestone_Pursuit_Heat 18
+  kMilestone_Pursuit_Time 19
+  kMilestone_Pursuit_RhinoDisabled 20
+  kMilestone_Infraction_Speeding 21
+  kMilestone_Infraction_Racing 22
+  kMilestone_Infraction_RecklessDriving 23
+  kMilestone_Infraction_AssaultPolice 24
+  kMilestone_Infraction_HitAndRun 25
+  kMilestone_Infraction_DamageToProperty 26
+  kMilestone_Infraction_ResistingArrest 27
+  kMilestone_Infraction_DrivingOffRoad 28
+  kMilestone_Safehouse_Reached 29
+  kMilestone_Count 30
+end
+
+ogvienum ObjFlag int
+  # VaultLib.Support.World/VLT/GameCore/ObjFlag.cs
+  kFlag_None 0
+  kFlag_Engagable 64
+  kFlag_Activatable 128
+end
+
+ogvienum ObjType int
+  # VaultLib.Support.World/VLT/GameCore/ObjType.cs
+  kObjType_Unknown -1
+  kObjType_TrackLayout 0
+  kObjType_Event 1
+  kObjType_Trigger 2
+  kObjType_Marker 3
+  kObjType_Character 4
+  kObjType_Milestone 5
+  kObjType_PointOfInterestDefinition 6
+  kObjType_Count 7
+end
+
+ogvienum PartZone int
+  # VaultLib.Support.World/VLT/PerformanceUpgrades/PartZone.cs
+  PERFSLOT_ENGINE 0
+  PERFSLOT_FORCED_INDUCTION 1
+  PERFSLOT_TRANSMISSION 2
+  PERFSLOT_SUSPENSION 3
+  PERFSLOT_BRAKES 4
+  PERFSLOT_TIRES 5
+  PERFSLOT_MISC 6
+end
+
+ogvienum PhysicsEntity int
+  # VaultLib.Support.World/VLT/GameCore/PhysicsEntity.cs
+  kEntity_LocalPlayer 0
+  kEntity_LocalAIRacer 1
+  kEntity_LocalCop 2
+  kEntity_LocalTraffic 3
+  kEntity_RemotePlayer 4
+  kEntity_RemoteAIRacer 5
+  kEntity_RemoteCop 6
+  kEntity_RemoteTraffic 7
+  kEntity_Smackable 8
+end
+
+ogvienum PoiBehavior int
+  # VaultLib.Support.World/VLT/GameCore/PoiBehavior.cs
+  kPoi_None 0
+  kPoi_Icon 1
+end
+
+ogvienum POIType int
+  # VaultLib.Support.World/VLT/EA/WorldMap/POIType.cs
+  POIType_Unknown -1
+  POIType_Cooldown 0
+  POIType_PursuitBreaker 1
+  POIType_FinishLine 2
+  POIType_Treasure 3
+  POIType_TreasureArea 4
+end
+
+ogvienum PowerupConfiguration int
+  # VaultLib.Support.World/VLT/GameCore/PowerupConfiguration.cs
+  kPowerupConfigFreeRoam 0
+  kPowerupConfigCircuit 1
+  kPowerupConfigSprint 2
+  kPowerupConfigPursuit 3
+  kPowerupConfigMultiplayerPursuit 4
+end
+
+ogvienum RaceCarClass int
+  # VaultLib.Frameworks.Speed/GRace/RaceCarClass.cs
+  kRaceCar_ClassNone 0
+  kRaceCar_ClassExotic 1
+  kRaceCar_ClassMuscle 2
+  kRaceCar_ClassTuner 3
+  kRaceCar_NumClasses 4
+end
+
+ogvienum Restriction int
+  # VaultLib.Support.World/VLT/PowerUps/Restriction.cs
+  kPowerupRestriction_None 0
+  kPowerupRestriction_NobodyHasFinishedEvent 1
+  kPowerupRestriction_IAmNotInFirstPlace 2
+  kPowerupRestriction_IAmOnTheLastLap 3
+  kPowerupRestriction_IHaveAFlatTire 4
+  kPowerupRestriction_IHaveAtLeastOnePowerupRecharging 5
+  kPowerupRestriction_IAmInPursuitCooldown 6
+  kPowerupRestriction_IAmNotReversing 7
+  kPowerupRestriction_IAmInARace 8
+  kPowerupRestriction_IAmInAPursuit 9
+  kPowerupRestriction_IAmNotNOSing 10
+  kPowerupRestriction_IAmNotAutoDriving 11
+  kPowerupRestriction_ICanOnlyUseThisOncePerRace 12
+  kPowerupRestriction_WeCanOnlyUseThisOncePerRace 13
+  kPowerupRestriction_ThisPowerupIsNotCurrentlyActive 14
+end
+
+ogvienum RewardMode int
+  # VaultLib.Support.World/VLT/GameCore/RewardMode.cs
+  kRewardMode_Singleplayer 1
+  kRewardMode_Multiplayer 2
+  kRewardMode_PrivateMatch 3
+end
+
+ogvienum ROLLFX_LOOP int
+  # VaultLib.Frameworks.Speed/ROLLFX_LOOP.cs
+  ROLLFX_NONE 0
+  ROLLFX_ASPHALT 1
+  ROLLFX_CONCRETE 2
+  ROLLFX_GRASS 3
+  ROLLFX_SAND 4
+  ROLLFX_GRAVEL 5
+  ROLLFX_DIRT 6
+  ROLLFX_WOOD 7
+  ROLLFX_BRIDGE 8
+  ROLLFX_BUMPY_HIGHWAY 9
+  MAX_NUM_ROLLFX 10
+end
+
+ogvienum RUMBLEFX int
+  # VaultLib.Frameworks.Speed/RUMBLEFX.cs
+  RUMBLEFX_NONE 0
+  RUMBLEFX_ROUGH 1
+  RUMBLEFX_SMOOTH 2
+  RUMBLEFX_STEP 3
+  MAX_RUMBLEFX 4
+end
+
+ogvienum SCRAPE_SURFACES int
+  # VaultLib.Frameworks.Speed/SCRAPE_SURFACES.cs
+  SCRAPE_NONE 0
+  SCRAPE_CONCRETE 1
+  SCRAPE_METAL 2
+  SCRAPE_RUBBER 3
+  SCRAPE_OFFROAD 4
+  MAX_SCRAPES 5
+end
+
+ogvienum SirenMode int
+  # VaultLib.Support.World/VLT/Sound/SirenSequence.cs
+  SIREN_OFF 1
+  SIREN_WAIL 2
+  SIREN_YELP 3
+  SIREN_PRIORITY 4
+  SIREN_HORN 5
+  SIREN_DEATH 6
+  SIREN_INIT 7
+  MAX_SIREN_STATES 8
+end
+
+ogvienum SkillModEffectAmountConversion int
+  # VaultLib.Support.World/VLT/Victory/Data/Objects/Customization/SkillModEffectAmountConversion.cs
+  None 0
+  Metres2Feet 1
+end
+
+ogvienum SkillModEffectType int
+  # VaultLib.Support.World/VLT/Victory/Data/Objects/Customization/SkillModEffectType.cs
+  None 0
+  CashRewardExplore 1
+  PowerupCooldown 2
+  PowerupDuration 3
+  PowerupPower 4
+  CatchUp 5
+  CollisionMass 6
+  HeavyMass 7
+  JumpStart 8
+  EvadeMeter 9
+  PerfectStartRange 10
+  Radar 11
+  TreasureHunter 12
+  OneMoreLapPerformance 13
+  EmergencyEvadeRange 14
+  CooldownMeter 15
+  PerfectStartDuration 16
+  CashRewardPursuit 17
+  CashRewardRace 18
+  GearRatioEnhancement 19
+  LaunchGrip 20
+  AeroDragReduction 21
+  QuickShift 22
+  QuickLaneChange 23
+end
+
+ogvienum SPCHType_1_EventID int
+  # VaultLib.Support.World/VLT/SPCHType_1_EventID.cs
+  kSPCH1_EventID_Acknowledge 57
+  kSPCH1_EventID_Spotter 58
+  kSPCH1_EventID_SpotterReply 59
+  kSPCH1_EventID_InitPursuit 61
+  kSPCH1_EventID_PrimaryEngage 62
+  kSPCH1_EventID_Bullhorn 64
+  kSPCH1_EventID_SelfStrategy 66
+  kSPCH1_EventID_CallForBU 67
+  kSPCH1_EventID_UnitBUReply 68
+  kSPCH1_EventID_DispPursuitEscalation 70
+  kSPCH1_EventID_BUReminder 73
+  kSPCH1_EventID_DispBackupUpdate 74
+  kSPCH1_EventID_CallForRB 76
+  kSPCH1_EventID_DispRBReply 77
+  kSPCH1_EventID_DispRBUpdate 78
+  kSPCH1_EventID_RBApproach 79
+  kSPCH1_EventID_RBEngage 80
+  kSPCH1_EventID_InitStrategy 83
+  kSPCH1_EventID_StrategyExecute 89
+  kSPCH1_EventID_AnticipateSuccess 90
+  kSPCH1_EventID_OutcomeFail 93
+  kSPCH1_EventID_Arrest 95
+  kSPCH1_EventID_DispArrestReply 96
+  kSPCH1_EventID_CollisionWorld 98
+  kSPCH1_EventID_PursuitUpdateRep 100
+  kSPCH1_EventID_Disp911Report 102
+  kSPCH1_EventID_Unit911Reply 103
+  kSPCH1_EventID_SuspectUTurn 104
+  kSPCH1_EventID_SuspectOutrun 105
+  kSPCH1_EventID_LostVisual 106
+  kSPCH1_EventID_RegainVisual 107
+  kSPCH1_EventID_LostSuspect 108
+  kSPCH1_EventID_CallForEV 112
+  kSPCH1_EventID_IntentToRam 113
+  kSPCH1_EventID_Bailout 114
+  kSPCH1_EventID_FocusChange 115
+  kSPCH1_EventID_SuspectBehaviour 116
+  kSPCH1_EventID_DriverHistory 118
+  kSPCH1_EventID_PursuitApproaching 119
+  kSPCH1_EventID_RBReminder 145
+  kSPCH1_EventID_BUArrives 150
+  kSPCH1_EventID_RBAverted 152
+  kSPCH1_EventID_Interrupt 153
+  kSPCH1_EventID_AttmptVehStp 154
+  kSPCH1_EventID_VehicleReport 155
+  kSPCH1_EventID_LocationReport 158
+  kSPCH1_EventID_SuspectConfirmed 159
+  kSPCH1_EventID_ReInitPursuit 160
+  kSPCH1_EventID_InitialCallForBU 161
+  kSPCH1_EventID_NegativeBUReply 162
+  kSPCH1_EventID_NegativeRBReply 163
+  kSPCH1_EventID_UnitDisabled 164
+  kSPCH1_EventID_BailoutDeny 165
+  kSPCH1_EventID_OffroadMoment 166
+  kSPCH1_EventID_HeliIntentToBail 170
+  kSPCH1_EventID_SwarmingReply 171
+  kSPCH1_EventID_AnticipateFail 173
+  kSPCH1_EventID_DispGoAhead 174
+  kSPCH1_EventID_HeliBailout 176
+  kSPCH1_EventID_HeliSwarming 177
+  kSPCH1_EventID_HeliSpotter 178
+  kSPCH1_EventID_DispTimeExpired 180
+  kSPCH1_EventID_DispPursEscGen 181
+  kSPCH1_EventID_DispBreakAway 183
+  kSPCH1_EventID_DispBackupReply 184
+  kSPCH1_EventID_StaticInterrupt 185
+  kSPCH1_EventID_InterruptRam 186
+  kSPCH1_EventID_InterruptRamHigh 198
+  kSPCH1_EventID_RegainVisualInterrupt 200
+  kSPCH1_EventID_InitialCallForBU_MS 205
+  kSPCH1_EventID_InterruptRam_RE 206
+  kSPCH1_EventID_InterruptRam_HO 207
+  kSPCH1_EventID_InterruptRam_SS 208
+  kSPCH1_EventID_InterruptRam_TB 209
+  kSPCH1_EventID_CollWorld_Civi 210
+  kSPCH1_EventID_CollWorld_Spin 211
+  kSPCH1_EventID_CollWorld_Air 212
+  kSPCH1_EventID_CollWorld_Flip 213
+  kSPCH1_EventID_Spotted 214
+  kSPCH1_EventID_BullhornPrefix 215
+  kSPCH1_EventID_SpotterWanted 216
+  kSPCH1_EventID_SuspectBrake 217
+  kSPCH1_EventID_CallForRB_sub 218
+  kSPCH1_EventID_WeatherReport 219
+  kSPCH1_EventID_HeatJump 220
+  kSPCH1_EventID_CallForSwarming 221
+  kSPCH1_EventID_BullhornArrest 222
+  kSPCH1_EventID_DispEVReply 224
+  kSPCH1_EventID_DispSubRB 227
+  kSPCH1_EventID_HeliQuadrent 230
+  kSPCH1_EventID_HeliQuadrentMoving 231
+  kSPCH1_EventID_MoreDetails 232
+  kSPCH1_EventID_DirectionHigh 233
+  kSPCH1_EventID_SuperPursuitReply 234
+  kSPCH1_EventID_SwarmingReplyFollow 235
+  kSPCH1_EventID_QuadrentForming 236
+  kSPCH1_EventID_SuspectPossiblyGone 237
+  kSPCH1_EventID_QuadrentMoving 238
+  kSPCH1_EventID_OtherLead 239
+  kSPCH1_EventID_PossibleSuspect 240
+  kSPCH1_EventID_WrongSuspect 241
+  kSPCH1_EventID_SuspectGone 242
+  kSPCH1_EventID_RBWarning 243
+  kSPCH1_EventID_RBPosition 244
+  kSPCH1_EventID_ExtraRBEngage 245
+  kSPCH1_EventID_ExtraRBAverted 246
+  kSPCH1_EventID_Disp911NoDescrip 256
+  kSPCH1_EventID_DispVehDescrip 257
+  kSPCH1_EventID_M01 266
+  kSPCH1_EventID_M02 267
+  kSPCH1_EventID_M03 268
+  kSPCH1_EventID_M04 269
+  kSPCH1_EventID_M05 270
+  kSPCH1_EventID_M06 271
+  kSPCH1_EventID_M07 272
+  kSPCH1_EventID_M08 273
+  kSPCH1_EventID_M09 274
+  kSPCH1_EventID_M10 275
+  kSPCH1_EventID_M11 276
+  kSPCH1_EventID_M12 277
+  kSPCH1_EventID_M13 278
+  kSPCH1_EventID_M14 279
+  kSPCH1_EventID_M15 280
+  kSPCH1_EventID_M16 281
+  kSPCH1_EventID_M17 282
+  kSPCH1_EventID_M18 283
+  kSPCH1_EventID_M19 284
+  kSPCH1_EventID_M20 285
+  kSPCH1_EventID_M21 286
+  kSPCH1_EventID_M22 287
+  kSPCH1_EventID_M23 288
+  kSPCH1_EventID_M24 289
+  kSPCH1_EventID_M25 290
+  kSPCH1_EventID_M26 291
+  kSPCH1_EventID_M27 292
+  kSPCH1_EventID_M28 293
+  kSPCH1_EventID_M29 294
+  kSPCH1_EventID_M30 295
+  kSPCH1_EventID_M31 296
+  kSPCH1_EventID_M32 297
+  kSPCH1_EventID_M33 298
+  kSPCH1_EventID_M34 299
+  kSPCH1_EventID_M35 300
+  kSPCH1_EventID_M36 301
+  kSPCH1_EventID_M37 302
+  kSPCH1_EventID_M38 303
+  kSPCH1_EventID_M39 304
+  kSPCH1_EventID_M40 305
+  kSPCH1_EventID_VO_A 308
+  kSPCH1_EventID_VO_B 309
+  kSPCH1_EventID_VO_C 310
+  kSPCH1_EventID_VO_D 311
+  kSPCH1_EventID_VO_E 312
+  kSPCH1_EventID_VO_F 313
+  kSPCH1_EventID_SD00 314
+  kSPCH1_EventID_SD01 315
+  kSPCH1_EventID_SD02 316
+  kSPCH1_EventID_SD03 317
+  kSPCH1_EventID_SD04 318
+  kSPCH1_EventID_SD05 319
+  kSPCH1_EventID_SD06 320
+  kSPCH1_EventID_SD07 321
+  kSPCH1_EventID_SD08 322
+  kSPCH1_EventID_SD09 323
+  kSPCH1_EventID_SD10 325
+  kSPCH1_EventID_SD11 326
+  kSPCH1_EventID_SD12 327
+  kSPCH1_EventID_SD13 328
+  kSPCH1_EventID_SD14 329
+  kSPCH1_EventID_SD15 330
+  kSPCH1_EventID_SD16 331
+  kSPCH1_EventID_VehRepNoClr 334
+  kSPCH1_EventID_StolenCarConfirmed 335
+  kSPCH1_EventID_PursuitLengthRep 336
+  kSPCH1_EventID_PursuitLength 337
+  kSPCH1_EventID_PursuitBreaker 338
+  kSPCH1_EventID_PlayerTakeOff 339
+  kSPCH1_EventID_PlayerEarlyPullover 340
+  kSPCH1_EventID_PlayerCopSpotted 341
+  kSPCH1_EventID_PlayerCopConfirmed 342
+  kSPCH1_EventID_PartLoose 343
+  kSPCH1_EventID_NegFBIHandoffRep 344
+  kSPCH1_EventID_MultiRBEvadeRep 345
+  kSPCH1_EventID_MultiRBEvade 346
+  kSPCH1_EventID_LostVisualHeli 347
+  kSPCH1_EventID_HeliNoFly 348
+  kSPCH1_EventID_HeliLostRep 349
+  kSPCH1_EventID_HeliExitNoFly 350
+  kSPCH1_EventID_FBIPursuitLengthRep 351
+  kSPCH1_EventID_FBIPursuitLength 352
+  kSPCH1_EventID_FBINoComply 353
+  kSPCH1_EventID_FBIHandoffRep 354
+  kSPCH1_EventID_FBIEngage 355
+  kSPCH1_EventID_FBICollRep 356
+  kSPCH1_EventID_FBICollConcern 357
+  kSPCH1_EventID_ExAutosculpt 358
+  kSPCH1_EventID_DispStlnCar 359
+  kSPCH1_EventID_DispRadioRestored 360
+  kSPCH1_EventID_DispPursLenRep 361
+  kSPCH1_EventID_DispPurBreakerRep 362
+  kSPCH1_EventID_DispPurBreaker 363
+  kSPCH1_EventID_DispNoFlyRep 364
+  kSPCH1_EventID_DispNegHandoffRep 365
+  kSPCH1_EventID_DispLocalNoComply 366
+  kSPCH1_EventID_DispLocalLvl 367
+  kSPCH1_EventID_DispFBIPursLenRep 368
+  kSPCH1_EventID_DispFBIHandoff 369
+  kSPCH1_EventID_DispExAutosculpt 370
+  kSPCH1_EventID_DispDamagedCar 371
+  kSPCH1_EventID_Disp911StlnCar 372
+  kSPCH1_EventID_DamagedCar 373
+  kSPCH1_EventID_CopCollRep 374
+  kSPCH1_EventID_CopCollConcern 375
+  kSPCH1_EventID_BullhornTraffic 376
+  kSPCH1_EventID_BackOnRoad 377
+  kSPCH1_EventID_DispPursuitUpdate 379
+  kSPCH1_EventID_StrategyReset 380
+  kSPCH1_EventID_M00_A 381
+  kSPCH1_EventID_M00_B 382
+  kSPCH1_EventID_M00_C 383
+  kSPCH1_EventID_M00_D 384
+  kSPCH1_EventID_M00_E 385
+  kSPCH1_EventID_M00_F 386
+  kSPCH1_EventID_M00_G 388
+  kSPCH1_EventID_M00_H 389
+  kSPCH1_EventID_M00_I 390
+  kSPCH1_EventID_M00_J 391
+  kSPCH1_EventID_M00_K 392
+  kSPCH1_EventID_M00_L 393
+  kSPCH1_EventID_M00_M 394
+  kSPCH1_EventID_M00_N 395
+  kSPCH1_EventID_M00_O 396
+  kSPCH1_EventID_M00_P 397
+  kSPCH1_EventID_DispNoVehDescrip 398
+  kSPCH1_EventID_CopOnCop 399
+  kSPCH1_EventID_DispatchOnCop 400
+  kSPCH1_EventID_OneOff 401
+  kSPCH1_EventID_DispPrstBrkOff 402
+  kSPCH1_EventID_Disp911WW 403
+  kSPCH1_EventID_WrongWay 404
+  kSPCH1_EventID_WrongWayStill 405
+  kSPCH1_EventID_PrstBrkOff 406
+  kSPCH1_EventID_MaxEventID 407
+end
+
+ogvienum SPLICE_DAMAGE int
+  # VaultLib.Frameworks.Speed/SPLICE_DAMAGE.cs
+  dmg_hood_lit_01 0
+  dmg_hood_lit_02 1
+  dmg_hood_lit_03 2
+  dmg_hood_lit_04 3
+  dmg_hood_lit_05 4
+  dmg_hood_lit_06 5
+  dmg_hood_med_01 6
+  dmg_hood_med_02 7
+  dmg_hood_med_03 8
+  dmg_hood_hrd_01 9
+  dmg_hood_hrd_02 10
+  dmg_hood_hrd_03 11
+  dmg_bumper_lit_01 12
+  dmg_bumper_lit_02 13
+  dmg_bumper_lit_03 14
+  dmg_bumper_med_01 15
+  dmg_bumper_med_02 16
+  dmg_bumper_med_03 17
+  dmg_bumper_hrd_01 18
+  dmg_bumper_hrd_02 19
+  dmg_bumper_hrd_03 20
+  dmg_panel_lit_01 21
+  dmg_panel_lit_02 22
+  dmg_panel_lit_03 23
+  dmg_panel_med_01 24
+  dmg_panel_med_02 25
+  dmg_panel_med_03 26
+  dmg_panel_hrd_01 27
+  dmg_panel_hrd_02 28
+  dmg_panel_hrd_03 29
+  dmg_roof_lit_01 30
+  dmg_roof_lit_02 31
+  dmg_roof_lit_03 32
+  dmg_roof_med_01 33
+  dmg_roof_med_02 34
+  dmg_roof_med_03 35
+  dmg_roof_hrd_01 36
+  dmg_roof_hrd_02 37
+  dmg_roof_hrd_03 38
+  dmg_door_lit_01 39
+  dmg_door_lit_02 40
+  dmg_door_lit_03 41
+  dmg_door_med_01 42
+  dmg_door_med_02 43
+  dmg_door_med_03 44
+  dmg_door_hrd_01 45
+  dmg_door_hrd_02 46
+  dmg_door_hrd_03 47
+  dmg_frntwind_lit_01 48
+  dmg_frntwind_lit_02 49
+  dmg_frntwind_lit_03 50
+  dmg_frntwind_hrd_01 51
+  dmg_frntwind_hrd_02 52
+  dmg_frntwind_hrd_03 53
+  dmg_sdwind_lit_01 54
+  dmg_sdwind_lit_02 55
+  dmg_sdwind_lit_03 56
+  dmg_sdwind_01 57
+  dmg_sdwind_02 58
+  dmg_sdwind_03 59
+  dmg_sdwind_04 60
+  dmg_sdwind_05 61
+  dmg_hdlight_crack_01 62
+  dmg_hdlight_crack_02 63
+  dmg_hdlight_crack_03 64
+  dmg_hdlight_crack_04 65
+  dmg_hdlight_smash_01 66
+  dmg_hdlight_smash_02 67
+  dmg_hdlight_smash_03 68
+  dmg_hdlight_smash_04 69
+  dmg_hdlight_smash_05 70
+end
+
+ogvienum Splicer_Collision_Core int
+  # VaultLib.Frameworks.Speed/Splicer_Collision_Core.cs
+  Cor_Side_Lit_01 0
+  Cor_Side_Lit_02 1
+  Cor_Side_Lit_03 2
+  Cor_Side_Lit_04 3
+  Cor_Side_Lit_05 4
+  Cor_Side_Med_01 5
+  Cor_Side_Med_02 6
+  Cor_Side_Med_03 7
+  Cor_Side_Med_04 8
+  Cor_Side_Med_05 9
+  Cor_Side_Hard_01 10
+  Cor_Side_Hard_02 11
+  Cor_Side_Hard_03 12
+  Cor_Side_Hard_04 13
+  Cor_Side_Hard_05 14
+  Cor_Side_Fatal_01 15
+  Cor_Side_Fatal_02 16
+  Cor_Side_Fatal_03 17
+  Cor_Side_Fatal_04 18
+  Cor_Side_Fatal_05 19
+  Cor_Frnt_Lit_01 20
+  Cor_Frnt_Lit_02 21
+  Cor_Frnt_Lit_03 22
+  Cor_Frnt_Lit_04 23
+  Cor_Frnt_Lit_05 24
+  Cor_Frnt_Med_01 25
+  Cor_Frnt_Med_02 26
+  Cor_Frnt_Med_03 27
+  Cor_Frnt_Med_04 28
+  Cor_Frnt_Med_05 29
+  Cor_Frnt_Hard_01 30
+  Cor_Frnt_Hard_02 31
+  Cor_Frnt_Hard_03 32
+  Cor_Frnt_Hard_04 33
+  Cor_Frnt_Hard_05 34
+  Cor_Frnt_Fatal_01 35
+  Cor_Frnt_Fatal_02 36
+  Cor_Frnt_Fatal_03 37
+  Cor_Frnt_Fatal_04 38
+  Cor_Frnt_Fatal_05 39
+  Cor_Bot_Lit_01 40
+  Cor_Bot_Lit_02 41
+  Cor_Bot_Lit_03 42
+  Cor_Bot_Lit_04 43
+  Cor_Bot_Lit_05 44
+  Cor_Bot_Med_01 45
+  Cor_Bot_Med_02 46
+  Cor_Bot_Med_03 47
+  Cor_Bot_Hard_01 48
+  Cor_Bot_Hard_02 49
+  Cor_Bot_Hard_03 50
+end
+
+ogvienum Splicer_Collision_Object int
+  # VaultLib.Frameworks.Speed/Splicer_Collision_Object.cs
+  bbq_00 0
+  bbq_01 1
+  bench_mtl_bar_00 2
+  bench_mtl_bar_01 3
+  bus_sign_00 4
+  bus_sign_01 5
+  busstop_00 6
+  busstop_01 7
+  cardboard_00 8
+  cardboard_01 9
+  cardboard_02 10
+  casinobreak_00 11
+  casinobreak_01 12
+  chain_link_00 13
+  chain_link_01 14
+  chain_link_02 15
+  conc_barricade_00 16
+  conc_barricade_01 17
+  construction_sign_detach_00 18
+  construction_sign_detach_01 19
+  construction_sign_lrg_00 20
+  construction_sign_lrg_01 21
+  construction_sign_sml_00 22
+  construction_sign_sml_01 23
+  field_marker_00 24
+  field_marker_01 25
+  field_pylon_00 26
+  field_pylon_01 27
+  fire_box_00 28
+  fire_box_01 29
+  furniture_cafe_chair_00 30
+  furniture_cafe_chair_01 31
+  furniture_cafe_table_00 32
+  furniture_cafe_table_01 33
+  furniture_cafe_umbrella_00 34
+  furniture_cafe_umbrella_01 35
+  furniture_couch_00 36
+  furniture_couch_01 37
+  furniture_cushion_00 38
+  furniture_cushion_01 39
+  furniture_lawn_chair_00 40
+  furniture_lawn_chair_01 41
+  furniture_mattress_00 42
+  furniture_mattress_01 43
+  garbage_domestic_00 44
+  garbage_domestic_01 45
+  garbage_park_00 46
+  garbage_park_01 47
+  goal_post_00 48
+  goal_post_01 49
+  hydrant_00 50
+  hydrant_01 51
+  light_plastic_barrel_00 52
+  light_plastic_barrel_01 53
+  mailbox_00 54
+  mailbox_01 55
+  mansion_gate_00 56
+  mansion_gate_01 57
+  med_sign_00 58
+  med_sign_01 59
+  metal_barrel_00 60
+  metal_barrel_01 61
+  metal_barrel_oil_00 62
+  metal_barrel_oil_01 63
+  metal_beam_00 64
+  metal_beam_01 65
+  metal_cooler_00 66
+  metal_cooler_01 67
+  metal_crate_00 68
+  metal_crate_01 69
+  metal_dumpster_00 70
+  metal_dumpster_01 71
+  metal_frame_pieces_00 72
+  metal_frame_pieces_01 73
+  metal_pipe_00 74
+  metal_pipe_01 75
+  milk_crate_00 76
+  milk_crate_01 77
+  newspaper_box_00 78
+  newspaper_box_01 79
+  parking_arm_00 80
+  parking_arm_01 81
+  parking_meter_00 82
+  parking_meter_01 83
+  pipe_stand_00 84
+  pipe_stand_01 85
+  plastic_barricade_00 86
+  plastic_barricade_01 87
+  portapotty_00 88
+  portapotty_01 89
+  powerlinestand_00 90
+  powerlinestand_01 91
+  prop_car_heavy_00 92
+  prop_car_heavy_01 93
+  road_cone_00 94
+  road_cone_01 95
+  road_cone_02 96
+  road_lamp_00 97
+  road_lamp_01 98
+  road_pylon_00 99
+  road_pylon_01 100
+  road_pylon_02 101
+  sandwich_board_00 102
+  sandwich_board_01 103
+  sawhorse_00 104
+  sawhorse_01 105
+  scaffold_light_00 106
+  scaffold_light_01 107
+  shopping_cart_00 108
+  shopping_cart_01 109
+  small_gate_00 110
+  small_gate_01 111
+  small_propanetank_00 112
+  small_propanetank_01 113
+  street_sign_00 114
+  street_sign_01 115
+  ticket_booth_00 116
+  ticket_booth_01 117
+  traffic_signal_00 118
+  traffic_signal_01 119
+  trash_bag_00 120
+  trash_bag_01 121
+  water_barrier_00 122
+  water_barrier_01 123
+  wooden_bench_00 124
+  wooden_bench_01 125
+  wooden_crate_00 126
+  wooden_crate_01 127
+  wooden_fence_00 128
+  wooden_fence_01 129
+  wooden_pallet_00 130
+  wooden_pallet_01 131
+  wooden_table_00 132
+  wooden_table_01 133
+  wooden_walkway_00 134
+  wooden_walkway_01 135
+  placeholder 136
+end
+
+ogvienum Splicer_Collision_Surface int
+  # VaultLib.Frameworks.Speed/Splicer_Collision_Surface.cs
+  srf_car_front_lit_01 0
+  srf_car_front_lit_02 1
+  srf_car_front_lit_03 2
+  srf_car_front_med_01 3
+  srf_car_front_med_02 4
+  srf_car_front_med_03 5
+  srf_car_front_hrd_01 6
+  srf_car_front_hrd_02 7
+  srf_car_front_hrd_03 8
+  srf_car_front_hrd_04 9
+  srf_car_front_hrd_05 10
+  srf_conc_front_lit_01 11
+  srf_conc_front_lit_02 12
+  srf_conc_front_lit_03 13
+  srf_conc_front_med_01 14
+  srf_conc_front_med_02 15
+  srf_conc_front_med_03 16
+  srf_conc_front_hrd_01 17
+  srf_conc_front_hrd_02 18
+  srf_conc_front_hrd_03 19
+  srf_asphalt_front_lit_01 20
+  srf_asphalt_front_lit_02 21
+  srf_asphalt_front_lit_03 22
+  srf_asphalt_front_med_01 23
+  srf_asphalt_front_med_02 24
+  srf_asphalt_front_med_03 25
+  srf_asphalt_front_hrd_01 26
+  srf_asphalt_front_hrd_02 27
+  srf_asphalt_front_hrd_03 28
+  srf_dirt_lit_01 29
+  srf_dirt_lit_02 30
+  srf_dirt_lit_03 31
+  srf_dirt_med_01 32
+  srf_dirt_med_02 33
+  srf_dirt_med_03 34
+  srf_dirt_hrd_01 35
+  srf_dirt_hrd_02 36
+  srf_dirt_hrd_03 37
+  srf_grss_lit_01 38
+  srf_grss_lit_02 39
+  srf_grss_lit_03 40
+  srf_grss_med_01 41
+  srf_grss_med_02 42
+  srf_grss_med_03 43
+  srf_grss_hard_01 44
+  srf_grss_hard_02 45
+  srf_grss_hard_03 46
+  srf_grvl_lit_01 47
+  srf_grvl_lit_02 48
+  srf_grvl_lit_03 49
+  srf_grvl_med_01 50
+  srf_grvl_med_02 51
+  srf_grvl_med_03 52
+  srf_grvl_hrd_01 53
+  srf_grvl_hrd_02 54
+  srf_grvl_hrd_03 55
+  srf_rubber_lit_01 56
+  srf_rubber_lit_02 57
+  srf_rubber_lit_03 58
+  srf_rubber_med_01 59
+  srf_rubber_med_02 60
+  srf_rubber_med_03 61
+  srf_rubber_hrd_01 62
+  srf_rubber_hrd_02 63
+  srf_rubber_hrd_03 64
+  srf_metal_lit_01 65
+  srf_metal_lit_02 66
+  srf_metal_lit_03 67
+  srf_metal_med_01 68
+  srf_metal_med_02 69
+  srf_metal_med_03 70
+  srf_metal_hrd_01 71
+  srf_metal_hrd_02 72
+  srf_metal_hrd_03 73
+end
+
+ogvienum STICH_COLLISION_TYPE int
+  # VaultLib.Frameworks.Speed/STICH_COLLISION_TYPE.cs
+  CRSH_CAR_2_CAR_FRNT_VLIT1 0
+  CRSH_CAR_2_CAR_FRNT_VLIT2 1
+  CRSH_CAR_2_CAR_FRNT_VLIT3 2
+  CRSH_CAR_2_CAR_FRNT_VLIT4 3
+  CRSH_CAR_2_CAR_FRNT_LIT1 4
+  CRSH_CAR_2_CAR_FRNT_LIT2 5
+  CRSH_CAR_2_CAR_FRNT_LIT3 6
+  CRSH_CAR_2_CAR_FRNT_LIT4 7
+  CRSH_CAR_2_CAR_FRNT_MED1 8
+  CRSH_CAR_2_CAR_FRNT_MED2 9
+  CRSH_CAR_2_CAR_FRNT_MED3 10
+  CRSH_CAR_2_CAR_FRNT_MED4 11
+  CRSH_CAR_2_CAR_FRNT_HRD1 12
+  CRSH_CAR_2_CAR_FRNT_HRD2 13
+  CRSH_CAR_2_CAR_FRNT_HRD3 14
+  CRSH_CAR_2_CAR_FRNT_HRD4 15
+  CRSH_CAR_2_CAR_SIDE_VLIT1 16
+  CRSH_CAR_2_CAR_SIDE_VLIT2 17
+  CRSH_CAR_2_CAR_SIDE_VLIT3 18
+  CRSH_CAR_2_CAR_SIDE_VLIT4 19
+  CRSH_CAR_2_CAR_SIDE_LIT1 20
+  CRSH_CAR_2_CAR_SIDE_LIT2 21
+  CRSH_CAR_2_CAR_SIDE_LIT3 22
+  CRSH_CAR_2_CAR_SIDE_LIT4 23
+  CRSH_CAR_2_CAR_SIDE_MED1 24
+  CRSH_CAR_2_CAR_SIDE_MED2 25
+  CRSH_CAR_2_CAR_SIDE_MED3 26
+  CRSH_CAR_2_CAR_SIDE_MED4 27
+  CRSH_CAR_2_CAR_SIDE_HRD1 28
+  CRSH_CAR_2_CAR_SIDE_HRD2 29
+  CRSH_CAR_2_CAR_SIDE_HRD3 30
+  CRSH_CAR_2_CAR_SIDE_HRD4 31
+  CRSH_CAR_2_WALL_FRNT_VLIT1 32
+  CRSH_CAR_2_WALL_FRNT_VLIT2 33
+  CRSH_CAR_2_WALL_FRNT_VLIT3 34
+  CRSH_CAR_2_WALL_FRNT_VLIT4 35
+  CRSH_CAR_2_WALL_FRNT_LIT1 36
+  CRSH_CAR_2_WALL_FRNT_LIT2 37
+  CRSH_CAR_2_WALL_FRNT_LIT3 38
+  CRSH_CAR_2_WALL_FRNT_LIT4 39
+  CRSH_CAR_2_WALL_FRNT_MED1 40
+  CRSH_CAR_2_WALL_FRNT_MED2 41
+  CRSH_CAR_2_WALL_FRNT_MED3 42
+  CRSH_CAR_2_WALL_FRNT_MED4 43
+  CRSH_CAR_2_WALL_FRNT_HRD1 44
+  CRSH_CAR_2_WALL_FRNT_HRD2 45
+  CRSH_CAR_2_WALL_FRNT_HRD3 46
+  CRSH_CAR_2_WALL_FRNT_HRD4 47
+  CRSH_CAR_2_WALL_SIDE_VLIT1 48
+  CRSH_CAR_2_WALL_SIDE_VLIT2 49
+  CRSH_CAR_2_WALL_SIDE_VLIT3 50
+  CRSH_CAR_2_WALL_SIDE_VLIT4 51
+  CRSH_CAR_2_WALL_SIDE_LIT1 52
+  CRSH_CAR_2_WALL_SIDE_LIT2 53
+  CRSH_CAR_2_WALL_SIDE_LIT3 54
+  CRSH_CAR_2_WALL_SIDE_LIT4 55
+  CRSH_CAR_2_WALL_SIDE_MED1 56
+  CRSH_CAR_2_WALL_SIDE_MED2 57
+  CRSH_CAR_2_WALL_SIDE_MED3 58
+  CRSH_CAR_2_WALL_SIDE_MED4 59
+  CRSH_CAR_2_WALL_SIDE_HRD1 60
+  CRSH_CAR_2_WALL_SIDE_HRD2 61
+  CRSH_CAR_2_WALL_SIDE_HRD3 62
+  CRSH_CAR_2_WALL_SIDE_HRD4 63
+  CRSH_CAR_2_WRLD_ROLL_VLIT1 64
+  CRSH_CAR_2_WRLD_ROLL_VLIT2 65
+  CRSH_CAR_2_WRLD_ROLL_LIT1 66
+  CRSH_CAR_2_WRLD_ROLL_LIT2 67
+  CRSH_CAR_2_WRLD_ROLL_MED1 68
+  CRSH_CAR_2_WRLD_ROLL_MED2 69
+  CRSH_CAR_2_WRLD_ROLL_HRD1 70
+  CRSH_CAR_2_WRLD_ROLL_HRD2 71
+  CRSH_CAR_BOTM_VLIT1 72
+  CRSH_CAR_BOTM_VLIT2 73
+  CRSH_CAR_BOTM_VLIT3 74
+  CRSH_CAR_BOTM_VLIT4 75
+  CRSH_CAR_BOTM_LIT1 76
+  CRSH_CAR_BOTM_LIT2 77
+  CRSH_CAR_BOTM_LIT3 78
+  CRSH_CAR_BOTM_LIT4 79
+  CRSH_CAR_BOTM_MED1 80
+  CRSH_CAR_BOTM_MED2 81
+  CRSH_CAR_BOTM_MED3 82
+  CRSH_CAR_BOTM_MED4 83
+  CRSH_CAR_BOTM_HRD1 84
+  CRSH_CAR_BOTM_HRD2 85
+  CRSH_CAR_BOTM_HRD3 86
+  CRSH_CAR_BOTM_HRD4 87
+  SMK_CONEvsCAR_LIT1 88
+  SMK_CONEvsCAR_LIT2 89
+  SMK_CONEvsCAR_LIT3 90
+  SMK_CONEvsCAR_HRD1 91
+  SMK_CONEvsCAR_HRD2 92
+  SMK_CONEvsCAR_HRD3 93
+  SMK_CONEvsWRLD_LIT1 94
+  SMK_CONEvsWRLD_LIT2 95
+  SMK_CONEvsWRLD_LIT3 96
+  SMK_CONEvsWRLD_HRD1 97
+  SMK_CONEvsWRLD_HRD2 98
+  SMK_CONEvsWRLD_HRD3 99
+  SMK_DUMPSTERvsCAR_LIT1 100
+  SMK_DUMPSTERvsCAR_LIT2 101
+  SMK_DUMPSTERvsCAR_LIT3 102
+  SMK_DUMPSTERvsCAR_HRD1 103
+  SMK_DUMPSTERvsCAR_HRD2 104
+  SMK_DUMPSTERvsCAR_HRD3 105
+  SMK_DUMPSTERvsWRLD_LIT1 106
+  SMK_DUMPSTERvsWRLD_LIT2 107
+  SMK_DUMPSTERvsWRLD_LIT3 108
+  SMK_DUMPSTERvsWRLD_HRD1 109
+  SMK_DUMPSTERvsWRLD_HRD2 110
+  SMK_DUMPSTERvsWRLD_HRD3 111
+  SMK_MTL_FENCEvsCAR_LIT1 112
+  SMK_MTL_FENCEvsCAR_LIT2 113
+  SMK_MTL_FENCEvsCAR_LIT3 114
+  SMK_MTL_FENCEvsCAR_HRD1 115
+  SMK_MTL_FENCEvsCAR_HRD2 116
+  SMK_MTL_FENCEvsCAR_HRD3 117
+  SMK_MTL_FENCEvsWRLD_LIT1 118
+  SMK_MTL_FENCEvsWRLD_LIT2 119
+  SMK_MTL_FENCEvsWRLD_LIT3 120
+  SMK_MTL_FENCEvsWRLD_HRD1 121
+  SMK_MTL_FENCEvsWRLD_HRD2 122
+  SMK_MTL_FENCEvsWRLD_HRD3 123
+  SMK_MTL_SIGNvsCAR_LIT1 124
+  SMK_MTL_SIGNvsCAR_LIT2 125
+  SMK_MTL_SIGNvsCAR_LIT3 126
+  SMK_MTL_SIGNvsCAR_HRD1 127
+  SMK_MTL_SIGNvsCAR_HRD2 128
+  SMK_MTL_SIGNvsCAR_HRD3 129
+  SMK_MTL_SIGNvsWRLD_LIT1 130
+  SMK_MTL_SIGNvsWRLD_LIT2 131
+  SMK_MTL_SIGNvsWRLD_LIT3 132
+  SMK_MTL_SIGNvsWRLD_LIT4 133
+  SMK_MTL_SIGNvsWRLD_HRD1 134
+  SMK_MTL_SIGNvsWRLD_HRD2 135
+  SMK_MTL_SIGNvsWRLD_HRD3 136
+  SMK_OILDRUMvsCAR_LIT1 137
+  SMK_OILDRUMvsCAR_LIT2 138
+  SMK_OILDRUMvsCAR_LIT3 139
+  SMK_OILDRUMvsCAR_HRD1 140
+  SMK_OILDRUMvsCAR_HRD2 141
+  SMK_OILDRUMvsCAR_HRD3 142
+  SMK_OILDRUMvsWRLD_LIT1 143
+  SMK_OILDRUMvsWRLD_LIT2 144
+  SMK_OILDRUMvsWRLD_LIT3 145
+  SMK_OILDRUMvsWRLD_HRD1 146
+  SMK_OILDRUMvsWRLD_HRD2 147
+  SMK_OILDRUMvsWRLD_HRD3 148
+  SMK_TIREvsCAR_LIT1 149
+  SMK_TIREvsCAR_LIT2 150
+  SMK_TIREvsCAR_LIT3 151
+  SMK_TIREvsCAR_HRD1 152
+  SMK_TIREvsCAR_HRD2 153
+  SMK_TIREvsCAR_HRD3 154
+  SMK_TIREvsWRLD_LIT1 155
+  SMK_TIREvsWRLD_LIT2 156
+  SMK_TIREvsWRLD_LIT3 157
+  SMK_TIREvsWRLD_HRD1 158
+  SMK_TIREvsWRLD_HRD2 159
+  SMK_TIREvsWRLD_HRD3 160
+  SMK_TREEvsCAR_LIT1 161
+  SMK_TREEvsCAR_LIT2 162
+  SMK_TREEvsCAR_LIT3 163
+  SMK_TREEvsCAR_HRD1 164
+  SMK_TREEvsCAR_HRD2 165
+  SMK_TREEvsCAR_HRD3 166
+  SMK_WD_FENCEvsCAR_LIT1 167
+  SMK_WD_FENCEvsCAR_LIT2 168
+  SMK_WD_FENCEvsCAR_LIT3 169
+  SMK_WD_FENCEvsCAR_HRD1 170
+  SMK_WD_FENCEvsCAR_HRD2 171
+  SMK_WD_FENCEvsCAR_HRD3 172
+  SMK_WD_POST_LTvsCAR_LIT1 173
+  SMK_WD_POST_LTvsCAR_LIT2 174
+  SMK_WD_POST_LTvsCAR_LIT3 175
+  SMK_WD_POST_LTvsCAR_HRD1 176
+  SMK_WD_POST_LTvsCAR_HRD2 177
+  SMK_WD_POST_LTvsCAR_HRD3 178
+  SMK_WD_POST_LTvsWRLD_LIT1 179
+  SMK_WD_POST_LTvsWRLD_LIT2 180
+  SMK_WD_POST_LTvsWRLD_LIT3 181
+  SMK_WD_POST_LTvsWRLD_HRD1 182
+  SMK_WD_POST_LTvsWRLD_HRD2 183
+  SMK_WD_POST_LTvsWRLD_HRD3 184
+  SMK_WTR_DRUM_EMPvsCAR_LIT1 185
+  SMK_WTR_DRUM_EMPvsCAR_LIT2 186
+  SMK_WTR_DRUM_EMPvsCAR_LIT3 187
+  SMK_WTR_DRUM_EMPvsCAR_HRD1 188
+  SMK_WTR_DRUM_EMPvsCAR_HRD2 189
+  SMK_WTR_DRUM_EMPvsCAR_HRD3 190
+  SMK_WTR_DRUM_EMPvsWRLD_LIT1 191
+  SMK_WTR_DRUM_EMPvsWRLD_LIT2 192
+  SMK_WTR_DRUM_EMPvsWRLD_LIT3 193
+  SMK_WTR_DRUM_EMPvsWRLD_HRD1 194
+  SMK_WTR_DRUM_EMPvsWRLD_HRD2 195
+  SMK_WTR_DRUM_EMPvsWRLD_HRD3 196
+end
+
+ogvienum SURFACE_SFX int
+  # VaultLib.Frameworks.Speed/SURFACE_SFX.cs
+  SURFACE_SFX_NONE 0
+  SURFACE_SFX_LIGHT_CRACK 1
+  SURFACE_SFX_TAR_STRIP 3
+  SURFACE_SFX_ROADSIDE_PATCH 5
+  SURFACE_SFX_HEAVY_PATCH 6
+  SURFACE_SFX_DIRT 7
+  MAX_SURFACE_SFX 8
+end
+
+ogvienum SurfaceEffectType int
+  # VaultLib.Frameworks.Speed/SurfaceEffectType.cs
+  kSine 0
+  kSquare 1
+  kTriangle 2
+end
+
+ogvienum Tier int
+  # VaultLib.Frameworks.Speed/GRace/Tier.cs
+  kRaceTier_None 0
+  kRaceTier_1 1
+  kRaceTier_2 2
+  kRaceTier_3 3
+  kRaceTier_NumTiers 4
+end
+
+ogvienum TireCondition int
+  # VaultLib.Frameworks.Speed/TireCondition.cs
+  kGrip 0
+  kWet 1
+  kFlat 2
+  kDrift 3
+  kDrag 4
+end
+
+ogvienum TriggeredAudioFeature int
+  # VaultLib.Support.World/VLT/Sound/TriggeredAudioFeature.cs
+  None 0
+end
+
+ogvienum TriggerType int
+  # VaultLib.Support.World/VLT/GameCore/Collision/TriggerType.cs
+  Unknown 0
+  Cylinder 1
+  Box 2
+  Plane 3
+end
+
+ogvienum Type int
+  # VaultLib.Frameworks.Speed/GRace/Type.cs
+  kRaceType_None -1
+  kRaceType_P2P 0
+  kRaceType_Circuit 1
+  kRaceType_Drag 2
+  kRaceType_Knockout 3
+  kRaceType_Tollbooth 4
+  kRaceType_SpeedTrap 5
+  kRaceType_Checkpoint 6
+  kRaceType_CashGrab 7
+  kRaceType_Challenge 8
+  kRaceType_JumpToSpeedTrap 9
+  kRaceType_JumpToMilestone 10
+  kRaceType_Drift 11
+  kRaceType_PursuitTag 12
+  kRaceType_PursuitKnockout 13
+  kRaceType_Encounter 14
+  kRaceType_NumTypes 15
+end
+
+ogvienum Type_car_type int
+  # VaultLib.Frameworks.Speed/Csis/Type_car_type.cs
+  Invalid_Type_car_type 0
+  Type_car_type_McLaren 1
+  Type_car_type_Porsche 2
+  Type_car_type_FordGT 4
+  Type_car_type_Viper 8
+  Type_car_type_AstonMartin 16
+  Type_car_type_Corvette 32
+  Type_car_type_BMW 64
+  Type_car_type_Mercedes 128
+  Type_car_type_Audi 256
+  Type_car_type_Mitsubishi 512
+  Type_car_type_Mustang 1024
+  Type_car_type_Challenger 2048
+  Type_car_type_Camaro 4096
+  Type_car_type_GTO 8192
+  Type_car_type_Nissan 16384
+  Type_car_type_Mazda 32768
+  Type_car_type_Lexus 65536
+  Type_car_type_Veyron 131072
+  Type_car_type_Volkswagen 262144
+  Type_car_type_CCX 524288
+  Type_car_type_Charger 1048576
+  Type_car_type_Pagani 2097152
+  Type_car_type_Lamborghini 4194304
+  Type_car_type_Shelby 8388608
+  Type_car_type_Chevelle 16777216
+  Type_car_type_SportsCar 33554432
+  Type_car_type_Supra 67108864
+  Type_car_type_Cadillac 134217728
+  Type_car_type_Cuda 268435456
+  Type_car_type_Escort 536870912
+  Type_car_type_Focus 1073741824
+end
+
+ogvienum Type_NIS_Camera int
+  # VaultLib.Support.World/VLT/Csis/Type_NIS_Camera.cs
+  Invalid_Type_NIS_Camera 0
+  Type_NIS_Camera_CAMCANYON 1
+  Type_NIS_Camera_CAMCLIFF 2
+  Type_NIS_Camera_CAMLEG 4
+  Type_NIS_Camera_CAMWIN 8
+  Type_NIS_Camera_CAMLOSE 16
+  Type_NIS_Camera_CAMLOSECANYON 32
+  Type_NIS_Camera_CAMSPOTCREW 64
+end
+
+ogvienum Type_NIS_Scene_End int
+  # VaultLib.Support.World/VLT/Csis/Type_NIS_Scene_End.cs
+  Invalid_Type_NIS_Scene_End 0
+  Type_NIS_Scene_End_ARRESTM38 1
+  Type_NIS_Scene_End_ARRESTM40 2
+  Type_NIS_Scene_End_ARRESTM34 4
+  Type_NIS_Scene_End_ARRESTF41 8
+  Type_NIS_Scene_End_ARRESTF23 16
+  Type_NIS_Scene_End_ARRESTF06 32
+  Type_NIS_Scene_End_ENDINGCG24 64
+  Type_NIS_Scene_End_ENDINGNG24 128
+  Type_NIS_Scene_End_ENDINGCG10 256
+  Type_NIS_Scene_End_ENDINGNG10 512
+  Type_NIS_Scene_End_ENDINGNG11 1024
+  Type_NIS_Scene_End_ENDINGCG11 2048
+  Type_NIS_Scene_End_ENDINGNG12 4096
+  Type_NIS_Scene_End_ENDINGNG15 8192
+  Type_NIS_Scene_End_ENDINGCG15 16384
+  Type_NIS_Scene_End_ENDINGNG16 32768
+  Type_NIS_Scene_End_ENDINGNG18 65536
+  Type_NIS_Scene_End_ENDINGCG18 131072
+  Type_NIS_Scene_End_ENDINGNG19 262144
+  Type_NIS_Scene_End_ENDINGNG20 524288
+  Type_NIS_Scene_End_ENDINGCG20 1048576
+  Type_NIS_Scene_End_ENDING22 2097152
+  Type_NIS_Scene_End_ENDINGNG23 4194304
+end
+
+ogvienum Type_NIS_Scene_Intro int
+  # VaultLib.Support.World/VLT/Csis/Type_NIS_Scene_Intro.cs
+  Invalid_Type_NIS_Scene_Intro 0
+  Type_NIS_Scene_Intro_INTRONG01 1
+  Type_NIS_Scene_Intro_INTRONG02 2
+  Type_NIS_Scene_Intro_INTRONG04 4
+  Type_NIS_Scene_Intro_INTRONG05 8
+  Type_NIS_Scene_Intro_INTRO07B 16
+  Type_NIS_Scene_Intro_INTRO11B 32
+  Type_NIS_Scene_Intro_INTRO12A 64
+  Type_NIS_Scene_Intro_INTRONG13 128
+  Type_NIS_Scene_Intro_INTRONG16 256
+  Type_NIS_Scene_Intro_INTRONG19 512
+  Type_NIS_Scene_Intro_INTRO20 1024
+  Type_NIS_Scene_Intro_INTRO21 2048
+  Type_NIS_Scene_Intro_INTRO24 4096
+  Type_NIS_Scene_Intro_INTRO25 8192
+  Type_NIS_Scene_Intro_INTRO26 16384
+  Type_NIS_Scene_Intro_INTRO27 32768
+  Type_NIS_Scene_Intro_INTRO20COUNTDOWN 65536
+  Type_NIS_Scene_Intro_INTRONG22 131072
+  Type_NIS_Scene_Intro_INTRO12B 262144
+  Type_NIS_Scene_Intro_INTRO21COUNTDOWN 524288
+end
+
+ogvienum Type_P_Breaker_Code int
+  # VaultLib.Support.World/VLT/Csis/Type_P_Breaker_Code.cs
+  Invalid_Type_P_Breaker_Code 0
+  Type_P_Breaker_Code_CODE_A 1
+  Type_P_Breaker_Code_CODE_B 2
+  Type_P_Breaker_Code_CODE_C 4
+  Type_P_Breaker_Code_CODE_D 8
+  Type_P_Breaker_Code_CODE_E 16
+  Type_P_Breaker_Code_CODE_F 32
+  Type_P_Breaker_Code_CODE_G 64
+  Type_P_Breaker_Code_CODE_H 128
+  Type_P_Breaker_Code_CODE_I 256
+  Type_P_Breaker_Code_CODE_J 512
+end
+
+ogvienum Type_P_Breaker_Type int
+  # VaultLib.Support.World/VLT/Csis/Type_P_Breaker_Type.cs
+  Invalid_Type_P_Breaker_Type 0
+  Type_P_Breaker_Type_PURS_BRKR_SIGN 1
+  Type_P_Breaker_Type_PURS_BRKR_STATUE 2
+  Type_P_Breaker_Type_PURS_BRKR_MISC 4
+end
+
+ogvienum Type_SoundFX_Param int
+  # VaultLib.Frameworks.Speed/Csis/Type_SoundFX_Param.cs
+  Invalid_Type_SoundFX_Param 0
+  Type_SoundFX_Param_distant 1
+  Type_SoundFX_Param_sweetener 2
+  Type_SoundFX_Param_blow 4
+  Type_SoundFX_Param_total 8
+  Type_SoundFX_Param_expl_gas_station 16
+  Type_SoundFX_Param_truck_jackknife 32
+  Type_SoundFX_Param_boatfall 64
+  Type_SoundFX_Param_trck_log_dump 128
+  Type_SoundFX_Param_stripmall 256
+  Type_SoundFX_Param_scaffolding_big 512
+  Type_SoundFX_Param_drive_in 1024
+  Type_SoundFX_Param_water_tower 2048
+  Type_SoundFX_Param_porch_collapse 4096
+  Type_SoundFX_Param_comm_tower 8192
+  Type_SoundFX_Param_fish_market_sign 16384
+  Type_SoundFX_Param_patio_collapse 32768
+  Type_SoundFX_Param_start_music 65536
+  Type_SoundFX_Param_end_music 131072
+  Type_SoundFX_Param_start_effects 262144
+  Type_SoundFX_Param_end_effects 524288
+  Type_SoundFX_Param_cam 1048576
+  Type_SoundFX_Param_break 2097152
+  Type_SoundFX_Param_amphitheatre 4194304
+  Type_SoundFX_Param_gate_signage 8388608
+  Type_SoundFX_Param_trailer_park 16777216
+  Type_SoundFX_Param_torus_shop 33554432
+  Type_SoundFX_Param_gazebo 67108864
+  Type_SoundFX_Param_uves 134217728
+  Type_SoundFX_Param_zoom 268435456
+  Type_SoundFX_Param_camera 536870912
+  Type_SoundFX_Param_police_tower 1073741824
+end
+
+ogvienum Type_SoundFX_Type int
+  # VaultLib.Frameworks.Speed/Csis/Type_SoundFX_Type.cs
+  Invalid_Type_SoundFX_Type 0
+  Type_SoundFX_Type_Pursbreaker 1
+  Type_SoundFX_Type_Crash 2
+  Type_SoundFX_Type_Thunder 4
+  Type_SoundFX_Type_engine 8
+  Type_SoundFX_Type_Car 16
+  Type_SoundFX_Type_GamePlayMoment 32
+  Type_SoundFX_Type_jump 64
+  Type_SoundFX_Type_game 128
+  Type_SoundFX_Type_Speedbreaker 256
+end
+
+ogvienum Type_UCAP_Assembly int
+  # VaultLib.Support.World/VLT/Csis/Type_UCAP_Assembly.cs
+  Invalid_Type_UCAP_Assembly 0
+  Type_UCAP_Assembly_asm00 1
+  Type_UCAP_Assembly_asm01 2
+  Type_UCAP_Assembly_asm02 4
+  Type_UCAP_Assembly_asm03 8
+  Type_UCAP_Assembly_asm04 16
+  Type_UCAP_Assembly_asm05 32
+  Type_UCAP_Assembly_asm06 64
+  Type_UCAP_Assembly_asm07 128
+  Type_UCAP_Assembly_asm08 256
+  Type_UCAP_Assembly_asm09 512
+  Type_UCAP_Assembly_asm10 1024
+  Type_UCAP_Assembly_asm11 2048
+  Type_UCAP_Assembly_asm12 4096
+  Type_UCAP_Assembly_asm13 8192
+  Type_UCAP_Assembly_asm14 16384
+  Type_UCAP_Assembly_asm15 32768
+  Type_UCAP_Assembly_asm16 65536
+  Type_UCAP_Assembly_asm17 131072
+  Type_UCAP_Assembly_asm18 262144
+  Type_UCAP_Assembly_asm19 524288
+  Type_UCAP_Assembly_asm20 1048576
+  Type_UCAP_Assembly_asm21 2097152
+  Type_UCAP_Assembly_asm22 4194304
+  Type_UCAP_Assembly_asm32 8388608
+  Type_UCAP_Assembly_asm37 16777216
+  Type_UCAP_Assembly_asm38 33554432
+  Type_UCAP_Assembly_asm30 67108864
+  Type_UCAP_Assembly_asm35 134217728
 end

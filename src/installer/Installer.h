@@ -22,7 +22,8 @@
 // uninstall those first, or install over them. The Installed Mods button
 // shows the list; its window uninstalls a mod (with the mods that build on
 // it, which the confirmation lists first) or takes it off the list. Advanced
-// Options turns the list off, and NFS-VltEd compatible nfsms. Platform
+// Options turns the list off, and switches nfsms between NFS-VltEd mode (NFS-VltEd
+// compatible, on) and OGVI mode (off). Platform
 // independent: a Host (app/Host.h) gives the window and the dialogs.
 // doc/installer.md.
 
@@ -259,10 +260,10 @@ namespace installer
 			return trackMods_;
 		}
 		void setTrackMods(bool on);
-		// Advanced Options: nfsms read as NFS-VltEd 4.6 reads it (on by
-		// default, NfsmsVltEd in mod_installer.ini, as the editor's ini names
-		// it). Off, the editor's own reading: our member names and VaultLib's
-		// before NFS-VltEd's words (nfsms::RunSettings::vltEd).
+		// Advanced Options' NFS-VltEd compatible: on (the default), NFS-VltEd
+		// mode, nfsms run as NFS-VltEd 4.6 runs it; off, OGVI mode, as OGVI runs
+		// it (nfsms::RunSettings::vltEd). NfsmsVltEd in mod_installer.ini, as the
+		// editor's ini names it.
 		bool vltEd() const
 		{
 			return vltEd_;

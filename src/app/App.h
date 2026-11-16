@@ -81,10 +81,13 @@ namespace app
 
 	// What NFS-VltEd compatible nfsms means, for its switches (the nfsms window, the Edit menu).
 	inline constexpr const char* kVltEdTip =
-		"On: nfsms scripts read and the editor writes nfsms values the way NFS-VltEd 4.6 does, for scripts made\n"
-		"for it: its own width for each word (part_fedata's 4 is one 32-bit number over four members), arrays\n"
-		"written past their length, and only NFS-VltEd's commands in what the editor writes.\n"
-		"Off (the default): words lead to the game's members, as Attribulina reads the types.";
+		"On: NFS-VltEd mode. Scripts run, and the editor writes nfsms, as NFS-VltEd 4.6 does: its words for\n"
+		"the parts of values and their widths (part_fedata's 4 is one 32-bit number over four members), its\n"
+		"setup, and only its commands in what the editor writes.\n"
+		"Off (the default): OGVI mode. Scripts run, and the editor writes nfsms, as OGVI and the community\n"
+		"Attribulator do: their commands, VaultLib's names for the parts of values and its value types (a\n"
+		"logo as a number), and OGVI's setup (each radio group starts on its first button).\n"
+		"Neither mode takes Attribulina's own names: those are for mod scripts.";
 
 	class App
 	{
@@ -563,8 +566,9 @@ namespace app
 		{
 			nfsmsStrict_ = on;
 		}
-		// NFS-VltEd compatible nfsms (RunSettings::vltEd): runs, To Mod Script and
-		// the nfsms lines the editor writes. The nfsms window and the Edit menu.
+		// NFS-VltEd compatible nfsms (RunSettings::vltEd): on, NFS-VltEd mode; off,
+		// OGVI mode. Runs, To Mod Script and the nfsms lines the editor writes. The
+		// nfsms window and the Edit menu.
 		bool nfsmsVltEd() const
 		{
 			return nfsmsVltEd_;
@@ -1138,7 +1142,7 @@ namespace app
 		// Strict: tried on a copy first and applied only when no line fails.
 		// Off (NFS-VltEd's way): line by line on the open database.
 		bool nfsmsStrict_ = false;
-		bool nfsmsVltEd_ = false; // NFS-VltEd compatible (NfsmsVltEd in the ini)
+		bool nfsmsVltEd_ = false; // NFS-VltEd mode, else OGVI mode (NfsmsVltEd in the ini)
 		std::unique_ptr<attrib::nfsms::Script> pendingNfsms_;
 		attrib::nfsms::Choices nfsmsChoices_;
 		std::string nfsmsChoicesFor_; // the script nfsmsChoices_ were made for

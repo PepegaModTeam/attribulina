@@ -20,7 +20,7 @@ Once the mod is installed, or failed to be, the steps before are locked: the lis
 ## How it runs scripts
 
 - A mod script runs as Apply Script does without Strict: it stops at its first error, and then nothing is saved.
-- An nfsms script runs NFS-VltEd compatible (`nfsms::RunSettings::vltEd`, `doc/nfsms.md`), as nfsms mods are made for NFS-VltEd (the user's call), unless Advanced Options turns it off. A line that fails is logged and the next one runs, as in NFS-VltEd. A script NFS-VltEd's installer refuses runs none of its lines. `file_copy` and `folder_create` write into the game's folder.
+- An nfsms script runs in NFS-VltEd mode (`nfsms::RunSettings::vltEd`, `doc/nfsms.md`), as most nfsms mods are made for NFS-VltEd (the user's call), unless Advanced Options turns NFS-VltEd compatible off, for OGVI mode. A line that fails is logged and the next one runs, as in both tools. In NFS-VltEd mode a script NFS-VltEd's installer refuses runs none of its lines, and `file_copy` and `folder_create` write into the game's folder; OGVI mode skips those two lines, as OGVI does.
 - Names a script gives new collections go to `user_keys.txt` in the user's folder, as attribcli adds them, so the editor shows them.
 
 ## The list of installed mods
@@ -65,7 +65,7 @@ end
 **Advanced Options** has two check boxes, both on by default and kept in `mod_installer.ini`:
 
 - Keep a list of installed mods (`TrackMods`). Off, installing neither reads the list nor adds to it, and nothing is traced or checked.
-- NFS-VltEd compatible (`NfsmsVltEd`, the editor's name for its own switch). Off, an nfsms script runs as the editor's nfsms window runs it with the switch off: our member names and VaultLib's come before NFS-VltEd's words, and NFS-VltEd's value widths and quirks don't apply. The Log says which way each nfsms mod was read. Mod scripts don't change.
+- NFS-VltEd compatible (`NfsmsVltEd`, the editor's name for its own switch). On (the default), NFS-VltEd mode: an nfsms script runs as NFS-VltEd 4.6 runs it, for mods made with NFS-VltEd. Off, OGVI mode: it runs as OGVI and the community Attribulator run it, with their commands, VaultLib's names and value types and OGVI's setup (each radio group starts on its first button), for mods made with OGVI. Switching resets an nfsms mod's choices to the mode's. The Log says which mode each nfsms mod ran in. Mod scripts don't change.
 
 ## What a mod changed: its trace
 

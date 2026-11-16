@@ -74,6 +74,9 @@ namespace attrib::nfsms
 		std::string path;   // the file, when it is one (an included script's)
 		std::string folder; // where `script`, `ui_image` and `file_copy` paths start
 		std::vector<Command> commands;
+		// The lines as written (a byte order mark and line ends dropped): OGVI reads
+		// them its own way (RunSettings::vltEd off).
+		std::vector<std::string> lines;
 		// The setup: the text and pictures shown, and the controls.
 		std::vector<std::string> texts;
 		std::vector<std::string> images; // paths as written (relative to `folder`)
@@ -165,15 +168,42 @@ namespace attrib::nfsms
 		std::string game; // the nfsms game code (PS)
 		std::map<std::string, Type> types;
 		const Type* find(const std::string& typeName) const; // also with the prefix a type label leaves off
-		// VaultLib's names (the community Attribulator's) for parts our members
-		// name otherwise: by type, the name (a reference's part after a '.':
-		// ReferencedRow.ClassKey; looked up in any case) to our members.
-		// Attribulina's own reading takes them after our member names; NFS-VltEd
-		// compatible runs never do.
+		// The older tables' vaultlib blocks (VaultLib's names for parts our members
+		// name otherwise), read for an older table; the tables now give OGVI's
+		// model in ogvi blocks (below), which OGVI mode reads.
 		std::map<std::string, std::map<std::string, std::vector<Step>>> vaultLib;
 		const std::vector<Step>* vaultLibPath(const std::string& typeName, std::string_view name) const;
 		// A VaultLib name whose parts follow as the next word (ReferencedRow ClassKey).
 		bool vaultLibHead(const std::string& typeName, std::string_view name) const;
+
+		// OGVI's reading (RunSettings::vltEd off): the class VaultLib registers for
+		// each type the game's fields have (the tables' ogvi blocks,
+		// scripts/nfsms/ogvi.py). Attribulator's update_field takes the words after
+		// the field as its C# property names and converts the value by the C# type.
+		struct OgviProperty
+		{
+			std::string name;    // as reflection reaches it: Level, Reaction.ClassKey, ValueMin[1]
+			int64_t offset = -1; // in the PC's layout of the type; -1: Read doesn't fill it
+			std::string type;    // C#: uint, float, string, enum/<name>, obj/<class>, float[2]
+			std::vector<Step> path; // our member there, when one is
+			uint32_t rest = 0;
+			bool readOnly = false; // no public setter: Attribulator refuses it
+		};
+		struct OgviType
+		{
+			std::string kind; // prim/<C# type>, enum/<name>, refspec, string, matrix, colour, struct
+			std::string cls;  // the C# class, for messages
+			std::vector<OgviProperty> properties;
+			const OgviProperty* find(std::string_view name) const; // exactly as written
+		};
+		struct OgviEnum
+		{
+			std::string base; // the C# underlying type: int, uint, byte, ...
+			std::vector<std::pair<std::string, int64_t>> values;
+		};
+		std::map<std::string, OgviType> ogvi;
+		std::map<std::string, OgviEnum> ogviEnums;
+		const OgviType* ogviType(const std::string& typeName) const;
 		// Throws std::runtime_error on a line it can't read.
 		static PropertyNames Parse(std::string_view text, const std::string& source = "names");
 		static std::shared_ptr<const PropertyNames> Load(const std::string& path);
@@ -185,7 +215,10 @@ namespace attrib::nfsms
 		std::map<std::string, bool> checkboxes;
 		std::map<std::string, std::string> radios; // group -> chosen name
 	};
-	Choices DefaultChoices(const Script& script);
+	// The setup's first choices: each checkbox as written; radio buttons unchosen,
+	// as NFS-VltEd shows them, or (`ogvi`) the first of each group chosen, as
+	// OGVI's import window does.
+	Choices DefaultChoices(const Script& script, bool ogvi = false);
 
 	struct RunSettings
 	{
@@ -206,11 +239,11 @@ namespace attrib::nfsms
 		// NFS-VltEd's words for the game's values (and VaultLib's names); without
 		// them only our schema's member names are known.
 		std::shared_ptr<const PropertyNames> names;
-		// NFS-VltEd compatible: words and values read the way NFS-VltEd 4.6
-		// reads them, for scripts written against its quirks (doc/nfsms.md,
-		// "NFS-VltEd compatible"). Off (the default): Attribulina's extended
-		// reading: our schema's member names, then VaultLib's (Attribulator's
-		// scripts), then NFS-VltEd's words.
+		// On: NFS-VltEd mode, the script read and run as NFS-VltEd 4.6 does
+		// (doc/nfsms.md, "NFS-VltEd mode"). Off: OGVI mode, as OGVI (the community
+		// Attribulator's editor) imports it: its setup, the community Attribulator's
+		// commands and VaultLib's names and value types (doc/nfsms.md, "OGVI
+		// mode"). Neither takes Attribulina's own names: those are for mod scripts.
 		bool vltEd = false;
 	};
 
@@ -239,9 +272,10 @@ namespace attrib::nfsms
 	std::string Incompatibility(const Database& db);
 
 	// nfsms lines for mod script statements (the editor records changes this
-	// way), the parts of values by our schema's member names (MaxGs), as
-	// Attribulina's own reading takes them. What nfsms can't say comes out as a
-	// # comment.
+	// way). Without `vltEd`, in OGVI mode's form, as OGVI reads it back:
+	// VaultLib's names for the parts the statements change, each value read
+	// from `db` as its C# type takes it (`names` holds the model; without it,
+	// our member names). What nfsms can't say comes out as a # comment.
 	// With `vltEd`, in the form NFS-VltEd 4.6 reads: its words for the parts
 	// (MaxG) where `names` has them, its value widths, no Attribulator
 	// commands, as RunSettings::vltEd reads them. `before`, when

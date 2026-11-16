@@ -457,6 +457,13 @@ namespace attrib::nfsms
 			if (e == std::string_view::npos) e = text.size();
 			++n;
 			info.line(text.substr(b, e - b), n);
+			{
+				// File.ReadAllLines: a byte order mark and the line ends dropped.
+				std::string_view raw = text.substr(b, e - b);
+				if (n == 1 && raw.substr(0, 3) == "\xEF\xBB\xBF") raw.remove_prefix(3);
+				if (!raw.empty() && raw.back() == '\r') raw.remove_suffix(1);
+				if (e < text.size() || !raw.empty()) s.lines.emplace_back(raw);
+			}
 			Command c = ParseLine(text.substr(b, e - b), n);
 			b = e + 1;
 			if (c.name.empty())
@@ -611,6 +618,8 @@ namespace attrib::nfsms
 		PropertyNames n;
 		Type* cur = nullptr;
 		std::map<std::string, std::vector<Step>>* vaultLib = nullptr; // in a vaultlib block
+		OgviType* ogvi = nullptr;                                      // in an ogvi block
+		OgviEnum* ogviEnum = nullptr;                                  // in an ogvienum block
 		int line = 0;
 		size_t b = 0;
 		while (b < text.size())
@@ -680,10 +689,53 @@ namespace attrib::nfsms
 				vaultLib = &n.vaultLib[t];
 				cur = nullptr;
 			}
+			else if (w == "ogvi")
+			{
+				std::string t, kind;
+				if (!(in >> t >> kind)) bad("ogvi needs a type's name and its kind");
+				ogvi = &n.ogvi[t];
+				ogvi->kind = kind;
+				in >> ogvi->cls;
+				cur = nullptr;
+				vaultLib = nullptr;
+			}
+			else if (w == "ogvienum")
+			{
+				std::string t, base;
+				if (!(in >> t >> base)) bad("ogvienum needs a name and its underlying type");
+				ogviEnum = &n.ogviEnums[t];
+				ogviEnum->base = base;
+				cur = nullptr;
+				vaultLib = nullptr;
+			}
 			else if (w == "end")
 			{
 				cur = nullptr;
 				vaultLib = nullptr;
+				ogvi = nullptr;
+				ogviEnum = nullptr;
+			}
+			else if (ogviEnum)
+			{
+				long long v = 0;
+				if (!(in >> v)) bad(w + " needs its value");
+				ogviEnum->values.push_back({ w, int64_t(v) });
+			}
+			else if (ogvi)
+			{
+				// <property> <offset>|- :<C# type> [<path>] [ro]
+				OgviProperty p;
+				p.name = w;
+				std::string off, k;
+				if (!(in >> off >> k) || k.size() < 2 || k[0] != ':') bad(w + " needs its offset and :type");
+				p.offset = off == "-" ? -1 : std::strtoll(off.c_str(), nullptr, 10);
+				p.type = k.substr(1);
+				while (in >> k)
+				{
+					if (k == "ro") p.readOnly = true;
+					else memberPath(k, p.path, &p.rest);
+				}
+				ogvi->properties.push_back(std::move(p));
 			}
 			else if (vaultLib)
 			{
@@ -731,6 +783,21 @@ namespace attrib::nfsms
 		return n;
 	}
 
+	const PropertyNames::OgviProperty* PropertyNames::OgviType::find(std::string_view name) const
+	{
+		for (const OgviProperty& p : properties)
+			if (p.name == name) return &p;
+		return nullptr;
+	}
+
+	const PropertyNames::OgviType* PropertyNames::ogviType(const std::string& typeName) const
+	{
+		// Also with the prefix a type label leaves off (UInt32 for EA::Reflection::UInt32).
+		for (const char* prefix : { "", "Attrib::Types::", "Attrib::", "EA::Reflection::" })
+			if (auto it = ogvi.find(prefix + typeName); it != ogvi.end()) return &it->second;
+		return nullptr;
+	}
+
 	std::shared_ptr<const PropertyNames> PropertyNames::Load(const std::string& path)
 	{
 		std::ifstream in(FromUtf8(path), std::ios::binary);
@@ -748,13 +815,15 @@ namespace attrib::nfsms
 		return nullptr;
 	}
 
-	Choices DefaultChoices(const Script& script)
+	Choices DefaultChoices(const Script& script, bool ogvi)
 	{
 		Choices c;
 		for (const Control& ctl : script.controls)
 		{
 			if (ctl.kind == Control::Kind::Checkbox) c.checkboxes[ctl.name] = ctl.checked;
 			else if (ctl.checked) c.radios[ctl.group] = ctl.name;
+			// OGVI checks the first radio button of each group.
+			else if (ogvi && !c.radios.count(ctl.group)) c.radios[ctl.group] = ctl.name;
 		}
 		return c;
 	}
@@ -853,7 +922,8 @@ namespace attrib::nfsms
 					}
 				try
 				{
-					runScript(s, 0);
+					if (st_.vltEd) runScript(s, 0);
+					else ogviRun(s);
 					rep_.ok = true;
 					checkReferences();
 				}
@@ -2644,6 +2714,1328 @@ namespace attrib::nfsms
 					setRefs_.push_back({ x.classKey, x.key, p, line_, lineTop_, depth_, source_, path_, text });
 			}
 
+			// ---------------------------------------------------- OGVI mode ---
+			// The script as OGVI imports it (quirk-analysis/Attribulator: Attribulator.UI's
+			// ImportModScriptWindow and MainWindow.ExecuteScript): the lines its setup
+			// leaves are gathered first, then each runs through the community
+			// Attribulator's commands (Attribulator.Plugins.ModScript), a failing one
+			// reported and the next run. Values go by VaultLib's classes (the tables'
+			// ogvi blocks).
+
+			struct OgviLine
+			{
+				std::string text; // trimmed
+				int line = 0, topLine = 0, depth = 0;
+				std::string source, path;
+				std::vector<Command> conds; // converting: the ui_option blocks around it
+				std::string note;           // a line OGVI skips that says something (file_copy)
+			};
+
+			static bool NetSpace(char c)
+			{
+				return c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\v' || c == '\f';
+			}
+			static std::string NetTrim(std::string_view s)
+			{
+				size_t a = 0, b = s.size();
+				while (a < b && NetSpace(s[a])) ++a;
+				while (b > a && NetSpace(s[b - 1])) --b;
+				return std::string(s.substr(a, b - a));
+			}
+			static bool Starts(const std::string& s, std::string_view p, bool anyCase = false)
+			{
+				if (s.size() < p.size()) return false;
+				for (size_t i = 0; i < p.size(); ++i)
+				{
+					char a = s[i], b = p[i];
+					if (anyCase)
+					{
+						a = char(std::tolower(static_cast<unsigned char>(a)));
+						b = char(std::tolower(static_cast<unsigned char>(b)));
+					}
+					if (a != b) return false;
+				}
+				return true;
+			}
+			static std::vector<std::string> SplitSpaces(const std::string& s)
+			{
+				// string.Split(' '): empty pieces kept.
+				std::vector<std::string> out(1);
+				for (char ch : s)
+				{
+					if (ch == ' ') out.emplace_back();
+					else out.back() += ch;
+				}
+				return out;
+			}
+
+		public:
+			// Attribulator's ModScriptService.ParseCommand: split at double quotes, the
+			// pieces outside them at spaces (empty ones dropped), the quoted ones kept
+			// whole; then 0x and the rest in capitals.
+			static std::vector<std::string> AttribulatorParts(const std::string& command)
+			{
+				std::vector<std::string> pieces(1), parts;
+				for (char ch : command)
+				{
+					if (ch == '"') pieces.emplace_back();
+					else pieces.back() += ch;
+				}
+				for (size_t i = 0; i < pieces.size(); ++i)
+				{
+					if (i % 2)
+					{
+						parts.push_back(pieces[i]);
+						continue;
+					}
+					for (const std::string& w : SplitSpaces(pieces[i]))
+						if (!w.empty()) parts.push_back(w);
+				}
+				for (std::string& p : parts)
+					if (p.size() >= 2 && p[0] == '0' && p[1] == 'x')
+						for (size_t i = 2; i < p.size(); ++i) p[i] = char(std::toupper(static_cast<unsigned char>(p[i])));
+				return parts;
+			}
+
+		private:
+			// ImportModScriptWindow.PopulateResultScript, one file: blank lines and the
+			// lines of a block whose control isn't set are left out, `script` reads another
+			// file in its place, and lines starting with version, game, ui_text, ui_image,
+			// file_copy, folder_create, ui_control, # or // are skipped. A line it can't
+			// take ends this file there and drops every line gathered before it.
+			void ogviGather(const Script& top, const Script& s, int depth, int topLine, std::vector<OgviLine>& out,
+							std::vector<Command>& conds, std::vector<std::unique_ptr<Script>>& held)
+			{
+				bool skip = false, inOption = false, skipNoted = false;
+				const size_t condsAt = conds.size();
+				for (size_t i = 0; i < s.lines.size(); ++i)
+				{
+					const int n = int(i + 1);
+					const int at = depth ? topLine : n;
+					const std::string cmd = NetTrim(s.lines[i]);
+					auto stop = [&](const std::string& why)
+					{
+						line_ = n;
+						lineTop_ = at;
+						depth_ = depth;
+						source_ = s.source;
+						path_ = s.path;
+						lineFailed("OGVI stops reading the script at this line (its \"Invalid script line\") and drops the " +
+								   std::to_string(out.size()) + " line" + (out.size() == 1 ? "" : "s") + " it gathered before: " + why);
+						out.clear();
+					};
+					if (cmd.empty()) continue;
+					if (Starts(cmd, "ui_option"))
+					{
+						if (inOption)
+						{
+							inOption = false; // any ui_option line ends a block
+							if (conds.size() > condsAt) conds.pop_back();
+							continue;
+						}
+						skip = true;
+						inOption = true;
+						const std::vector<std::string> parts = SplitSpaces(cmd);
+						Command oc;
+						oc.name = "ui_option";
+						oc.line = n;
+						bool known = false;
+						if (parts.size() == 3) oc.args = { parts[1], parts[2] };
+						else if (parts.size() >= 2) oc.args = { parts[1] };
+						for (const Control& ctl : top.controls)
+							if (oc.args.size() == 2 ? ctl.kind == Control::Kind::Radio && ctl.group == oc.args[0] && ctl.name == oc.args[1]
+								: oc.args.size() == 1 && ctl.kind == Control::Kind::Checkbox && ctl.name == oc.args[0])
+								known = true;
+						if (!known)
+						{
+							stop(oc.args.empty() ? "ui_option names no control"
+								 : "no control " + (oc.args.size() == 2 ? oc.args[0] + " " + oc.args[1] : oc.args[0]) +
+								 " in the setup (OGVI takes the setup from the script opened, not from those it includes)");
+							break;
+						}
+						if (out_)
+						{
+							skip = false; // converting: every block, as an `if`
+							conds.push_back(oc);
+						}
+						else if (active(oc))
+						{
+							skip = false;
+						}
+						continue;
+					}
+					if (inOption && skip)
+					{
+						// Running chosen lines: say why they do nothing.
+						if (depth == 0 && st_.firstLine && n >= st_.firstLine && n <= st_.lastLine && !skipNoted)
+						{
+							OgviLine l{ cmd, n, at, depth, s.source, s.path, conds, {} };
+							l.note = "skipped: the setup choice its ui_option block needs isn't made";
+							out.push_back(std::move(l));
+							skipNoted = true;
+						}
+						continue;
+					}
+					if (Starts(cmd, "script", true))
+					{
+						// command.Substring("script ".Length).Trim('"'), under this file's folder.
+						if (cmd.size() < 7)
+						{
+							stop("script names no file");
+							break;
+						}
+						std::string file = cmd.substr(7);
+						while (!file.empty() && file.front() == '"') file.erase(file.begin());
+						while (!file.empty() && file.back() == '"') file.pop_back();
+						if (depth >= 16)
+						{
+							stop("scripts include each other too deep");
+							break;
+						}
+						const fs::path p = InFolder(FromUtf8(s.folder), file);
+						std::string text;
+						try
+						{
+							if (st_.readFile) text = st_.readFile(ToUtf8(p));
+							else
+							{
+								std::ifstream in(p, std::ios::binary);
+								if (!in) throw std::runtime_error("can't read " + ToUtf8(p));
+								std::ostringstream ss;
+								ss << in.rdbuf();
+								text = ss.str();
+							}
+						}
+						catch (const std::exception& e)
+						{
+							stop(e.what());
+							break;
+						}
+						auto sub = std::make_unique<Script>(Parse(text, file, ToUtf8(p.parent_path())));
+						sub->path = ToUtf8(p);
+						held.push_back(std::move(sub));
+						ogviGather(top, *held.back(), depth + 1, at, out, conds, held);
+						continue;
+					}
+					static const char* const kSkipped[] = { "version", "game", "ui_text", "ui_image", "file_copy", "folder_create",
+															"ui_control", "#", "//" };
+					bool skipped = false;
+					for (const char* w : kSkipped)
+						if (Starts(cmd, w)) skipped = true;
+					if (skipped)
+					{
+						if (Starts(cmd, "file_copy") || Starts(cmd, "folder_create"))
+						{
+							OgviLine l{ cmd, n, at, depth, s.source, s.path, conds, {} };
+							l.note = (Starts(cmd, "file_copy") ? "file_copy" : "folder_create") +
+								std::string(": OGVI skips the line, so no file is copied (NFS-VltEd mode copies it)");
+							out.push_back(std::move(l));
+						}
+						continue;
+					}
+					out.push_back({ cmd, n, at, depth, s.source, s.path, conds, {} });
+				}
+				conds.resize(condsAt);
+			}
+
+			// ImportModScriptWindow.Window_Loaded: a ui_control line it can't read (a
+			// checkbox's state that isn't True or False, too few words) closes the
+			// window, and nothing runs. The first such line, or 0.
+			int ogviSetupProblem(const Script& s, std::string& why) const
+			{
+				for (size_t i = 0; i < s.lines.size(); ++i)
+				{
+					const std::string& line = s.lines[i];
+					if (!Starts(line, "ui_control", true)) continue;
+					const std::vector<std::string> parts = SplitSpaces(line);
+					if (parts.size() < 2) why = "ui_control names no kind";
+					else if (parts[1] == "radiobutton" && parts.size() < 4) why = "a radio button needs a group and a name";
+					else if (parts[1] == "checkbox" && parts.size() < 4) why = "a checkbox needs a name and its state";
+					else if (parts[1] == "checkbox" && Lower(NetTrim(parts[3])) != "true" && Lower(NetTrim(parts[3])) != "false")
+						why = "a checkbox's state is True or False, not " + parts[3];
+					if (!why.empty()) return int(i + 1);
+				}
+				return 0;
+			}
+
+			void ogviRun(const Script& s)
+			{
+				if (std::string why; const int bad = ogviSetupProblem(s, why))
+				{
+					line_ = lineTop_ = bad;
+					depth_ = 0;
+					lineFailed("OGVI can't read this setup line (\"Invalid script line\") and closes its import window, so nothing ran: " + why);
+					return;
+				}
+				std::vector<OgviLine> lines;
+				std::vector<Command> conds;
+				std::vector<std::unique_ptr<Script>> held;
+				ogviGather(s, s, 0, 0, lines, conds, held);
+				std::vector<sc::Statement>* const base = out_;
+				std::vector<Command> open;                    // converting: the `if`s open
+				std::vector<std::vector<sc::Statement>*> saved; // and where statements went before each
+				for (const OgviLine& l : lines)
+				{
+					line_ = l.line;
+					lineTop_ = l.topLine;
+					depth_ = l.depth;
+					source_ = l.source;
+					path_ = l.path;
+					if (st_.firstLine && (l.topLine < st_.firstLine || l.topLine > st_.lastLine)) continue;
+					if (base)
+					{
+						size_t same = 0;
+						while (same < open.size() && same < l.conds.size() && open[same].line == l.conds[same].line &&
+							   open[same].args == l.conds[same].args)
+							++same;
+						while (open.size() > same)
+						{
+							out_ = saved.back();
+							saved.pop_back();
+							open.pop_back();
+						}
+						for (size_t i = same; i < l.conds.size(); ++i)
+						{
+							out_->push_back(optionIf(l.conds[i]));
+							saved.push_back(out_);
+							out_ = &out_->back().body;
+							open.push_back(l.conds[i]);
+						}
+					}
+					if (!l.note.empty())
+					{
+						note(l.note);
+						emitComment(l.text + ": skipped, as OGVI skips it");
+						continue;
+					}
+					try
+					{
+						ogviExec(l.text);
+					}
+					catch (const Stopped&)
+					{
+						throw;
+					}
+					catch (const sc::ScriptError& e)
+					{
+						if (out_) emitComment("could not convert (" + source_ + ":" + std::to_string(l.line) + "): " + e.message);
+						lineFailed(e.message);
+					}
+					catch (const std::exception& e)
+					{
+						if (out_) emitComment("could not convert (" + source_ + ":" + std::to_string(l.line) + "): " + e.what());
+						lineFailed(e.what());
+					}
+				}
+				out_ = base;
+			}
+
+			// One line through Attribulator's parser and commands.
+			void ogviExec(const std::string& text)
+			{
+				if (text.empty() || text[0] == '#') return;
+				const std::vector<std::string> parts = AttribulatorParts(text);
+				if (parts.empty()) fail("Unknown command: (an empty line)");
+				const std::string& n = parts[0];
+				static const std::set<std::string> kCommands = { "append_array", "version", "game", "resize_field", "update_field",
+																 "copy_node", "add_node", "change_vault", "copy_fields", "delete_node",
+																 "add_field", "delete_field", "rename_node", "move_node", "add_overwrite",
+																 "copy_overwrite", "resize_collection", "update_collection" };
+				if (!kCommands.count(n))
+				{
+					std::string why = "Unknown command: " + n + " (OGVI runs the community Attribulator's commands";
+					if (n == "delete_nodes" || n == "convert_field") why += "; " + n + " is NFS-VltEd's";
+					fail(why + ")");
+				}
+				Command c;
+				c.name = n;
+				c.args.assign(parts.begin() + 1, parts.end());
+				c.line = line_;
+				const size_t count = parts.size();
+				auto tokens = [&](size_t lo, size_t hi, const std::string& why)
+				{
+					if (count < lo || count > hi) fail(why);
+				};
+				auto got = [&] { return ", got " + std::to_string(count); };
+				Script none;
+				if (n == "version")
+				{
+					tokens(2, 64, "version needs a number");
+					if (parts[1] != "4.6") fail("This tool is only compatible with ModScript files for NFS-VltEd 4.6.");
+				}
+				else if (n == "game")
+				{
+					tokens(2, 64, "game needs a name");
+				}
+				else if (n == "update_field" || n == "update_collection")
+				{
+					tokens(5, size_t(-1), "Expected at least 5 tokens");
+					ogviUpdate(parts);
+				}
+				else if (n == "add_node" || n == "add_overwrite")
+				{
+					tokens(3, 4, "3 or 4 tokens expected" + got());
+					addNode(c, n == "add_overwrite");
+				}
+				else if (n == "copy_node" || n == "copy_overwrite")
+				{
+					tokens(4, 5, "4 or 5 tokens expected" + got());
+					copyNode(c, n == "copy_overwrite");
+				}
+				else if (n == "delete_node")
+				{
+					tokens(3, 3, "Expected 3 tokens" + got());
+					exec(c, none, 0);
+				}
+				else if (n == "rename_node")
+				{
+					tokens(4, 4, "Expected 4 tokens" + got());
+					exec(c, none, 0);
+				}
+				else if (n == "move_node")
+				{
+					tokens(3, 4, "Expected command to be in format: move_node class node [parent]");
+					if (count == 4 && parts[3] == parts[2]) fail("Parent name cannot be the same as collection name.");
+					exec(c, none, 0);
+				}
+				else if (n == "change_vault")
+				{
+					tokens(4, 4, "Expected 4 tokens" + got());
+					exec(c, none, 0);
+				}
+				else if (n == "delete_field")
+				{
+					tokens(4, 4, "Expected 4 tokens" + got());
+					exec(c, none, 0);
+				}
+				else if (n == "add_field")
+				{
+					tokens(4, 5, "Expected 4 or 5 tokens" + got());
+					ClassDef& k = cls(c.args[0]);
+					const FieldDef* f = k.field(KeyOf(c.args[2]));
+					if (!f) fail("the class '" + c.args[0] + "' does not contain '" + c.args[2] + "'");
+					if (f->inLayout()) fail("add_field failed because field '" + c.args[2] + "' is a base field");
+					if (node(k, c.args[1]).find(f->key)) return; // there already: Attribulator returns before the count
+					if (count == 5)
+					{
+						const NetInt v = ParseNetInt(c.args[3]);
+						if (!v.ok) fail("Failed to parse command: '" + c.args[3] + "' is not a number");
+						if (v.overflow || (v.neg && v.mag) || v.mag > 0xFFFF) fail("Value was either too large or too small for a UInt16: " + c.args[3]);
+						if (f->isArray() && v.mag > f->maxCount)
+							fail("Cannot add field " + c.args[0] + "[" + c.args[2] + "] with capacity beyond maximum (requested " +
+								 std::to_string(v.mag) + " but limit is " + std::to_string(f->maxCount) + ")");
+						c.args[3] = std::to_string(v.mag);
+					}
+					addField(c);
+				}
+				else if (n == "resize_field")
+				{
+					tokens(5, 5, "Expected 5 tokens but got " + std::to_string(count));
+					const NetInt v = ParseNetInt(parts[4]);
+					if (!v.ok || v.overflow || (v.neg && v.mag) || v.mag > 0xFFFF) fail("Failed to parse '" + parts[4] + "' as a number");
+					ClassDef& k = cls(c.args[0]);
+					Collection& x = node(k, c.args[1]);
+					const FieldDef* f = k.field(KeyOf(c.args[2]));
+					if (!f) fail("the class '" + c.args[0] + "' does not contain '" + c.args[2] + "'");
+					if (!f->isArray()) fail("Field " + c.args[0] + "[" + c.args[2] + "] is not an array!");
+					if (f->inLayout() && v.mag > f->maxCount)
+						fail("Cannot resize field " + c.args[0] + "[" + c.args[2] + "] beyond maximum count (requested " +
+							 std::to_string(v.mag) + " but limit is " + std::to_string(f->maxCount) + ")");
+					ogviOwn(x, *f, c.args[2]);
+					sc::Statement r;
+					r.kind = K::Resize;
+					r.path.field = c.args[2];
+					r.count = uint32_t(v.mag);
+					amod(x, { r });
+				}
+				else if (n == "append_array")
+				{
+					tokens(4, size_t(-1), "Expected at least 4 tokens");
+					ogviAppend(parts);
+				}
+				else if (n == "copy_fields")
+				{
+					tokens(5, 5, "Expected 5 tokens" + got());
+					ogviCopyFields(c);
+				}
+				else if (n == "resize_collection")
+				{
+					tokens(6, size_t(-1), "Expected at least 6 tokens");
+					fail("resize_collection resizes an array inside a value; OGVI mode doesn't run it yet");
+				}
+			}
+
+			// The field's type as the files name it (a field the schema gives an enum
+			// shows the enum; VaultLib registers its type table type).
+			static std::string FieldTypeName(const Collection& x, const FieldDef& f, const ValueType& vt)
+			{
+				const Attribute* a = x.resolve(f.key);
+				return a && a->type ? a->type->name : vt.typeName;
+			}
+
+			// VltCollection.GetRawValue: a field the node only inherits isn't there.
+			void ogviOwn(const Collection& x, const FieldDef& f, const std::string& field)
+			{
+				if (!x.find(f.key))
+					fail("The given key '" + field + "' was not present in the dictionary (" + label(x) +
+						 " only inherits it: OGVI needs add_field first)");
+			}
+
+			// ---- .NET's parsers, as Attribulator calls them (invariant culture)
+
+			struct NetInt
+			{
+				bool ok = false, neg = false, overflow = false;
+				uint64_t mag = 0;
+			};
+			// NumberStyles.Integer: white space around, a sign, digits.
+			static NetInt ParseNetInt(std::string_view s)
+			{
+				NetInt r;
+				size_t i = 0, e = s.size();
+				while (i < e && NetSpace(s[i])) ++i;
+				while (e > i && NetSpace(s[e - 1])) --e;
+				if (i < e && (s[i] == '+' || s[i] == '-'))
+				{
+					r.neg = s[i] == '-';
+					++i;
+				}
+				if (i >= e) return r;
+				for (; i < e; ++i)
+				{
+					if (!std::isdigit(static_cast<unsigned char>(s[i]))) return r;
+					const uint64_t d = uint64_t(s[i] - '0');
+					if (r.mag > (UINT64_MAX - d) / 10) r.overflow = true;
+					else r.mag = r.mag * 10 + d;
+				}
+				r.ok = true;
+				return r;
+			}
+			// NumberStyles.AllowHexSpecifier: hex digits only, fitting `bits`.
+			static bool ParseNetHex(std::string_view s, unsigned bits, uint64_t& out)
+			{
+				if (s.empty()) return false;
+				uint64_t v = 0;
+				for (char ch : s)
+				{
+					if (!std::isxdigit(static_cast<unsigned char>(ch))) return false;
+					const uint64_t d = uint64_t(std::isdigit(static_cast<unsigned char>(ch)) ? ch - '0' : std::tolower(static_cast<unsigned char>(ch)) - 'a' + 10);
+					if (v >> (bits - 4)) return false;
+					v = v << 4 | d;
+				}
+				out = v;
+				return true;
+			}
+			static bool UIntTryParse(std::string_view s, uint32_t& out)
+			{
+				const NetInt r = ParseNetInt(s);
+				if (!r.ok || r.overflow || (r.neg && r.mag) || r.mag > 0xFFFFFFFFull) return false;
+				out = uint32_t(r.mag);
+				return true;
+			}
+			// Single.Parse / Double.Parse: NumberStyles.Float | AllowThousands.
+			static bool ParseNetFloat(std::string_view s, bool isDouble, double& out)
+			{
+				std::string t = NetTrim(s);
+				std::string low = Lower(t);
+				const bool neg = !low.empty() && low[0] == '-';
+				const std::string word = !low.empty() && (low[0] == '-' || low[0] == '+') ? low.substr(1) : low;
+				if (word == "infinity" || word == "\xE2\x88\x9E")
+				{
+					out = neg ? -INFINITY : INFINITY;
+					return true;
+				}
+				if (word == "nan")
+				{
+					out = std::copysign(NAN, -1.0); // .NET's NaN: 0xFFC00000 as a float
+					return true;
+				}
+				std::string clean;
+				size_t i = 0;
+				if (i < t.size() && (t[i] == '+' || t[i] == '-')) clean += t[i++];
+				bool digits = false;
+				for (; i < t.size() && (std::isdigit(static_cast<unsigned char>(t[i])) || t[i] == ','); ++i)
+					if (t[i] != ',')
+					{
+						clean += t[i];
+						digits = true;
+					}
+				if (i < t.size() && t[i] == '.')
+				{
+					clean += t[i++];
+					for (; i < t.size() && std::isdigit(static_cast<unsigned char>(t[i])); ++i)
+					{
+						clean += t[i];
+						digits = true;
+					}
+				}
+				if (!digits) return false;
+				if (i < t.size() && (t[i] == 'e' || t[i] == 'E'))
+				{
+					clean += 'e';
+					++i;
+					if (i < t.size() && (t[i] == '+' || t[i] == '-')) clean += t[i++];
+					bool exp = false;
+					for (; i < t.size() && std::isdigit(static_cast<unsigned char>(t[i])); ++i)
+					{
+						clean += t[i];
+						exp = true;
+					}
+					if (!exp) return false;
+				}
+				if (i != t.size()) return false;
+				out = isDouble ? std::strtod(clean.c_str(), nullptr) : double(std::strtof(clean.c_str(), nullptr));
+				return true;
+			}
+
+			// VLT32Hasher.Hash: 0x and hex digits are the number, an empty text 0.
+			static uint32_t OgviHash(const std::string& s)
+			{
+				if (s.empty()) return 0;
+				uint64_t v;
+				if (s.size() > 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X') && ParseNetHex(std::string_view(s).substr(2), 32, v)) return uint32_t(v);
+				return StringHash32(s);
+			}
+
+			static uint32_t CsSize(const std::string& t)
+			{
+				if (t == "bool" || t == "byte" || t == "sbyte") return 1;
+				if (t == "short" || t == "ushort") return 2;
+				if (t == "int" || t == "uint" || t == "float" || t == "string") return 4;
+				if (t == "long" || t == "ulong" || t == "double") return 8;
+				return 0;
+			}
+
+			// A C# value: its bits as a number of `width` bytes, or a text.
+			struct CsValue
+			{
+				uint64_t bits = 0;
+				uint32_t width = 0;
+				bool isText = false;
+				std::string text;
+			};
+
+			const PropertyNames::OgviEnum* ogviEnum(const std::string& name) const
+			{
+				if (!st_.names) return nullptr;
+				auto it = st_.names->ogviEnums.find(name);
+				return it == st_.names->ogviEnums.end() ? nullptr : &it->second;
+			}
+
+			// An integer of a C# type, from a sign and magnitude: false when it doesn't fit.
+			static bool FitInt(const std::string& t, bool neg, uint64_t mag, uint64_t& bits)
+			{
+				const uint32_t w = CsSize(t);
+				const bool sign = t == "sbyte" || t == "short" || t == "int" || t == "long";
+				const uint64_t max = w == 8 ? (sign ? uint64_t(INT64_MAX) : UINT64_MAX) : (sign ? (1ull << (8 * w - 1)) - 1 : (1ull << (8 * w)) - 1);
+				if (neg && mag)
+				{
+					if (!sign || mag > max + 1) return false;
+					bits = uint64_t(-int64_t(mag));
+				}
+				else
+				{
+					if (mag > max) return false;
+					bits = mag;
+				}
+				if (w < 8) bits &= (1ull << (8 * w)) - 1;
+				return true;
+			}
+
+			// Enum.Parse(type, text): a number of its underlying type, or names (case
+			// counts) joined by commas.
+			CsValue ParseOgviEnum(const std::string& name, const std::string& text) const
+			{
+				const PropertyNames::OgviEnum* en = ogviEnum(name);
+				if (!en) fail("no values known for VaultLib's enum " + name);
+				CsValue v;
+				v.width = CsSize(en->base);
+				const std::string t = NetTrim(text);
+				if (!t.empty() && (std::isdigit(static_cast<unsigned char>(t[0])) || t[0] == '-' || t[0] == '+'))
+				{
+					const NetInt r = ParseNetInt(t);
+					if (!r.ok) fail("Requested value '" + text + "' was not found (" + name + ")");
+					if (r.overflow || !FitInt(en->base, r.neg, r.mag, v.bits)) fail("Value was either too large or too small for " + name + ": " + text);
+					return v;
+				}
+				uint64_t all = 0;
+				size_t b = 0;
+				while (b <= t.size())
+				{
+					size_t e = t.find(',', b);
+					if (e == std::string::npos) e = t.size();
+					const std::string one = NetTrim(std::string_view(t).substr(b, e - b));
+					bool found = false;
+					for (const auto& [n, val] : en->values)
+						if (n == one)
+						{
+							all |= uint64_t(val);
+							found = true;
+							break;
+						}
+					if (!found)
+					{
+						std::string list;
+						for (const auto& [n, val] : en->values)
+							if (list.size() < 300) list += (list.empty() ? "" : ", ") + n;
+						fail("Requested value '" + one + "' was not found (" + name + " has " + list + ")");
+					}
+					b = e + 1;
+				}
+				if (v.width < 8) all &= (1ull << (8 * v.width)) - 1;
+				v.bits = all;
+				return v;
+			}
+
+			// Convert.ChangeType(text, T, InvariantCulture).
+			CsValue ChangeType(const std::string& t, const std::string& text) const
+			{
+				CsValue v;
+				v.width = CsSize(t);
+				if (t == "string")
+				{
+					v.isText = true;
+					v.text = text;
+					return v;
+				}
+				if (t.rfind("enum/", 0) == 0) return ParseOgviEnum(t.substr(5), text);
+				if (t == "bool")
+				{
+					const std::string l = Lower(NetTrim(text));
+					if (l != "true" && l != "false") fail("String '" + text + "' was not recognized as a valid Boolean (OGVI takes True or False)");
+					v.bits = l == "true";
+					return v;
+				}
+				if (t == "float" || t == "double")
+				{
+					double d;
+					if (!ParseNetFloat(text, t == "double", d)) fail("Failed to parse value [" + text + "] as a " + t);
+					if (t == "float")
+					{
+						const float f = float(d);
+						uint32_t u;
+						std::memcpy(&u, &f, 4);
+						v.bits = u;
+					}
+					else
+					{
+						std::memcpy(&v.bits, &d, 8);
+					}
+					return v;
+				}
+				if (v.width)
+				{
+					const NetInt r = ParseNetInt(text);
+					if (!r.ok) fail("Failed to parse value [" + text + "] as a " + t + ": Input string was not in a correct format");
+					if (r.overflow || !FitInt(t, r.neg, r.mag, v.bits)) fail("Value was either too large or too small for a " + t + ": " + text);
+					return v;
+				}
+				fail("Invalid cast from a text to " + t + " (OGVI can't set a value of this type from a script)");
+			}
+
+			// ValueConversionUtils.DoPrimitiveConversion(PrimitiveTypeBase, text): a
+			// field's whole value. 0x and hex digits are a number, converted to the type.
+			CsValue OgviPrimitive(const std::string& t, const std::string& text) const
+			{
+				uint64_t hex;
+				const bool isHex = text.size() >= 2 && text[0] == '0' && text[1] == 'x' && ParseNetHex(std::string_view(text).substr(2), 32, hex);
+				if (t.rfind("enum/", 0) == 0) return ParseOgviEnum(t.substr(5), isHex ? std::to_string(hex) : text);
+				if (!isHex) return ChangeType(t, text);
+				CsValue v;
+				v.width = CsSize(t);
+				if (t == "string")
+				{
+					v.isText = true;
+					v.text = std::to_string(hex); // the number in decimal, as Convert.ChangeType writes it
+					return v;
+				}
+				if (t == "bool")
+				{
+					v.bits = hex != 0;
+					return v;
+				}
+				if (t == "float" || t == "double")
+				{
+					double d = double(hex);
+					if (t == "float")
+					{
+						const float f = float(d);
+						uint32_t u;
+						std::memcpy(&u, &f, 4);
+						v.bits = u;
+					}
+					else
+					{
+						std::memcpy(&v.bits, &d, 8);
+					}
+					return v;
+				}
+				if (!FitInt(t, false, hex, v.bits)) fail("Value was either too large or too small for a " + t + ": " + text);
+				return v;
+			}
+
+			// ValueConversionUtils.DoPrimitiveConversion(object, text): a property's
+			// value. A uint or int property takes 0x and hex digits, a number, or else a
+			// name, hashed: a negative number in an int property is a name too.
+			CsValue OgviConvert(const std::string& t, const std::string& text)
+			{
+				CsValue v;
+				v.width = CsSize(t);
+				if (t == "uint" || t == "int")
+				{
+					if (text.size() >= 2 && text[0] == '0' && text[1] == 'x')
+					{
+						uint64_t hex;
+						if (!ParseNetHex(std::string_view(text).substr(2), 32, hex))
+							fail("Could not parse " + text + " as a hex number (OGVI reads 0x as hex digits)");
+						v.bits = hex;
+						return v;
+					}
+					uint32_t u;
+					if (!UIntTryParse(text, u))
+					{
+						v.bits = StringHash32(text);
+						if (!text.empty() && (text[0] == '-' || std::isdigit(static_cast<unsigned char>(text[0]))))
+							warn("OGVI reads " + text + " as a name here and sets its StringHash32, 0x" + Hex32(uint32_t(v.bits)).substr(2) +
+								 ": VaultLib's " + t + " property takes only numbers uint.TryParse reads");
+						else
+							learn(text);
+						return v;
+					}
+					if (t == "int" && u > 0x7FFFFFFFu) fail("Value was either too large or too small for an Int32: " + text);
+					v.bits = u;
+					return v;
+				}
+				return ChangeType(t, text);
+			}
+
+			// ---- writing a C# value over our members
+
+			struct OLeaf
+			{
+				std::vector<sc::FieldPath::Step> steps;
+				ValueType t;
+				uint32_t off = 0, size = 0;
+				RefPart part = RefPart::Whole; // a reference's class or collection key
+			};
+			void ogviLeaves(const ValueType& vt, uint32_t base, std::vector<sc::FieldPath::Step>& steps, std::vector<OLeaf>& out, int depth = 0)
+			{
+				if (depth > 12) return;
+				switch (vt.kind)
+				{
+					case TypeKind::Struct:
+						if (!vt.st) return;
+						for (const MemberDef& m : vt.st->members)
+						{
+							if (m.prim == MemberPrim::Ptr || m.isBitfield()) continue;
+							const ValueType mt = TypeOfMember(m);
+							for (uint32_t i = 0; i < std::max<uint32_t>(m.count, 1); ++i)
+							{
+								steps.push_back({ m.name, -1 });
+								if (m.count > 1) steps.push_back({ std::string(), int64_t(i) });
+								ogviLeaves(mt, base + m.offset + i * m.elemSize, steps, out, depth + 1);
+								steps.resize(steps.size() - (m.count > 1 ? 2 : 1));
+							}
+						}
+						return;
+					case TypeKind::RefSpec:
+					{
+						// 64-bit keys (Most Wanted's early demos): 8 bytes each, as VaultLib's x64 reading has them.
+						const uint32_t w = vt.size >= 24 ? 8 : 4;
+						out.push_back({ steps, vt, base, w, RefPart::Class });
+						out.push_back({ steps, vt, base + w, w, RefPart::Collection });
+						return;
+					}
+					case TypeKind::Curve:
+					{
+						// Its bounds, the first four floats in every game's.
+						ValueType ft;
+						ft.kind = TypeKind::Float;
+						ft.size = 4;
+						const char* const bounds[] = { "xMin", "xMax", "yMin", "yMax" };
+						for (uint32_t i = 0; i < 4; ++i)
+						{
+							steps.push_back({ bounds[i], -1 });
+							out.push_back({ steps, ft, base + 4 * i, 4 });
+							steps.pop_back();
+						}
+						return;
+					}
+					case TypeKind::ClassRefSpec:
+						out.push_back({ steps, vt, base, 4, RefPart::Collection });
+						return;
+					case TypeKind::Vector2: case TypeKind::Vector3: case TypeKind::Vector4: case TypeKind::Quaternion:
+					case TypeKind::FloatColour:
+					{
+						ValueType ft;
+						ft.kind = TypeKind::Float;
+						ft.size = 4;
+						for (uint32_t i = 0; i < vt.size / 4; ++i)
+						{
+							steps.push_back({ std::string(), int64_t(i) });
+							out.push_back({ steps, ft, base + 4 * i, 4 });
+							steps.pop_back();
+						}
+						return;
+					}
+					case TypeKind::Matrix:
+					{
+						ValueType ft;
+						ft.kind = TypeKind::Float;
+						ft.size = 4;
+						for (uint32_t i = 0; i < 16; ++i)
+						{
+							steps.push_back({ std::string(), int64_t(i / 4) });
+							steps.push_back({ std::string(), int64_t(i % 4) });
+							out.push_back({ steps, ft, base + 4 * i, 4 });
+							steps.resize(steps.size() - 2);
+						}
+						return;
+					}
+					case TypeKind::Text: case TypeKind::StringKey: case TypeKind::Blob:
+						out.push_back({ steps, vt, base, 0 }); // set whole, by text
+						return;
+					default:
+						if (vt.size && vt.size <= 8) out.push_back({ steps, vt, base, vt.size });
+						return;
+				}
+			}
+
+			static sc::ValuePtr FileBytes(uint32_t ms, uint64_t v, Endian e)
+			{
+				auto out = std::make_shared<sc::Value>();
+				out->kind = sc::Value::Kind::Bytes;
+				for (uint32_t i = 0; i < ms; ++i)
+				{
+					char buf[4];
+					std::snprintf(buf, sizeof(buf), "%02X ", unsigned((v >> (8 * (e == Endian::Big ? ms - 1 - i : i))) & 0xFF));
+					out->text += buf;
+				}
+				return out;
+			}
+
+			// The offset of our member a table path names, in the value of type vt (this
+			// platform's layout), or -1.
+			static int64_t PathOffset(const ValueType& vt, const std::vector<PropertyNames::Step>& path, uint32_t rest)
+			{
+				const StructDef* st = vt.st;
+				int64_t off = 0;
+				for (const PropertyNames::Step& s : path)
+				{
+					if (!st) return -1;
+					const MemberDef* m = nullptr;
+					for (const MemberDef& mm : st->members)
+						if (mm.name == s.member) m = &mm;
+					if (!m) return -1;
+					off += m->offset + (s.index >= 0 ? s.index * int64_t(m->elemSize) : 0);
+					// A struct the editor reads as one value (type_bStringHash's hash) still has its member.
+					st = m->st;
+				}
+				return off + rest;
+			}
+
+			// A C# value written at byte `o` of the value at `p` (our layout): over our
+			// members there, each set to what its bytes then say, as the PC holds them. A
+			// text goes to the text or string key there, or as its hash to a key.
+			void ogviPut(Collection& x, const sc::FieldPath& p, int64_t o, const CsValue& v, const std::string& what)
+			{
+				Bytes cur;
+				const ValueType vt = sc::TypeAt(db_, x, p, &cur);
+				const Endian e = x.vault ? x.vault->raw.endian : Endian::Little;
+				std::vector<OLeaf> leaves;
+				std::vector<sc::FieldPath::Step> steps;
+				ogviLeaves(vt, 0, steps, leaves);
+				if (o < 0) fail(what + ": VaultLib reads no bytes for it here");
+				const uint32_t width = v.isText ? 4 : v.width;
+				std::vector<sc::Statement> sets;
+				auto set = [&](const OLeaf& l, sc::ValuePtr val)
+				{
+					sc::Statement s;
+					s.kind = K::Set;
+					s.path = p;
+					s.path.steps.insert(s.path.steps.end(), l.steps.begin(), l.steps.end());
+					s.value = std::move(val);
+					sets.push_back(std::move(s));
+				};
+				for (const OLeaf& l : leaves)
+				{
+					if (!l.size)
+					{
+						// A text or string key: a string set at its place (a string key's
+						// text pointer too, where VaultLib reads a Text behind it).
+						const bool textOf = l.t.kind == TypeKind::StringKey && l.t.size >= 8 && int64_t(l.off + l.t.size - 4) == o;
+						if (v.isText && (int64_t(l.off) == o || textOf))
+						{
+							set(l, sc::MakeString(v.text));
+							learn(v.text);
+						}
+						continue;
+					}
+					const uint32_t b0 = std::max<uint32_t>(l.off, uint32_t(o)), b1 = std::min<uint32_t>(l.off + l.size, uint32_t(o) + width);
+					if (b0 >= b1) continue;
+					const uint64_t bits = v.isText ? OgviHash(v.text) : v.bits;
+					if (l.part != RefPart::Whole)
+					{
+						// A reference's key: by its name when the whole key is given.
+						Bytes rc;
+						sc::FieldPath rp = p;
+						rp.steps.insert(rp.steps.end(), l.steps.begin(), l.steps.end());
+						const ValueType rt = sc::TypeAt(db_, x, rp, &rc);
+						uint32_t key = uint32_t(bits);
+						if (b0 != l.off || b1 != l.off + l.size)
+						{
+							uint64_t m = 0;
+							for (uint32_t i = 0; i < 4 && l.off + i < cur.size(); ++i)
+								m |= uint64_t(cur[l.off + (e == Endian::Big ? 3 - i : i)]) << (8 * i);
+							for (uint32_t bp = b0; bp < b1; ++bp)
+							{
+								const uint32_t sh = 8 * (bp - l.off);
+								m = (m & ~(uint64_t(0xFF) << sh)) | (((bits >> (8 * (bp - o))) & 0xFF) << sh);
+							}
+							key = uint32_t(m);
+						}
+						const std::string text = v.isText && b0 == l.off && (b1 == l.off + l.size || l.size == 8) ? v.text : Hex32(key);
+						if (v.isText) learn(v.text);
+						set(l, value(text.empty() ? std::string("0x00000000") : text, rt, rc, l.part, x));
+						continue;
+					}
+					uint64_t m = 0;
+					for (uint32_t i = 0; i < l.size && l.off + i < cur.size(); ++i)
+						m |= uint64_t(cur[l.off + (e == Endian::Big ? l.size - 1 - i : i)]) << (8 * i);
+					for (uint32_t bp = b0; bp < b1; ++bp)
+					{
+						const uint32_t sh = 8 * (bp - l.off);
+						m = (m & ~(uint64_t(0xFF) << sh)) | (((bits >> (8 * (bp - uint32_t(o)))) & 0xFF) << sh);
+					}
+					if (v.isText && (l.t.kind == TypeKind::Key || l.t.kind == TypeKind::UInt32)) learn(v.text);
+					sc::ValuePtr val = BitsValue(l.t, l.size, m, e);
+					set(l, val ? val : FileBytes(l.size, m, e));
+				}
+				if (sets.empty()) fail(what + " sets no member of ours (VaultLib reads it at byte " + std::to_string(o) + ")");
+				amod(x, sets);
+			}
+
+			// ---- update_field
+
+			void ogviUpdate(const std::vector<std::string>& parts)
+			{
+				const std::string& className = parts[1];
+				const std::string& collName = parts[2];
+				std::string fieldName = parts[3];
+				// FieldName.Split('[', ']'), empty pieces dropped: a name, or a name and an index.
+				std::vector<std::string> split;
+				{
+					std::string curPiece;
+					for (char ch : parts[3])
+					{
+						if (ch == '[' || ch == ']')
+						{
+							if (!curPiece.empty()) split.push_back(curPiece);
+							curPiece.clear();
+						}
+						else curPiece += ch;
+					}
+					if (!curPiece.empty()) split.push_back(curPiece);
+				}
+				int64_t index = 0;
+				if (split.size() == 2)
+				{
+					if (split[1] == "^") index = -1;
+					else
+					{
+						const NetInt r = ParseNetInt(split[1]);
+						if (!r.ok || r.overflow || r.mag > 0x7FFFFFFF) fail("Failed to parse command: bad index in " + parts[3]);
+						index = r.neg ? -int64_t(r.mag) : int64_t(r.mag);
+					}
+				}
+				else if (split.size() != 1)
+				{
+					fail("Badly malformed update_field command...");
+				}
+				fieldName = split[0];
+				const std::vector<std::string> path(parts.begin() + 4, parts.end() - 1);
+				const std::string& text = parts.back();
+				ClassDef& k = cls(className);
+				Collection& x = node(k, collName);
+				const FieldDef* f = k.field(KeyOf(fieldName));
+				if (!f) fail("the class '" + className + "' does not contain '" + fieldName + "'");
+				ogviOwn(x, *f, fieldName);
+				sc::FieldPath p;
+				p.field = fieldName;
+				if (f->isArray())
+				{
+					const Attribute* a = x.find(f->key);
+					const int64_t n = a ? int64_t(a->count) : 0;
+					if (index == -1) index = n - 1;
+					if (index < 0 || index >= n)
+						fail("update_field command is out of bounds. Checked: 0 <= " + std::to_string(index) + " < " + std::to_string(n));
+					p.steps.push_back({ std::string(), index });
+				}
+				Bytes cur;
+				const ValueType vt = sc::TypeAt(db_, x, p, &cur);
+				if (!st_.names) fail("OGVI mode reads values by VaultLib's classes, from the game's table in data/nfsms, and none is loaded");
+				const std::string typeName = FieldTypeName(x, *f, vt);
+				const PropertyNames::OgviType* ot = st_.names->ogviType(typeName);
+				if (!ot) fail("VaultLib has no class for " + typeName + ", so OGVI can't read this field");
+				const std::string what = className + "[" + fieldName + "]";
+				if (path.empty())
+				{
+					// The value whole: a primitive, a string, or a reference's collection.
+					if (ot->kind.rfind("prim/", 0) == 0 || ot->kind.rfind("enum/", 0) == 0)
+					{
+						const std::string t = ot->kind.rfind("prim/", 0) == 0 ? ot->kind.substr(5) : ot->kind;
+						ogviPut(x, p, 0, OgviPrimitive(t, text), what);
+					}
+					else if (ot->kind == "string")
+					{
+						ogviPut(x, p, 0, ChangeType("string", text), what);
+					}
+					else if (ot->kind == "refspec")
+					{
+						// GCollectionKey and the like are references too: the collection.
+						const int64_t off = vt.kind == TypeKind::ClassRefSpec ? 0 : vt.size >= 24 ? 8 : 4;
+						CsValue v;
+						v.isText = true;
+						v.text = text;
+						if (vt.kind == TypeKind::RefSpec || vt.kind == TypeKind::ClassRefSpec)
+						{
+							ogviPut(x, p, off, v, what);
+						}
+						else
+						{
+							// A key the editor reads as one value (GCollectionKey).
+							v.isText = false;
+							v.width = 4;
+							v.bits = OgviHash(text);
+							learn(text);
+							ogviPut(x, p, 0, v, what);
+						}
+						if (vt.kind == TypeKind::RefSpec || vt.kind == TypeKind::ClassRefSpec)
+							setRefs_.push_back({ x.classKey, x.key, p, line_, lineTop_, depth_, source_, path_, text });
+					}
+					else
+					{
+						fail("cannot handle update for " + what + " (VaultLib's " + ot->cls + " takes a word after the field)");
+					}
+					return;
+				}
+				// A matrix's Data[row,column], counted from 1 (any word before the brackets).
+				if (ot->kind == "matrix" && path.size() == 1)
+				{
+					const std::string& w = path[0];
+					const size_t lb = w.find('['), rb = w.find(']', lb == std::string::npos ? 0 : lb);
+					std::vector<std::string> idx;
+					if (lb != std::string::npos)
+					{
+						const std::string in = w.substr(lb + 1, (rb == std::string::npos ? w.size() : rb) - lb - 1);
+						std::string piece;
+						for (char ch : in)
+						{
+							if (ch == ',')
+							{
+								if (!piece.empty()) idx.push_back(piece);
+								piece.clear();
+							}
+							else piece += ch;
+						}
+						if (!piece.empty()) idx.push_back(piece);
+					}
+					if (idx.size() != 2) fail("invalid matrix access: " + w);
+					const NetInt r = ParseNetInt(idx[0]), c = ParseNetInt(idx[1]);
+					if (!r.ok || !c.ok || r.neg || c.neg) fail("invalid matrix access: " + w);
+					const int64_t at = 4 * (int64_t(r.mag) - 1) + (int64_t(c.mag) - 1);
+					if (at < 0 || at >= 16) fail("Index was outside the bounds of the array: " + w);
+					ogviPut(x, p, at * 4, ChangeType("float", text), what);
+					return;
+				}
+				const PropertyNames::OgviProperty* pr = ogviResolve(*ot, path, vt);
+				const std::string t = pr->type;
+				if (t.rfind("obj/", 0) == 0 || t.back() == ']')
+					fail("Invalid cast from 'System.String' to " + t + " (" + pr->name + " is not one value; " +
+						 (t.back() == ']' ? "Attribulator ignores an index on the last word, so give it as the next word: " +
+						  pr->name.substr(0, pr->name.find('[')) + " 0" : "name one of its parts") + ")");
+				int64_t off = pr->offset;
+				// A StringKey's Value is the string, its hash and text both (Write hashes it).
+				if (ot->kind == "string" && pr->name == "Value") off = 0;
+				if (!pr->path.empty() && vt.st)
+					if (const int64_t ours = PathOffset(vt, pr->path, pr->rest); ours >= 0) off = ours;
+				ogviPut(x, p, off, OgviConvert(t, text), what + " " + pr->name);
+			}
+
+			// PropertyUtils.GetProperty over a VaultLib class: names as written (a
+			// reference's Class and Collection are its ClassKey and CollectionKey), an
+			// index after a name or as a word of its own; the last name is the property
+			// set, whatever index it has, and an element that is one value ends the path.
+			const PropertyNames::OgviProperty* ogviResolve(const PropertyNames::OgviType& ot, const std::vector<std::string>& path,
+														  const ValueType& vt)
+			{
+				std::string cur;                 // the object examined ("" the value itself)
+				std::string curType = "obj/" + ot.cls;
+				bool curRef = ot.kind == "refspec";
+				const PropertyNames::OgviProperty* last = nullptr;
+				const std::string typeName = ot.cls.empty() ? vt.typeName : ot.cls;
+				for (size_t i = 0; i < path.size(); ++i)
+				{
+					const std::string& seg = path[i];
+					std::string name;
+					int64_t index = -1;
+					const NetInt whole = ParseNetInt(seg);
+					if (whole.ok && !whole.neg && !whole.overflow && whole.mag <= 0xFFFF && seg.find_first_not_of("0123456789") == std::string::npos)
+					{
+						index = int64_t(whole.mag);
+					}
+					else
+					{
+						std::vector<std::string> sp;
+						std::string piece;
+						for (char ch : seg)
+						{
+							if (ch == '[' || ch == ']')
+							{
+								if (!piece.empty()) sp.push_back(piece);
+								piece.clear();
+							}
+							else piece += ch;
+						}
+						if (!piece.empty()) sp.push_back(piece);
+						if (sp.size() == 1) name = sp[0];
+						else if (sp.size() == 2)
+						{
+							name = sp[0];
+							const NetInt r = ParseNetInt(sp[1]);
+							if (!r.ok || r.neg || r.overflow || r.mag > 0xFFFF) fail("Input string was not in a correct format: " + seg);
+							index = int64_t(r.mag);
+						}
+						else fail("Cannot parse segment: " + seg);
+					}
+					if (!name.empty())
+					{
+						std::string prop = name;
+						if (curRef) prop = prop == "Collection" ? "CollectionKey" : prop == "Class" ? "ClassKey" : prop;
+						const std::string full = cur.empty() ? prop : cur + "." + prop;
+						const PropertyNames::OgviProperty* p = ot.find(full);
+						if (!p)
+						{
+							std::string have;
+							const size_t depthDots = std::count(full.begin(), full.end(), '.');
+							for (const PropertyNames::OgviProperty& q : ot.properties)
+								if (q.name.rfind(cur.empty() ? "" : cur + ".", 0) == 0 && size_t(std::count(q.name.begin(), q.name.end(), '.')) == depthDots &&
+									q.name.find('[', cur.size()) == std::string::npos && have.size() < 300)
+									have += (have.empty() ? "" : ", ") + q.name.substr(cur.empty() ? 0 : cur.size() + 1);
+							fail("Property not found on type " + (cur.empty() ? typeName : cur) + ": " + prop +
+								 (have.empty() ? std::string() : " (VaultLib's names, as written: " + have + ")"));
+						}
+						if (p->readOnly) fail(typeName + "[" + prop + "] is read-only");
+						last = p;
+						if (i + 1 == path.size()) break;
+						cur = full;
+						curType = p->type;
+						curRef = p->type == "obj/RefSpec" || p->type == "obj/RefSpecPacked" || p->type.find("RefSpec") != std::string::npos;
+					}
+					if (index >= 0)
+					{
+						// A property behind one of VaultLib's pointer containers (a curve's points).
+						if (!curType.empty() && curType.back() == '!')
+							fail(cur + " is a list VaultLib reads through a pointer, which OGVI mode doesn't set yet");
+						const size_t lb = curType.rfind('[');
+						if (lb == std::string::npos || curType.back() != ']') fail("Not working with an array!");
+						if (curType.substr(lb) == "[]")
+							fail(cur + " is a list VaultLib reads through a pointer, which OGVI mode doesn't set yet");
+						const int64_t n = std::strtoll(curType.c_str() + lb + 1, nullptr, 10);
+						if (index >= n)
+							fail("Array index out of bounds (requested " + std::to_string(index) + " but there are " + std::to_string(n) + " elements)");
+						const std::string el = cur + "[" + std::to_string(index) + "]";
+						const std::string et = curType.substr(0, lb);
+						const PropertyNames::OgviProperty* ep = ot.find(el);
+						if (!ep) fail("no bytes known for " + el);
+						// An element that is a primitive or a string ends the path; an enum
+						// isn't one to .NET, and doesn't.
+						if (et.rfind("obj/", 0) != 0 && et.rfind("enum/", 0) != 0) return ep;
+						cur = el;
+						curType = et;
+						curRef = et.find("RefSpec") != std::string::npos;
+						if (i + 1 == path.size()) fail("Object does not match target type (" + el + " is not one value)");
+					}
+				}
+				if (!last) fail("Not working with an array!");
+				return last;
+			}
+
+			// ---- append_array and copy_fields
+
+			void ogviAppend(const std::vector<std::string>& parts)
+			{
+				ClassDef& k = cls(parts[1]);
+				Collection& x = node(k, parts[2]);
+				const FieldDef* f = k.field(KeyOf(parts[3]));
+				if (!f) fail("the class '" + parts[1] + "' does not contain '" + parts[3] + "'");
+				if (!f->isArray()) fail("Field " + parts[1] + "[" + parts[3] + "] is not an array!");
+				const Attribute* a = x.find(f->key);
+				if (!a) fail("Collection " + label(x) + " does not have an entry for " + parts[3] + ".");
+				if (f->inLayout() && a->count >= MaxElements(*a, false)) fail("Cannot append to a full array when it is a layout field");
+				if (a->count + 1 > f->maxCount)
+					fail("Appending to this array would cause it to exceed the maximum number of allowed elements.");
+				const uint32_t n = a->count;
+				sc::Statement r;
+				r.kind = K::Append; // at the end of whatever the array holds, so a converted script appends
+				r.path.field = parts[3];
+				amod(x, { r });
+				if (parts.size() < 5) return;
+				sc::FieldPath p;
+				p.field = parts[3];
+				p.steps.push_back({ std::string(), int64_t(n) });
+				const ValueType vt = sc::TypeAt(db_, x, p);
+				const PropertyNames::OgviType* ot = st_.names ? st_.names->ogviType(FieldTypeName(x, *f, vt)) : nullptr;
+				if (!ot) fail("VaultLib has no class for " + FieldTypeName(x, *f, vt));
+				const std::string& text = parts[4];
+				if (ot->kind.rfind("prim/", 0) == 0 || ot->kind.rfind("enum/", 0) == 0)
+					ogviPut(x, p, 0, OgviPrimitive(ot->kind.rfind("prim/", 0) == 0 ? ot->kind.substr(5) : ot->kind, text), parts[3]);
+				else if (ot->kind == "string")
+					ogviPut(x, p, 0, ChangeType("string", text), parts[3]);
+				else if (ot->kind == "refspec")
+				{
+					CsValue v;
+					v.isText = true;
+					v.text = text;
+					ogviPut(x, p, vt.kind == TypeKind::ClassRefSpec ? 0 : 4, v, parts[3]);
+				}
+				else
+					fail("Object stored in " + parts[1] + "[" + parts[3] + "] is not a simple type and cannot be used in a value-append command");
+			}
+
+			// copy_fields: base copies the layout, optional the source's own values the
+			// target lacks, and optional with overwrite all of them (overwrite alone
+			// does nothing), as Attribulator does.
+			void ogviCopyFields(const Command& c)
+			{
+				ClassDef& k = cls(c.args[0]);
+				Collection& from = node(k, c.args[1]);
+				Collection& to = node(k, c.args[2]);
+				bool base = false, optional = false, overwrite = false;
+				size_t b = 0;
+				const std::string& o = c.args[3];
+				while (b <= o.size())
+				{
+					size_t e = o.find('|', b);
+					if (e == std::string::npos) e = o.size();
+					const std::string w = o.substr(b, e - b);
+					base |= w == "base";
+					optional |= w == "optional";
+					overwrite |= w == "overwrite";
+					b = e + 1;
+				}
+				std::vector<sc::Statement> body;
+				if (base)
+					for (const Attribute& a : from.attributes)
+						if (a.inLayout)
+							for (sc::Statement& s : sc::ExportValue(db_, from, a.key).body) body.push_back(std::move(s));
+				if (optional)
+					for (const Attribute& a : from.attributes)
+						if (!a.inLayout && (!to.find(a.key) || overwrite))
+							for (sc::Statement& s : sc::ExportValue(db_, from, a.key).body) body.push_back(std::move(s));
+				if (!body.empty()) amod(to, std::move(body));
+			}
+
 			// ---- NFS-VltEd compatible runs
 
 			// A value command on an array slot past the count but held (below the
@@ -3266,6 +4658,7 @@ namespace attrib::nfsms
 			// WordsLeadTo: update's path, without setting anything.
 			sc::FieldPath lead(Collection& x, const std::string& field, const std::vector<std::string>& words, std::string* partName)
 			{
+				if (!st_.vltEd) return ogviLead(x, field, words, partName);
 				sc::FieldPath p = fieldPath(x, field);
 				RefPart part = RefPart::Whole;
 				vaultLibHead_.clear();
@@ -3274,6 +4667,52 @@ namespace attrib::nfsms
 				sc::TypeAt(db_, x, p);
 				if (partName)
 					*partName = part == RefPart::Class ? "class" : part == RefPart::Collection ? "collection" : part == RefPart::Data ? "data" : "";
+				return p;
+			}
+
+			// OGVI mode: where update_field's words lead, as ogviUpdate would write them:
+			// the member of ours at the property's bytes.
+			sc::FieldPath ogviLead(Collection& x, const std::string& field, const std::vector<std::string>& words, std::string* partName)
+			{
+				std::vector<std::string> parts = { "update_field", name(x.classKey), name(x.key), field };
+				for (const std::string& w : words) parts.push_back(w);
+				parts.push_back("0");
+				const std::string fieldName = field.substr(0, field.find('['));
+				sc::FieldPath p = fieldPath(x, field);
+				const FieldDef* f = x.cls ? x.cls->field(KeyOf(fieldName)) : nullptr;
+				if (f && f->isArray() && p.steps.empty()) p.steps.push_back({ std::string(), 0 });
+				Bytes cur;
+				const ValueType vt = sc::TypeAt(db_, x, p, &cur);
+				if (words.empty()) return p;
+				const PropertyNames::OgviType* ot = st_.names && f ? st_.names->ogviType(FieldTypeName(x, *f, vt)) : nullptr;
+				if (!ot) fail("VaultLib has no class for " + vt.typeName);
+				int64_t off = 0;
+				if (ot->kind == "matrix" && words.size() == 1)
+				{
+					const std::string& w = words[0];
+					const size_t lb = w.find('['), cm = w.find(',', lb);
+					if (lb == std::string::npos || cm == std::string::npos) fail("invalid matrix access: " + w);
+					off = 4 * (4 * (std::strtoll(w.c_str() + lb + 1, nullptr, 10) - 1) + std::strtoll(w.c_str() + cm + 1, nullptr, 10) - 1);
+				}
+				else
+				{
+					const PropertyNames::OgviProperty* pr = ogviResolve(*ot, words, vt);
+					off = pr->offset;
+					if (ot->kind == "string" && pr->name == "Value") off = 0;
+					if (!pr->path.empty() && vt.st)
+						if (const int64_t ours = PathOffset(vt, pr->path, pr->rest); ours >= 0) off = ours;
+					if (partName && vt.kind == TypeKind::RefSpec) *partName = off == 0 ? "class" : off == 4 ? "collection" : "";
+				}
+				std::vector<OLeaf> leaves;
+				std::vector<sc::FieldPath::Step> steps;
+				ogviLeaves(vt, 0, steps, leaves);
+				for (const OLeaf& l : leaves)
+					if (int64_t(l.off) <= off && off < int64_t(l.off + std::max<uint32_t>(l.size, 1)))
+					{
+						if (partName && l.part != RefPart::Whole) *partName = l.part == RefPart::Class ? "class" : "collection";
+						p.steps.insert(p.steps.end(), l.steps.begin(), l.steps.end());
+						return p;
+					}
 				return p;
 			}
 
@@ -3404,20 +4843,24 @@ namespace attrib::nfsms
 			std::vector<const Control*> buttons;
 			for (const Control& c : script.controls)
 				if (c.kind == Control::Kind::Radio && c.group == group) buttons.push_back(&c);
-			// The buttons' texts, unless two are the same; nothing chosen at first, as in NFS-VltEd.
+			// The buttons' texts, unless two are the same. Nothing chosen at first in
+			// NFS-VltEd mode, as in NFS-VltEd; the first button in OGVI mode, as in OGVI.
 			std::set<std::string> labels;
 			for (const Control* c : buttons) labels.insert(c->label);
 			const bool byLabel = labels.size() == buttons.size() && !labels.count("(none)");
-			std::string choices = "\"(none)\"";
+			std::string choices = settings.vltEd ? "\"(none)\"" : "";
+			std::string first;
 			for (const Control* c : buttons)
 			{
 				const std::string text = byLabel ? c->label : c->name;
 				opts.choices[{group, c->name}] = text;
-				choices += ", " + sc::Quote(text);
+				choices += (choices.empty() ? "" : ", ") + sc::Quote(text);
+				if (first.empty()) first = text;
 			}
 			const std::string id = idFor(group);
 			opts.groups[group] = id;
-			options += "option " + id + " choice " + sc::Quote(lastText.empty() ? group : lastText) + " choices [" + choices + "] default \"(none)\"\n";
+			options += "option " + id + " choice " + sc::Quote(lastText.empty() ? group : lastText) + " choices [" + choices + "] default " +
+				sc::Quote(settings.vltEd ? std::string("(none)") : first) + "\n";
 		}
 		while (!description.empty() && (description.back() == '\n' || description.back() == ' ')) description.pop_back();
 
@@ -3785,6 +5228,17 @@ namespace attrib::nfsms
 							out.push_back("# " + b.path.text() + " " + b.op + "= can't be written in nfsms");
 							return;
 						}
+						if (!vltEd_)
+						{
+							// OGVI needs a value of the node's own too (GetRawValue): add_field first.
+							const size_t at0 = out.size();
+							if (ogviLines(t, b, head))
+							{
+								const ClassDef* k0 = db_.findClass(KeyOf(nameOf(t.cls)));
+								if (const FieldDef* f0 = k0 ? k0->field(KeyOf(nameOf(b.path.field))) : nullptr) addField(head, *f0, b, at0);
+								return;
+							}
+						}
 						// The field token takes an array's index; members (and a vector's
 						// or matrix's components) follow as properties.
 						std::string field = Token(nameOf(b.path.field));
@@ -3952,13 +5406,16 @@ namespace attrib::nfsms
 								if (const Attribute* a = x->find(f.key)) count = a->count;
 					if (count < 0 && !b.path.steps.empty() && b.path.steps[0].member.empty()) count = b.path.steps[0].index + 1;
 					if (count < 0) count = 0;
-					line += " " + std::to_string(count);
+					// Attribulator's add_field refuses a count past the definition's (0 for
+					// many): OGVI adds it empty, and resize_field gives the length.
+					const bool ogviResize = !vltEd_ && count > int64_t(f.maxCount);
+					if (!ogviResize) line += " " + std::to_string(count);
 					const std::string resize = "resize_field " + head + " " + field + " " + std::to_string(count);
 					const bool resized = at < out.size() && out[at] == resize;
 					// add_field gives it that length already; NFS-VltEd's gives it the class's
 					// default collection's count, so there the resize stays.
-					if (resized && !vltEd_) out.erase(out.begin() + std::ptrdiff_t(at));
-					if (!resized && vltEd_) out.insert(out.begin() + std::ptrdiff_t(at), resize);
+					if (resized && !vltEd_ && !ogviResize) out.erase(out.begin() + std::ptrdiff_t(at));
+					if (!resized && (vltEd_ || ogviResize)) out.insert(out.begin() + std::ptrdiff_t(at), resize);
 				}
 				out.insert(out.begin() + std::ptrdiff_t(at), line);
 				added_.insert(f.key);
@@ -4360,6 +5817,372 @@ namespace attrib::nfsms
 			mutable std::optional<std::string> wideValue_;
 
 			// The kind of value a path leads to in the target, or Unknown.
+			// OGVI mode: a value as lines OGVI reads back. Each VaultLib property whose
+			// bytes the statement covers, by its name (Reaction ClassKey, ValueMin 1,
+			// Data[1,2]), its value read from the database as its C# type takes it: a
+			// uint as a number (a name would be hashed), a negative int property in hex
+			// (OGVI hashes "-1" as a name), an enum by VaultLib's name for it.
+			bool ogviLines(const sc::Target& t, const sc::Statement& b, const std::string& head)
+			{
+				if (!names_) return false;
+				Database& db = const_cast<Database&>(db_);
+				const ClassDef* k = db.findClass(KeyOf(nameOf(t.cls)));
+				Collection* x = k ? db.findCollection(k->key, KeyOf(nameOf(t.name))) : nullptr;
+				const FieldDef* f = k ? k->field(KeyOf(nameOf(b.path.field))) : nullptr;
+				if (!x || !f) return false;
+				sc::FieldPath base;
+				base.field = nameOf(b.path.field);
+				std::string field = Token(base.field);
+				size_t i = 0;
+				if (f->isArray())
+				{
+					if (b.path.steps.empty() || !b.path.steps[0].member.empty())
+					{
+						// The whole array: its length when that changed, then each element.
+						const uint32_t n = lengthNow(t, *f);
+						const ClassDef* bk = before_ ? before_->findClass(k->key) : nullptr;
+						const Collection* was = bk ? before_->findCollection(bk->key, x->key) : nullptr;
+						const Attribute* wa = was ? was->find(f->key) : nullptr;
+						if (!wa || wa->count != n) out.push_back("resize_field " + head + " " + field + " " + std::to_string(n));
+						for (uint32_t e = 0; e < n; ++e)
+						{
+							sc::Statement one = b;
+							one.path.steps.insert(one.path.steps.begin(), { std::string(), int64_t(e) });
+							ogviLines(t, one, head);
+						}
+						return true;
+					}
+					int64_t index = b.path.steps[0].index;
+					if (index < 0) index += int64_t(lengthNow(t, *f));
+					base.steps.push_back({ std::string(), index });
+					field += "[" + std::to_string(index) + "]";
+					i = 1;
+				}
+				Bytes cur;
+				ValueType vt;
+				try
+				{
+					vt = sc::TypeAt(db, *x, base, &cur);
+				}
+				catch (const std::exception&)
+				{
+					return false;
+				}
+				const Attribute* fa = x->resolve(f->key);
+				const std::string typeName = fa && fa->type ? fa->type->name : vt.typeName;
+				const PropertyNames::OgviType* ot = names_->ogviType(typeName);
+				const std::string line = "update_field " + head + " " + field;
+				if (!ot)
+				{
+					out.push_back("# " + line + ": VaultLib has no class for " + typeName + ", so OGVI can't set it");
+					return true;
+				}
+				const Endian e = x->vault ? x->vault->raw.endian : Endian::Little;
+				// The bytes the statement covers, in our layout.
+				uint32_t from = 0, to = uint32_t(cur.size());
+				{
+					ValueType at = vt;
+					uint32_t off = 0;
+					for (; i < b.path.steps.size(); ++i)
+					{
+						const auto& st = b.path.steps[i];
+						if (!st.member.empty())
+						{
+							const MemberDef* m = nullptr;
+							if (at.st)
+								for (const MemberDef& mm : at.st->members)
+									if (mm.name == st.member) m = &mm;
+							if (!m) break;
+							off += m->offset;
+							at = TypeOfMember(*m);
+							if (m->count > 1 && i + 1 < b.path.steps.size() && b.path.steps[i + 1].member.empty())
+							{
+								off += uint32_t(b.path.steps[i + 1].index) * m->elemSize;
+								++i;
+							}
+							else if (m->count > 1)
+							{
+								at.size = m->count * m->elemSize;
+							}
+						}
+						else if (at.kind == TypeKind::Matrix && i + 1 < b.path.steps.size())
+						{
+							off += uint32_t(16 * st.index + 4 * b.path.steps[i + 1].index);
+							at.kind = TypeKind::Float;
+							at.size = 4;
+							++i;
+						}
+						else
+						{
+							const uint32_t w = at.kind == TypeKind::Matrix ? 16 : 4;
+							off += uint32_t(st.index) * w;
+							at.kind = TypeKind::Float;
+							at.size = w;
+						}
+					}
+					if (i == b.path.steps.size())
+					{
+						from = off;
+						to = at.size ? off + at.size : uint32_t(cur.size());
+					}
+				}
+				// A C# value's bits from our bytes: each byte from our member there, as the PC holds it.
+				std::vector<OgviLeafOf> leaves = LeavesOf(vt);
+				auto bitsAt = [&](uint32_t o, uint32_t width)
+				{
+					uint64_t v = 0;
+					for (uint32_t bp = o; bp < o + width; ++bp)
+						for (const OgviLeafOf& l : leaves)
+							if (bp >= l.off && bp < l.off + l.size)
+							{
+								uint64_t m = 0;
+								for (uint32_t j = 0; j < l.size && l.off + j < cur.size(); ++j)
+									m |= uint64_t(cur[l.off + (e == Endian::Big ? l.size - 1 - j : j)]) << (8 * j);
+								v |= ((m >> (8 * (bp - l.off))) & 0xFF) << (8 * (bp - o));
+								break;
+							}
+					return v;
+				};
+				auto keyAt = [&](uint32_t o) -> uint32_t
+				{
+					// A key of 8 bytes (64-bit keys): the model's 32-bit key for it.
+					for (const OgviLeafOf& l : leaves)
+						if (l.off == o && l.size == 8) return db_.keyFrom64(bitsAt(o, 8));
+					return uint32_t(bitsAt(o, 4));
+				};
+				auto keyText = [&](uint32_t key) -> std::string
+				{
+					if (!key) return "\"\"";
+					const std::string* n = db_.names().find(key);
+					return n ? Token(*n) : Hex32(key);
+				};
+				auto format = [&](const std::string& type, uint64_t bits, bool property) -> std::string
+				{
+					const uint32_t w = type == "bool" || type == "byte" || type == "sbyte" ? 1 : type == "short" || type == "ushort" ? 2
+						: type == "long" || type == "ulong" || type == "double" ? 8 : 4;
+					const int64_t sv = w == 8 ? int64_t(bits) : int64_t(bits << (64 - 8 * w)) >> (64 - 8 * w);
+					if (type == "float")
+					{
+						const uint32_t u = uint32_t(bits);
+						float fl;
+						std::memcpy(&fl, &u, 4);
+						return NetNumber(sc::NumberText(fl, true));
+					}
+					if (type == "double")
+					{
+						double d;
+						std::memcpy(&d, &bits, 8);
+						return NetNumber(sc::NumberText(d));
+					}
+					if (type == "bool") return bits ? "True" : "False";
+					if (type == "int" && property && sv < 0) return Hex32(uint32_t(bits)); // "-1" would be a name to OGVI
+					if (type == "sbyte" || type == "short" || type == "int" || type == "long") return std::to_string(sv);
+					if (type.rfind("enum/", 0) == 0)
+					{
+						auto it = names_->ogviEnums.find(type.substr(5));
+						if (it != names_->ogviEnums.end())
+						{
+							const bool sign = it->second.base == "int" || it->second.base == "short" || it->second.base == "sbyte" || it->second.base == "long";
+							const uint32_t ew = it->second.base == "byte" || it->second.base == "sbyte" ? 1 : it->second.base == "short" || it->second.base == "ushort" ? 2
+								: it->second.base == "long" || it->second.base == "ulong" ? 8 : 4;
+							const int64_t ev = sign ? (ew == 8 ? int64_t(bits) : int64_t(bits << (64 - 8 * ew)) >> (64 - 8 * ew)) : int64_t(bits);
+							for (const auto& [n, val] : it->second.values)
+								if (val == ev) return n;
+							return std::to_string(ev);
+						}
+						return std::to_string(sv);
+					}
+					return std::to_string(bits);
+				};
+				auto words = [](const std::string& name)
+				{
+					// Reaction.ClassKey -> Reaction ClassKey; a last index as a word of its own.
+					std::vector<std::string> ws;
+					size_t b0 = 0;
+					while (b0 <= name.size())
+					{
+						size_t e0 = name.find('.', b0);
+						if (e0 == std::string::npos) e0 = name.size();
+						ws.push_back(name.substr(b0, e0 - b0));
+						b0 = e0 + 1;
+					}
+					const size_t lb = ws.back().find('[');
+					if (lb != std::string::npos)
+					{
+						const std::string idx = ws.back().substr(lb + 1, ws.back().size() - lb - 2);
+						ws.back().erase(lb);
+						ws.push_back(idx);
+					}
+					std::string s;
+					for (const std::string& w : ws) s += " " + w;
+					return s;
+				};
+				const std::string& kind = ot->kind;
+				if (kind.rfind("prim/", 0) == 0 || kind.rfind("enum/", 0) == 0)
+				{
+					const std::string type = kind.rfind("prim/", 0) == 0 ? kind.substr(5) : kind;
+					if (type == "string")
+					{
+						if (b.value && (b.value->kind == sc::Value::Kind::String || b.value->kind == sc::Value::Kind::Word))
+						{
+							if (b.value->text.find('"') != std::string::npos) out.push_back("# " + line + ": OGVI can't read a text holding \"");
+							else out.push_back(line + " " + Token(b.value->text));
+						}
+						return true;
+					}
+					const uint32_t w = type.rfind("enum/", 0) == 0 ? 4 : uint32_t(std::max<size_t>(1, type == "bool" || type == "byte" || type == "sbyte" ? 1 : type == "short" || type == "ushort" ? 2 : type == "long" || type == "ulong" || type == "double" ? 8 : 4));
+					out.push_back(line + " " + format(type, bitsAt(0, std::min<uint32_t>(w, uint32_t(cur.size()))), false));
+					return true;
+				}
+				if (kind == "string")
+				{
+					if (b.value && b.value->kind == sc::Value::Kind::String)
+					{
+						if (b.value->text.find('"') != std::string::npos) out.push_back("# " + line + ": OGVI can't read a text holding \"");
+						else out.push_back(line + " " + Token(b.value->text));
+					}
+					return true;
+				}
+				if (kind == "refspec")
+				{
+					if (vt.kind == TypeKind::RefSpec)
+					{
+						const uint32_t w = vt.size >= 24 ? 8 : 4;
+						if (from < w) out.push_back(line + " ClassKey " + keyText(keyAt(0)));
+						if (to > w && from < 2 * w) out.push_back(line + " CollectionKey " + keyText(keyAt(w)));
+					}
+					else
+					{
+						out.push_back(line + " " + keyText(uint32_t(bitsAt(0, 4))));
+					}
+					return true;
+				}
+				if (kind == "matrix")
+				{
+					for (uint32_t el = from / 4; el < (to + 3) / 4 && el < 16; ++el)
+						out.push_back(line + " Data[" + std::to_string(el / 4 + 1) + "," + std::to_string(el % 4 + 1) + "] " + format("float", bitsAt(4 * el, 4), true));
+					return true;
+				}
+				bool any = false;
+				for (const PropertyNames::OgviProperty& p : ot->properties)
+				{
+					if (p.offset < 0 || p.type.rfind("obj/", 0) == 0 || p.type.back() == ']') continue;
+					const std::string type = p.type;
+					const uint32_t w = type == "bool" || type == "byte" || type == "sbyte" ? 1 : type == "short" || type == "ushort" ? 2
+						: type == "long" || type == "ulong" || type == "double" ? 8 : type.rfind("enum/", 0) == 0 ? EnumWidth(type) : 4;
+					int64_t o = p.offset;
+					if (!p.path.empty() && vt.st)
+					{
+						const int64_t ours = PathOffsetOf(vt, p.path, p.rest);
+						if (ours >= 0) o = ours;
+					}
+					if (uint32_t(o) >= to || uint32_t(o) + w <= from || uint32_t(o) + w > cur.size()) continue;
+					if (p.readOnly) continue;
+					any = true;
+					std::string val;
+					if (type == "string")
+					{
+						// A RefSpec's part or a key: its name. A text (a Text's pointer) is written from the statement.
+						bool text = false;
+						for (const OgviLeafOf& l : leaves)
+							if (l.off == uint32_t(o) && !l.size) text = true;
+						if (text)
+						{
+							if (!b.value || b.value->kind != sc::Value::Kind::String) continue;
+							val = Token(b.value->text);
+						}
+						else
+						{
+							val = keyText(keyAt(uint32_t(o)));
+						}
+					}
+					else
+					{
+						val = format(type, bitsAt(uint32_t(o), w), true);
+					}
+					out.push_back(line + words(p.name) + " " + val);
+				}
+				if (!any) out.push_back("# " + line + ": no VaultLib property of " + ot->cls + " covers " + b.path.text() + ", so OGVI can't set it");
+				return true;
+			}
+			uint32_t EnumWidth(const std::string& type) const
+			{
+				auto it = names_->ogviEnums.find(type.substr(5));
+				if (it == names_->ogviEnums.end()) return 4;
+				const std::string& b = it->second.base;
+				return b == "byte" || b == "sbyte" ? 1 : b == "short" || b == "ushort" ? 2 : b == "long" || b == "ulong" ? 8 : 4;
+			}
+			struct OgviLeafOf
+			{
+				uint32_t off = 0, size = 0;
+			};
+			// Our scalars in a value, as the runner's ogviLeaves has them (by offset only).
+			static void LeafWalk(const ValueType& vt, uint32_t base, std::vector<OgviLeafOf>& out, int depth)
+			{
+				if (depth > 12) return;
+				switch (vt.kind)
+				{
+					case TypeKind::Struct:
+						if (!vt.st) return;
+						for (const MemberDef& m : vt.st->members)
+						{
+							if (m.prim == MemberPrim::Ptr || m.isBitfield()) continue;
+							const ValueType mt = TypeOfMember(m);
+							for (uint32_t i = 0; i < std::max<uint32_t>(m.count, 1); ++i) LeafWalk(mt, base + m.offset + i * m.elemSize, out, depth + 1);
+						}
+						return;
+					case TypeKind::RefSpec:
+					{
+						const uint32_t w = vt.size >= 24 ? 8 : 4;
+						out.push_back({ base, w });
+						out.push_back({ base + w, w });
+						return;
+					}
+					case TypeKind::Curve:
+						for (uint32_t i = 0; i < 4; ++i) out.push_back({ base + 4 * i, 4 });
+						return;
+					case TypeKind::ClassRefSpec: out.push_back({ base, 4 }); return;
+					case TypeKind::Vector2: case TypeKind::Vector3: case TypeKind::Vector4: case TypeKind::Quaternion: case TypeKind::FloatColour:
+					case TypeKind::Matrix:
+						for (uint32_t i = 0; i < vt.size / 4; ++i) out.push_back({ base + 4 * i, 4 });
+						return;
+					case TypeKind::StringKey:
+						// Its text pointer too: VaultLib reads a Text there behind a string property.
+						out.push_back({ base, 0 });
+						if (vt.size >= 8) out.push_back({ base + vt.size - 4, 0 });
+						return;
+					case TypeKind::Text: case TypeKind::Blob:
+						out.push_back({ base, 0 });
+						return;
+					default:
+						if (vt.size && vt.size <= 8) out.push_back({ base, vt.size });
+						return;
+				}
+			}
+			static std::vector<OgviLeafOf> LeavesOf(const ValueType& vt)
+			{
+				std::vector<OgviLeafOf> out;
+				LeafWalk(vt, 0, out, 0);
+				return out;
+			}
+			static int64_t PathOffsetOf(const ValueType& vt, const std::vector<PropertyNames::Step>& path, uint32_t rest)
+			{
+				const StructDef* st = vt.st;
+				int64_t off = 0;
+				for (const PropertyNames::Step& s : path)
+				{
+					if (!st) return -1;
+					const MemberDef* m = nullptr;
+					for (const MemberDef& mm : st->members)
+						if (mm.name == s.member) m = &mm;
+					if (!m) return -1;
+					off += m->offset + (s.index >= 0 ? s.index * int64_t(m->elemSize) : 0);
+					// A struct the editor reads as one value (type_bStringHash's hash) still has its member.
+					st = m->st;
+				}
+				return off + rest;
+			}
+
 			TypeKind kindAt(const sc::Target& t, sc::FieldPath p) const
 			{
 				const ClassDef* k = db_.findClass(KeyOf(nameOf(t.cls)));

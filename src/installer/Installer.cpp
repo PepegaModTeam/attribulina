@@ -206,8 +206,10 @@ namespace installer
 		if (vltEd_ == on) return;
 		vltEd_ = on;
 		saveSettings();
-		post(Level::Info, on ? "nfsms scripts run NFS-VltEd compatible again, as NFS-VltEd 4.6 reads them."
-			: "NFS-VltEd compatible is off: nfsms scripts read our member names and VaultLib's before NFS-VltEd's words, as the editor's own reading does.");
+		// The setup starts as the mode's tool shows it (OGVI checks each group's first button).
+		if (mod_ && mod_->isNfsms && !finished()) choices_ = ns::DefaultChoices(mod_->nfsms, !vltEd_);
+		post(Level::Info, on ? "NFS-VltEd compatible is on: nfsms scripts run in NFS-VltEd mode, as NFS-VltEd 4.6 runs them."
+			: "NFS-VltEd compatible is off: nfsms scripts run in OGVI mode, as OGVI and the community Attribulator run them.");
 	}
 
 	void Installer::rememberGame(const std::string& folder)
@@ -498,7 +500,7 @@ namespace installer
 		if (!mod_) return;
 		if (mod_->isNfsms)
 		{
-			choices_ = ns::DefaultChoices(mod_->nfsms);
+			choices_ = ns::DefaultChoices(mod_->nfsms, !vltEd_);
 			return;
 		}
 		for (const auto& [id, v] : sc::ResolveOptions(mod_->amod, {})) options_[id] = v->text;
@@ -754,7 +756,8 @@ namespace installer
 		post(Level::Info, "Installing " + mod.title + " (" + mod.path + ") into " + game.folder.game);
 		if (mod.isNfsms)
 		{
-			post(Level::Info, st.vltEd ? "  read as NFS-VltEd 4.6 reads it (NFS-VltEd compatible)" : "  read the editor's own way (NFS-VltEd compatible is off)");
+			post(Level::Info, st.vltEd ? "  run in NFS-VltEd mode, as NFS-VltEd 4.6 runs it (NFS-VltEd compatible is on)"
+								: "  run in OGVI mode, as OGVI runs it (NFS-VltEd compatible is off)");
 			for (const auto& [name, on] : st.choices.checkboxes) post(Level::Info, "  " + name + ": " + (on ? "on" : "off"));
 			for (const auto& [group, name] : st.choices.radios) post(Level::Info, "  " + group + ": " + name);
 		}
@@ -1291,8 +1294,8 @@ namespace installer
 			if (!mod_->version.empty()) by += (by.empty() ? "version " : ", version ") + mod_->version;
 			if (!by.empty()) ImGui::TextDisabled("%s", by.c_str());
 			ImGui::TextDisabled("%s", !mod_->isNfsms ? "An Attribulina mod script."
-				: vltEd_ ? "An nfsms script, run as NFS-VltEd 4.6 runs it."
-				: "An nfsms script, run the editor's own way (NFS-VltEd compatible is off in Advanced Options).");
+				: vltEd_ ? "An nfsms script, run in NFS-VltEd mode, as NFS-VltEd 4.6 runs it."
+				: "An nfsms script, run in OGVI mode, as OGVI runs it (NFS-VltEd compatible is off in Advanced Options).");
 			if (!mod_->isNfsms)
 				if (const auto t = ParseScriptTarget(mod_->amod.meta("game"))) ImGui::TextDisabled("Written for %s.", t->name().c_str());
 			if (!mod_->description.empty())
@@ -1417,8 +1420,8 @@ namespace installer
 		if (!mod_) return;
 		if (mod_->isNfsms)
 		{
-			ImGui::TextDisabled("%s", vltEd_ ? "nfsms scripts run as NFS-VltEd 4.6 runs them."
-				: "nfsms scripts run the editor's own way (NFS-VltEd compatible is off in Advanced Options).");
+			ImGui::TextDisabled("%s", vltEd_ ? "nfsms scripts run in NFS-VltEd mode, as NFS-VltEd 4.6 runs them."
+				: "nfsms scripts run in OGVI mode, as OGVI runs them (NFS-VltEd compatible is off in Advanced Options).");
 			ImGui::Spacing();
 			if (!mod_->nfsms.hasSetup())
 			{
@@ -1713,9 +1716,10 @@ namespace installer
 		bool vltEd = vltEd_;
 		if (app::Checkbox("NFS-VltEd compatible", &vltEd)) setVltEd(vltEd);
 		ImGui::EndDisabled();
-		ImGui::TextDisabled("On (the default), nfsms scripts run as NFS-VltEd 4.6 runs them: its words for the parts of values, "
-			"its value widths and its quirks, which the mods were made for. Off, they run as the editor's nfsms window runs them "
-			"with its switch off: our member names and VaultLib's come before NFS-VltEd's words. Mod scripts don't change.");
+		ImGui::TextDisabled("On (the default): NFS-VltEd mode. nfsms scripts run as NFS-VltEd 4.6 runs them: its words for the "
+			"parts of values, its value widths, its setup and its quirks, for mods made with NFS-VltEd. Off: OGVI mode. They run as "
+			"OGVI and the community Attribulator run them: their commands, VaultLib's names and value types, and OGVI's setup, "
+			"for mods made with OGVI. Mod scripts don't change.");
 		ImGui::PopTextWrapPos();
 		ImGui::EndPopup();
 	}

@@ -28,7 +28,7 @@ from decode import decode_class  # noqa: E402
 import registry  # noqa: E402
 from schema import Schema, from_gen  # noqa: E402
 import typetable  # noqa: E402
-import vaultlib  # noqa: E402
+import ogvi  # noqa: E402
 
 SCHEMAS = os.path.join(REPO, 'data', 'schema')
 
@@ -464,24 +464,54 @@ end"""
                                                   key=lambda kv: kv[0].lower()):
             blocks.append(self.block(t, reg, conf, why, others))
         blocks.append(self.model_block())
-        vl = vaultlib.blocks(self.sch, self.game)
-        self.stats['vaultlib'] = sum(b.count('\n  ') - b.count('\n  #') for b in vl)
-        return (self.header() + '\n' + '\n\n'.join(blocks) + '\n\n' + self.vaultlib_header() + '\n\n' +
-                '\n\n'.join(vl) + '\n')
+        ob, missing = ogvi.blocks(self.sch, self.game, self.field_types())
+        self.stats['ogvi'] = sum(1 for x in ob if x.startswith('ogvi '))
+        self.stats['ogvi_missing'] = missing
+        return (self.header() + '\n' + '\n\n'.join(blocks) + '\n\n' + self.ogvi_header() + '\n\n' +
+                '\n\n'.join(ob) + '\n')
 
-    def vaultlib_header(self):
+    def field_types(self):
+        """The types the game's fields have, from its PC class lists (World's betas: theirs)."""
+        names = {'MW': ['mw_pc'], 'C': ['carbon_pc'], 'PS': ['prostreet_pc'], 'UC': ['undercover_pc'],
+                 'WB': ['world_pc_2009_beta', 'world_pc_2010_beta']}
+        files = [os.path.join(REPO, 'data', 'classes', n + '.txt') for n in names.get(self.game, [])]
+        if self.game == 'W':
+            d = os.path.join(REPO, 'data', 'classes')
+            files = [os.path.join(d, f) for f in sorted(os.listdir(d)) if f.startswith('world_pc') and 'beta' not in f]
+        out = set()
+        for f in files:
+            for line in open(f):
+                p = line.split()
+                if len(p) >= 3 and p[0] in ('layout', 'entry', 'static'):
+                    out.add(re.sub(r'\[.*$', '', p[2]))
+        return out
+
+    def ogvi_header(self):
         paras = [
-            "VaultLib's names (quirk-analysis/VaultLib, heyitsleo's library, which the community "
-            "Attribulator's mod scripts and OGVI use) for the parts of %s values whose name isn't our "
-            "member's, case and an m prefix aside: scripts/nfsms/vaultlib.py reads each class's Read "
-            "method for the bytes a name reads and gives our member there. Attribulina's own reading "
-            "takes them after our member names and before NFS-VltEd's words; NFS-VltEd compatible runs "
-            "never do. A VaultLib name that is one of our member names at other bytes isn't taken, and "
-            "neither are the type's other names then." % self.cfg['name'],
+            "OGVI's reading of %s values (NFS-VltEd compatible off): the classes VaultLib "
+            "(quirk-analysis/VaultLib, heyitsleo's library, which OGVI and the community Attribulator "
+            "are built on) registers for each type the game's fields have, as scripts/nfsms/ogvi.py "
+            "reads them. Attribulator's update_field takes the words after the field as those C# "
+            "property names, exactly as written, and converts the value by the property's C# type "
+            "(doc/nfsms.md, \"OGVI\")." % self.cfg['name'],
+            "Each property is listed down to the C# primitives, an object's parts as Name.Part and an "
+            "array's elements as Name[i], at the byte VaultLib's Read method reads it from in the PC's "
+            "layout. The path after it names our member there, as the words above do; without one the "
+            "bytes go over our members at that offset. A property Read doesn't fill has - for its "
+            "offset; ro marks one without a public setter, which Attribulator refuses.",
         ]
-        fmt = '''vaultlib <AttribSys type name>
-  <VaultLib name>[.<part>] <path>   a part of one of its properties: Attribulator's next word
-end'''
+        fmt = '''ogvi <AttribSys type name> <kind> <C# class>
+                         <kind>: prim/<C# type>, enum/<C# enum>, refspec, string (IStringValue),
+                         matrix, colour or struct
+  <property> <offset>|- :<C# type> [<path>] [ro]
+end
+ogvienum <C# enum> <C# underlying type>
+  <name> <value>
+end
+
+<C# type>: bool, sbyte, byte, short, ushort, int, uint, long, ulong, float, double,
+string (a RefSpec's part, hashed, or a Text), enum/<name>, obj/<class> (an object,
+its parts follow), <type>[<n>] (an array, its elements follow)'''
         wrap = lambda p: textwrap.fill(p, width=84, initial_indent='# ', subsequent_indent='# ', break_on_hyphens=False)
         return '\n#\n'.join([wrap(p) for p in paras] + ['\n'.join('# ' + l for l in fmt.split('\n'))])
 
@@ -551,11 +581,13 @@ def main():
         with open(path, 'w', newline='\n') as f:
             f.write(text)
         s = tab.stats
-        print('wrote %s: %d types, %d words, %d types with a path, %d VaultLib names, %s' % (
-            os.path.relpath(path, REPO), s['types'], s['words'], s['with_path'], s['vaultlib'],
+        print('wrote %s: %d types, %d words, %d types with a path, %d OGVI types, %s' % (
+            os.path.relpath(path, REPO), s['types'], s['words'], s['with_path'], s['ogvi'],
             ', '.join('%s %d' % kv for kv in sorted(s['conf'].items()))))
         for x in s['plus']:
             print('  +N path:', x)
+        if s['ogvi_missing']:
+            print('  no VaultLib class for:', ', '.join(s['ogvi_missing']))
         for x in s['failures']:
             print('  not on %s: %s %s %s' % (x[1], x[2], x[3], x[4]))
         for x in s['sizes']:

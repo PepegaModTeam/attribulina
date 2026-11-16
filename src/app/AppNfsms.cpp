@@ -237,10 +237,10 @@ namespace app
 		ns::Script s = ns::Parse(nfsmsTextOf(file), source, nfsmsFolderOf(file)); // bad lines are reported as they run
 		s.path = file;
 		// Choices made for another script don't carry over.
-		if (nfsmsChoicesFor_ != source + "|" + std::to_string(s.controls.size()))
+		if (nfsmsChoicesFor_ != source + "|" + std::to_string(s.controls.size()) + (nfsmsVltEd_ ? "|v" : "|o"))
 		{
-			nfsmsChoices_ = ns::DefaultChoices(s);
-			nfsmsChoicesFor_ = source + "|" + std::to_string(s.controls.size());
+			nfsmsChoices_ = ns::DefaultChoices(s, !nfsmsVltEd_);
+			nfsmsChoicesFor_ = source + "|" + std::to_string(s.controls.size()) + (nfsmsVltEd_ ? "|v" : "|o");
 		}
 		if (firstLine == 0 && s.hasSetup())
 		{
@@ -719,7 +719,7 @@ namespace app
 		if (Checkbox("Strict", &nfsmsStrict_)) ImGui::MarkIniSettingsDirty();
 		if (ImGui::IsItemHovered())
 			ImGui::SetTooltip("On: warnings are errors. The script is tried on a copy of the database first and only applied when no line fails.\n"
-							  "Off: it runs line by line on the open database, and a line that fails is reported while the rest run, as in NFS-VltEd.");
+							  "Off: it runs line by line on the open database, and a line that fails is reported while the rest run, as in NFS-VltEd and OGVI.");
 		ImGui::SameLine();
 		if (Checkbox("NFS-VltEd compatible", &nfsmsVltEd_)) ImGui::MarkIniSettingsDirty();
 		if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", kVltEdTip);

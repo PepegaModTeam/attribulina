@@ -78,8 +78,10 @@ apply:
                     holds attributes.bin) gets the saved pack as its copy, since
                     the game reads the copy in place of the file; with --out the
                     updated memory file is written there too
-  --vlted           read nfsms scripts as NFS-VltEd 4.6 does (doc/nfsms.md,
-                    "NFS-VltEd compatible"): its value widths and quirks
+  --vlted           NFS-VltEd mode: run nfsms scripts as NFS-VltEd 4.6 does
+                    (doc/nfsms.md): its words, value widths, setup and quirks.
+                    Without it, OGVI mode: as OGVI and the community
+                    Attribulator run them, with VaultLib's names and types
   --no-mod-list     leave the game's list of installed mods out. By default each
                     script file applied goes on attribulina_mods.txt beside the
                     database once it is saved, with the trace of what it changed
@@ -580,7 +582,7 @@ which decides how values read; lines that fail come out as comments.
 					ns::RunSettings st;
 					st.strict = a.has("--strict");
 					st.vltEd = a.has("--vlted");
-					st.choices = ns::DefaultChoices(s);
+					st.choices = ns::DefaultChoices(s, !st.vltEd);
 					// --set kits=true for a checkbox, --set tier=race for a radio group.
 					for (const ns::Control& c : s.controls)
 					{
