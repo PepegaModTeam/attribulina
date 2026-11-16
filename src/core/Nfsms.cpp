@@ -586,6 +586,7 @@ namespace attrib::nfsms
 		return nullptr;
 	}
 
+#if 0 // RETIRED (2026-11-16): the extended nfsms reading, put aside (see Nfsms.h)
 	const std::vector<PropertyNames::Step>* PropertyNames::vaultLibPath(const std::string& typeName, std::string_view name) const
 	{
 		for (const char* prefix : { "", "Attrib::Types::", "Attrib::", "EA::Reflection::" })
@@ -612,12 +613,15 @@ namespace attrib::nfsms
 			}
 		return false;
 	}
+#endif
 
 	PropertyNames PropertyNames::Parse(std::string_view text, const std::string& source)
 	{
 		PropertyNames n;
 		Type* cur = nullptr;
+#if 0 // RETIRED (2026-11-16): the extended nfsms reading, put aside (see Nfsms.h)
 		std::map<std::string, std::vector<Step>>* vaultLib = nullptr; // in a vaultlib block
+#endif
 		OgviType* ogvi = nullptr;                                      // in an ogvi block
 		OgviEnum* ogviEnum = nullptr;                                  // in an ogvienum block
 		int line = 0;
@@ -680,8 +684,11 @@ namespace attrib::nfsms
 				std::string t;
 				if (!(in >> t)) bad("type needs a name");
 				cur = &n.types[t];
+#if 0 // RETIRED (2026-11-16): the extended nfsms reading, put aside (see Nfsms.h)
 				vaultLib = nullptr;
+#endif
 			}
+#if 0 // RETIRED (2026-11-16): the extended nfsms reading, put aside (see Nfsms.h)
 			else if (w == "vaultlib")
 			{
 				std::string t;
@@ -689,6 +696,7 @@ namespace attrib::nfsms
 				vaultLib = &n.vaultLib[t];
 				cur = nullptr;
 			}
+#endif
 			else if (w == "ogvi")
 			{
 				std::string t, kind;
@@ -697,7 +705,9 @@ namespace attrib::nfsms
 				ogvi->kind = kind;
 				in >> ogvi->cls;
 				cur = nullptr;
+#if 0 // RETIRED (2026-11-16): the extended nfsms reading, put aside (see Nfsms.h)
 				vaultLib = nullptr;
+#endif
 			}
 			else if (w == "ogvienum")
 			{
@@ -706,12 +716,16 @@ namespace attrib::nfsms
 				ogviEnum = &n.ogviEnums[t];
 				ogviEnum->base = base;
 				cur = nullptr;
+#if 0 // RETIRED (2026-11-16): the extended nfsms reading, put aside (see Nfsms.h)
 				vaultLib = nullptr;
+#endif
 			}
 			else if (w == "end")
 			{
 				cur = nullptr;
+#if 0 // RETIRED (2026-11-16): the extended nfsms reading, put aside (see Nfsms.h)
 				vaultLib = nullptr;
+#endif
 				ogvi = nullptr;
 				ogviEnum = nullptr;
 			}
@@ -737,6 +751,7 @@ namespace attrib::nfsms
 				}
 				ogvi->properties.push_back(std::move(p));
 			}
+#if 0 // RETIRED (2026-11-16): the extended nfsms reading, put aside (see Nfsms.h)
 			else if (vaultLib)
 			{
 				// <VaultLib name>[.<part>] <our member path>
@@ -746,6 +761,7 @@ namespace attrib::nfsms
 				memberPath(k, path, nullptr);
 				(*vaultLib)[w] = std::move(path);
 			}
+#endif
 			else if (!cur)
 			{
 				bad("'" + w + "' outside a type");
@@ -1385,7 +1401,9 @@ namespace attrib::nfsms
 					if (const std::string why = VersionProblem(c.args[0]); !why.empty())
 					{
 						if (st_.vltEd) fail(why);
+#if 0 // RETIRED (2026-11-16): the extended nfsms reading, put aside (see Nfsms.h)
 						warn(why + "; read as 4.6");
+#endif
 					}
 				}
 				else if (n == "game")
@@ -1396,6 +1414,7 @@ namespace attrib::nfsms
 						if (const std::string why = GameProblem(c.args, mine); !why.empty()) fail(why);
 						return;
 					}
+#if 0 // RETIRED (2026-11-16): the extended nfsms reading, put aside (see Nfsms.h)
 					bool ok = mine.empty() || c.args.empty();
 					for (const std::string& g : c.args) ok |= Lower(g) == Lower(mine);
 					if (!ok)
@@ -1404,6 +1423,7 @@ namespace attrib::nfsms
 						for (const std::string& g : c.args) list += (list.empty() ? "" : ", ") + g;
 						warn("the script is for " + list + "; this database is " + mine);
 					}
+#endif
 				}
 				else if (n == "ui_text" || n == "ui_image" || n == "ui_control")
 				{
@@ -1540,6 +1560,7 @@ namespace attrib::nfsms
 						if (c.args[3].empty() || !end || *end) fail("Value cannot be parsed: " + c.args[3] + " isn't a number");
 						resizeCompat(k, x, *f, c.args[2], want);
 					}
+#if 0 // RETIRED (2026-11-16): the extended nfsms reading, put aside (see Nfsms.h)
 					else
 					{
 						sc::Statement r;
@@ -1548,6 +1569,7 @@ namespace attrib::nfsms
 						r.count = uint32_t(std::strtoul(c.args[3].c_str(), nullptr, 10));
 						amod(x, { r });
 					}
+#endif
 				}
 				else if (n == "resize_collection")
 				{
@@ -1559,9 +1581,7 @@ namespace attrib::nfsms
 					if (f) requireOwn(x, *f, p.field);
 					RefPart part = RefPart::Whole;
 					elementWords_ = inElement_ = nullptr;
-					vaultLibHead_.clear();
 					for (size_t i = 3; i + 1 < c.args.size(); ++i) property(x, p, c.args[i], part);
-					endWords();
 					// NFS-VltEd resizes a curve's list without the point count the file keeps.
 					if (st_.vltEd && f && curvePoint(x, p, nullptr, std::strtoll(c.args.back().c_str(), nullptr, 10))) return;
 					sc::Statement r;
@@ -1594,11 +1614,13 @@ namespace attrib::nfsms
 						emitEdit(x, { r });
 					}
 				}
+#if 0 // RETIRED (2026-11-16): the extended nfsms reading, put aside (see Nfsms.h)
 				else if (n == "append_array")
 				{
 					need(c, 3, 4);
 					appendArray(c);
 				}
+#endif
 				else if (n == "copy_fields")
 				{
 					need(c, 4, 4);
@@ -1608,7 +1630,9 @@ namespace attrib::nfsms
 				{
 					emitComment("convert_field: not run (NFS-VltEd doesn't run it either)");
 					if (st_.vltEd) fail("The command is not supported (NFS-VltEd's message; it doesn't run convert_field)");
+#if 0 // RETIRED (2026-11-16): the extended nfsms reading, put aside (see Nfsms.h)
 					warn("convert_field isn't supported (NFS-VltEd doesn't run it either); skipped");
+#endif
 				}
 			}
 
@@ -1916,6 +1940,7 @@ namespace attrib::nfsms
 				return true;
 			}
 
+#if 0 // RETIRED (2026-11-16): the extended nfsms reading, put aside (see Nfsms.h)
 			void appendArray(const Command& c)
 			{
 				ClassDef& k = cls(c.args[0]);
@@ -1938,6 +1963,8 @@ namespace attrib::nfsms
 				}
 				amod(x, { s });
 			}
+
+#endif
 
 			void copyFields(const Command& c)
 			{
@@ -2002,8 +2029,9 @@ namespace attrib::nfsms
 
 			// -------------------------------------------------------- values ---
 
-			// field or field[i] or field[^] (the last element).
-			sc::FieldPath fieldPath(Collection& x, const std::string& token)
+			// field or field[i] (NFS-VltEd mode's; the retired extended reading also took
+			// field[^], the last element, from x).
+			sc::FieldPath fieldPath([[maybe_unused]] Collection& x, const std::string& token)
 			{
 				sc::FieldPath p;
 				const size_t lb = token.find('[');
@@ -2014,10 +2042,12 @@ namespace attrib::nfsms
 				int64_t i;
 				if (idx == "^")
 				{
-					if (st_.vltEd) fail("NFS-VltEd can't read [^] (Attribulator's): give the index");
+					fail("NFS-VltEd can't read [^] (Attribulator's): give the index");
+#if 0 // RETIRED (2026-11-16): the extended nfsms reading, put aside (see Nfsms.h)
 					const Attribute* a = x.resolve(KeyOf(p.field));
 					if (!a || !a->count) fail(p.field + " has no elements");
 					i = int64_t(a->count) - 1;
+#endif
 				}
 				else
 				{
@@ -2223,6 +2253,7 @@ namespace attrib::nfsms
 				return nullptr;
 			}
 
+#if 0 // RETIRED (2026-11-16): the extended nfsms reading, put aside (see Nfsms.h)
 			// A VaultLib name given without its part (ReferencedRow, then ClassKey).
 			void endWords()
 			{
@@ -2254,13 +2285,14 @@ namespace attrib::nfsms
 				}
 			}
 
-			// One property token of update_field: NFS-VltEd's word for a part of the
-			// value, our schema's member, an index, or a part of a value the way
-			// Attribulator (VaultLib) names it. Attribulina's own reading takes our
-			// member's name first, then VaultLib's, then NFS-VltEd's word; NFS-VltEd
-			// compatible runs take only NFS-VltEd's words.
+#endif
+			// One property token of update_field in NFS-VltEd mode: NFS-VltEd's word for
+			// a part of the value, or an index. (The retired extended reading took our
+			// member's name first, then VaultLib's, then NFS-VltEd's word: its parts are
+			// in #if 0 blocks below. OGVI mode reads its words in ogviResolve.)
 			void property(Collection& x, sc::FieldPath& p, const std::string& token, RefPart& part)
 			{
+#if 0 // RETIRED (2026-11-16): the extended nfsms reading, put aside (see Nfsms.h)
 				if (!vaultLibHead_.empty())
 				{
 					// The part of a VaultLib name given before it: ReferencedRow ClassKey.
@@ -2271,6 +2303,7 @@ namespace attrib::nfsms
 					pushSteps(p, *steps);
 					return;
 				}
+#endif
 				if (!token.empty() && std::all_of(token.begin(), token.end(), [](char ch)
 				{
 					return std::isdigit(static_cast<unsigned char>(ch));
@@ -2312,22 +2345,26 @@ namespace attrib::nfsms
 					for (const std::string& w : *element) words += (words.empty() ? "" : ", ") + w;
 					fail("Value '" + token + "' cannot be found (the element's words: " + words + ")");
 				}
+				#if 0 // RETIRED (2026-11-16): the extended nfsms reading, put aside (see Nfsms.h)
 				// Attribulina's own reading: the member our schema or VaultLib names so.
 				const MemberDef* own = st_.vltEd ? nullptr : OwnMember(vt, prop);
 				const std::vector<PropertyNames::Step>* vaultLib =
 					st_.vltEd || own || !st_.names || element ? nullptr : st_.names->vaultLibPath(vt.typeName, prop);
 				const std::string target = own ? own->name : vaultLib && !vaultLib->empty() ? (*vaultLib)[0].member : std::string();
+#endif
 				if (const PropertyNames::Type* t = vltType(p, vt))
 				{
 					// NFS-VltEd ignores the word; update() steps to its one property.
-					if (t->single && target.empty()) return;
-					const PropertyNames::Property* pr = t->single ? nullptr : t->find(token, !st_.vltEd);
+					if (t->single) return;
+					const PropertyNames::Property* pr = t->single ? nullptr : t->find(token, false);
 					bool whole = pr != nullptr; // M[1,1]: the index is part of the word
+#if 0 // RETIRED (2026-11-16): the extended nfsms reading, put aside (see Nfsms.h)
 					if (!pr && !idx.empty() && !st_.vltEd && !t->single) pr = t->find(prop);
 					// NFS-VltEd's word of that name for the same member still goes its way
 					// (a list word steps into the pointer it holds); one for another member
 					// gives way to ours (CarBodyMotion's MaxG over MaxGs was such a word).
 					if (pr && !target.empty() && (pr->path.empty() || Lower(pr->path[0].member) != Lower(target))) pr = nullptr, whole = false;
+#endif
 					if (pr)
 					{
 						if (whole) idx.clear();
@@ -2340,6 +2377,7 @@ namespace attrib::nfsms
 					// NFS-VltEd knows only its own words, as written.
 					if (st_.vltEd && !element) fail(NotFound(*t, token));
 				}
+#if 0 // RETIRED (2026-11-16): the extended nfsms reading, put aside (see Nfsms.h)
 				if (vaultLib)
 				{
 					pushSteps(p, *vaultLib);
@@ -2358,6 +2396,7 @@ namespace attrib::nfsms
 					vaultLibType_ = vt.typeName;
 					return;
 				}
+#endif
 				const bool hasWords = vltType(p, vt) != nullptr;
 				if (!hasWords && st_.names && (st_.vltEd ? prop == "Data" : l == "data") && idx.empty())
 				{
@@ -2445,7 +2484,6 @@ namespace attrib::nfsms
 			// struct): the property it sets, when ours is a struct.
 			void single(Collection& x, sc::FieldPath& p, RefPart& part)
 			{
-				endWords();
 				const ValueType vt = sc::TypeAt(db_, x, p);
 				const PropertyNames::Type* t = vltType(p, vt);
 				if (!t || !t->single || t->properties.empty() || part != RefPart::Whole) return;
@@ -2515,9 +2553,11 @@ namespace attrib::nfsms
 						}
 						if (n != vt.size) fail("Length does not match: Data needs " + std::to_string(vt.size) + " bytes, not " + std::to_string(n));
 					}
+#if 0 // RETIRED (2026-11-16): the extended nfsms reading, put aside (see Nfsms.h)
 					else
 						for (char ch : t)
 							if (!std::isspace(static_cast<unsigned char>(ch))) hex += ch;
+#endif
 					if (hex.size() % 2 || !std::all_of(hex.begin(), hex.end(), [](char ch)
 					{
 						return std::isxdigit(static_cast<unsigned char>(ch));
@@ -2633,7 +2673,9 @@ namespace attrib::nfsms
 				// NFS-VltEd: update_field has one word at most, update_collection a list's
 				// word (or none), an index and the element's word.
 				if (st_.vltEd) need(c, c.name == "update_collection" ? 6 : 4, c.name == "update_collection" ? 7 : 5);
+#if 0 // RETIRED (2026-11-16): the extended nfsms reading, put aside (see Nfsms.h)
 				else need(c, 4, 64);
+#endif
 				ClassDef& k = cls(c.args[0]);
 				Collection& x = node(k, c.args[1]);
 				updateIn(k, x, c.args[2], std::vector<std::string>(c.args.begin() + 3, c.args.end()), c.name == "update_collection");
@@ -2658,7 +2700,6 @@ namespace attrib::nfsms
 				if (st_.vltEd && spareWrite(x, *f, p, fieldToken, rest)) return;
 				RefPart part = RefPart::Whole;
 				elementWords_ = inElement_ = nullptr;
-				vaultLibHead_.clear();
 				size_t first = 0;
 				if (st_.vltEd && collection)
 				{
@@ -4661,7 +4702,6 @@ namespace attrib::nfsms
 				if (!st_.vltEd) return ogviLead(x, field, words, partName);
 				sc::FieldPath p = fieldPath(x, field);
 				RefPart part = RefPart::Whole;
-				vaultLibHead_.clear();
 				for (const std::string& w : words) property(x, p, w, part);
 				single(x, p, part);
 				sc::TypeAt(db_, x, p);
@@ -4678,9 +4718,18 @@ namespace attrib::nfsms
 				for (const std::string& w : words) parts.push_back(w);
 				parts.push_back("0");
 				const std::string fieldName = field.substr(0, field.find('['));
-				sc::FieldPath p = fieldPath(x, field);
+				sc::FieldPath p;
+				p.field = fieldName;
 				const FieldDef* f = x.cls ? x.cls->field(KeyOf(fieldName)) : nullptr;
-				if (f && f->isArray() && p.steps.empty()) p.steps.push_back({ std::string(), 0 });
+				if (f && f->isArray())
+				{
+					// field[i], field[^] the last, or element 0.
+					const size_t lb = field.find('[');
+					const std::string idx = lb == std::string::npos ? std::string() : field.substr(lb + 1, field.find(']', lb) - lb - 1);
+					const Attribute* a = x.resolve(f->key);
+					const int64_t i = idx.empty() ? 0 : idx == "^" ? (a && a->count ? int64_t(a->count) - 1 : 0) : std::strtoll(idx.c_str(), nullptr, 10);
+					p.steps.push_back({ std::string(), i });
+				}
 				Bytes cur;
 				const ValueType vt = sc::TypeAt(db_, x, p, &cur);
 				if (words.empty()) return p;
@@ -4766,7 +4815,9 @@ namespace attrib::nfsms
 			const std::vector<std::string>* elementWords_ = nullptr;
 			const std::vector<std::string>* inElement_ = nullptr;
 			// A VaultLib name whose part is the next word, and the type it is of.
+#if 0 // RETIRED (2026-11-16): the extended nfsms reading, put aside (see Nfsms.h)
 			std::string vaultLibHead_, vaultLibType_;
+#endif
 			sc::FieldPath lastBase_;
 			ValueType lastBaseType_;
 
@@ -5238,6 +5289,11 @@ namespace attrib::nfsms
 								if (const FieldDef* f0 = k0 ? k0->field(KeyOf(nameOf(b.path.field))) : nullptr) addField(head, *f0, b, at0);
 								return;
 							}
+							// Our member names were the retired extended reading's: none here.
+							out.push_back("# " + nameOf(t.cls) + "/" + nameOf(t.name) + " " + b.path.text() +
+										  (names_ ? ": not here to read, so OGVI mode can't write it"
+												  : ": OGVI mode writes values by the game's table (data/nfsms), and none is loaded"));
+							return;
 						}
 						// The field token takes an array's index; members (and a vector's
 						// or matrix's components) follow as properties.
@@ -5259,6 +5315,7 @@ namespace attrib::nfsms
 							const auto& st = b.path.steps[i];
 							if (st.member.empty())
 							{
+#if 0 // RETIRED (2026-11-16): the extended nfsms reading, put aside (see Nfsms.h)
 								// A matrix's element as Attribulator (VaultLib) names it, from 1;
 								// NFS-VltEd's form takes row[column] to its own word.
 								if (!vltEd_ && i + 1 < b.path.steps.size() && b.path.steps[i + 1].member.empty())
@@ -5272,6 +5329,7 @@ namespace attrib::nfsms
 										continue;
 									}
 								}
+#endif
 								if (props.empty()) props.push_back(std::to_string(st.index));
 								else props.back() += "[" + std::to_string(st.index) + "]";
 							}
@@ -5365,6 +5423,27 @@ namespace attrib::nfsms
 									value("update_field " + head, field + "[" + std::to_string(n - items.size() + i) + "]", {}, *items[i], false);
 							break;
 						}
+						{
+							// OGVI mode: Attribulator's append_array, then the new last element's
+							// parts as OGVI reads them (field[^]), from the array as it is now.
+							const uint32_t n = lengthNow(t, *f);
+							for (size_t i = 0; i < items.size(); ++i)
+							{
+								out.push_back("append_array " + head + " " + field);
+								if (!items[i] || n < items.size()) continue;
+								sc::Statement el;
+								el.kind = K::Set;
+								el.path.field = b.path.field;
+								el.path.steps.push_back({ std::string(), int64_t(n - items.size() + i) });
+								el.value = items[i];
+								lastIndex_ = true;
+								if (!ogviLines(t, el, head))
+									out.push_back("# " + nameOf(t.cls) + "/" + nameOf(t.name) + " " + field + "[^]: OGVI mode writes values by the game's table (data/nfsms), and none is loaded");
+								lastIndex_ = false;
+							}
+						}
+						break;
+#if 0 // RETIRED (2026-11-16): the extended nfsms reading, put aside (see Nfsms.h)
 						for (const sc::ValuePtr& v : items)
 						{
 							// Attribulator's append_array, then the new last element's parts.
@@ -5377,6 +5456,7 @@ namespace attrib::nfsms
 							if (v) value("update_field " + head, field + "[^]", {}, *v, false);
 						}
 						break;
+#endif
 					}
 					case K::Comment: out.push_back("#" + b.comment); break;
 					default: out.push_back("# not in nfsms: " + b.path.text()); break;
@@ -5751,9 +5831,10 @@ namespace attrib::nfsms
 								for (size_t c = 0; c < 4; ++c)
 								{
 									auto ps = props;
-									// row[column] becomes NFS-VltEd's word; Attribulator's is Data[row,column] from 1.
-									ps.push_back(vltEd_ ? std::to_string(r) + "[" + std::to_string(c) + "]"
-														: "Data[" + std::to_string(r + 1) + "," + std::to_string(c + 1) + "]");
+									// row[column] becomes NFS-VltEd's word. (The retired extended
+									// reading wrote Attribulator's Data[row,column] from 1 here;
+									// OGVI mode's writer, ogviLines, writes it now.)
+									ps.push_back(std::to_string(r) + "[" + std::to_string(c) + "]");
 									line(ps, NetNumber(v.items[r]->items[c]->text));
 								}
 							return;
@@ -5855,7 +5936,7 @@ namespace attrib::nfsms
 					int64_t index = b.path.steps[0].index;
 					if (index < 0) index += int64_t(lengthNow(t, *f));
 					base.steps.push_back({ std::string(), index });
-					field += "[" + std::to_string(index) + "]";
+					field += lastIndex_ ? std::string("[^]") : "[" + std::to_string(index) + "]";
 					i = 1;
 				}
 				Bytes cur;
@@ -6105,6 +6186,7 @@ namespace attrib::nfsms
 				if (!any) out.push_back("# " + line + ": no VaultLib property of " + ot->cls + " covers " + b.path.text() + ", so OGVI can't set it");
 				return true;
 			}
+			bool lastIndex_ = false; // ogviLines: the element as field[^] (an appended one)
 			uint32_t EnumWidth(const std::string& type) const
 			{
 				auto it = names_->ogviEnums.find(type.substr(5));

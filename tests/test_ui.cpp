@@ -937,8 +937,9 @@ TEST("ui: View > Theme picks Classic, Dark or Light and keeps it; in Dark and Li
         CHECK(a->theme() == app::Theme::Light);
         CHECK(SameColours(ImGui::GetStyle(), StyleOf(ImGui::StyleColorsLight)));
 
-        // The nfsms setup prompt, nothing chosen yet.
+        // The nfsms setup prompt, nothing chosen yet: NFS-VltEd mode's (OGVI mode checks the first button).
         CHECK(a->open(ProStreetDir() + "/ATTRIBUTES.BIN"));
+        a->setNfsmsVltEd(true);
         a->setNfsmsText("ui_control radiobutton dif option1 \"Easy\"\n"
                         "ui_control radiobutton dif option2 \"Hard\"\n"
                         "ui_control checkbox nos false \"More nitrous\"\n"
@@ -6922,4 +6923,94 @@ TEST("ui: installed mods: a mod that changes what one on the list changed asks; 
     for (const auto& c : probe.conflicts) std::printf("        ID conflict: %s\n", c.c_str());
     CHECK(probe.conflicts.empty());
     fs::remove_all(root);
+}
+
+TEST("ui: code editors copy with LF line ends, or CRLF when Edit > Copy Code with CRLF Line Ends is on, kept in the ini") {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() / "attribulina_crlf_test";
+    fs::remove_all(dir);
+    fs::create_directories(dir);
+    const fs::path ini = dir / "attribulina.ini";
+    // A code editor's Ctrl+C and its right-click Copy.
+    {
+        platform::HeadlessImGui imgui;
+        imgui.beforeFrame = ProbeBefore;
+        imgui.afterFrame = ProbeAfter;
+        test::UiProbe& probe = test::UiProbe::get();
+        std::string text = "line one\nline two\n";
+        app::CodeEditor ed(app::CodeLanguage::Amod);
+        const platform::HeadlessImGui::Frame frame = [&]() {
+            ImGui::SetNextWindowPos(ImVec2(20, 30));
+            ImGui::SetNextWindowSize(ImVec2(500, 300));
+            ImGui::Begin("Copy test");
+            ed.draw("##code", text, ImVec2(400, 200));
+            ImGui::End();
+        };
+        imgui.run(frame, 2);
+        auto copied = [&](bool menu) {
+            ImGui::SetClipboardText("");
+            const test::ProbeItem* box = probe.find("##code");
+            CHECK(box);
+            if (!box) return std::string();
+            const ImRect at = box->rect;
+            imgui.click(frame, at.Min.x + 40, at.Min.y + 10); // the keyboard in the box
+            imgui.key(frame, ImGuiMod_Ctrl | ImGuiKey_A);
+            if (menu) {
+                imgui.click(frame, at.Min.x + 40, at.Min.y + 10, 1);
+                imgui.run(frame, 1);
+                const test::ProbeItem* item = probe.find("Copy");
+                CHECK(item);
+                if (item) imgui.click(frame, (item->rect.Min.x + item->rect.Max.x) / 2, (item->rect.Min.y + item->rect.Max.y) / 2);
+                imgui.run(frame, 1);
+            } else {
+                imgui.key(frame, ImGuiMod_Ctrl | ImGuiKey_C);
+            }
+            return Clipboard();
+        };
+        CHECK(!app::CodeEditor::copyCrLf()); // LF by default
+        CHECK_EQ(copied(false), text);
+        app::CodeEditor::setCopyCrLf(true);
+        CHECK_EQ(copied(false), std::string("line one\r\nline two\r\n"));
+        CHECK_EQ(copied(true), std::string("line one\r\nline two\r\n"));
+        app::CodeEditor::setCopyCrLf(false);
+        CHECK_EQ(copied(true), text);
+        // Other copies don't change.
+        app::CodeEditor::setCopyCrLf(true);
+        ImGui::SetClipboardText("a\nb");
+        CHECK_EQ(Clipboard(), std::string("a\nb"));
+        app::CodeEditor::setCopyCrLf(false);
+    }
+    // The Edit menu's switch, kept in the ini.
+    {
+        platform::HeadlessImGui imgui;
+        imgui.beforeFrame = ProbeBefore;
+        imgui.afterFrame = ProbeAfter;
+        test::UiProbe& probe = test::UiProbe::get();
+        platform::HeadlessHost host;
+        host.userDir = dir.string();
+        auto a = std::make_unique<app::App>(host);
+        a->setup(1.0f, ini.string());
+        a->setUserKeysPath("");
+        imgui.run(*a, 2);
+        CHECK(!app::CodeEditor::copyCrLf());
+        ClickItem(imgui, *a, probe.find("Edit"));
+        imgui.run(*a, 1);
+        ClickItem(imgui, *a, probe.find("Copy Code with CRLF Line Ends"));
+        imgui.run(*a, 2);
+        CHECK(app::CodeEditor::copyCrLf());
+        a.reset();
+    }
+    {
+        const Bytes b = ReadFile(ini.string());
+        CHECK(std::string(b.begin(), b.end()).find("CopyCrLf=1\n") != std::string::npos);
+        platform::HeadlessImGui imgui;
+        platform::HeadlessHost host;
+        host.userDir = dir.string();
+        app::App a(host);
+        app::CodeEditor::setCopyCrLf(false);
+        a.setup(1.0f, ini.string());
+        CHECK(app::CodeEditor::copyCrLf()); // read back
+    }
+    app::CodeEditor::setCopyCrLf(false);
+    fs::remove_all(dir);
 }

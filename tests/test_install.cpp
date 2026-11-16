@@ -392,8 +392,8 @@ TEST("installer: an nfsms mod runs NFS-VltEd compatible with the setup's choices
 TEST("installer: Advanced Options' NFS-VltEd compatible switch is on by default, kept in mod_installer.ini, and an nfsms mod reads by it") {
     const fs::path root = MakeGame("attribulina_installer_vlted");
     const fs::path game = root / "game", global = game / "GLOBAL", mod = root / "Kit.nfsms";
-    // mKitNumber is our member's name: NFS-VltEd has KitNumber only.
-    WriteText(mod, "version 4.6\ngame PS\nupdate_field presetride player_d_day Parts[7] mKitNumber 4\n"
+    // PartArrayIndex is VaultLib's name (OGVI mode) for the part NFS-VltEd calls Unk.
+    WriteText(mod, "version 4.6\ngame PS\nupdate_field presetride player_d_day Parts[7] PartArrayIndex 7\n"
                    "# amod begin\n# title \"Kit\"\n# amod end\n");
     auto install = [&](Session& s) {
         s.inst.openArguments({game.string(), mod.string()});
@@ -410,17 +410,17 @@ TEST("installer: Advanced Options' NFS-VltEd compatible switch is on by default,
         s.frames(1);
     };
     {
-        // On: the line fails, as in NFS-VltEd.
+        // On, NFS-VltEd mode: the line fails, as in NFS-VltEd.
         Session s(PathsIn(root));
         CHECK(s.inst.vltEd());
         install(s);
         CHECK(s.inst.outcome() == Outcome::Partly);
-        CHECK(s.logText().find("  read as NFS-VltEd 4.6 reads it (NFS-VltEd compatible)\n") != std::string::npos);
+        CHECK(s.logText().find("  run in NFS-VltEd mode, as NFS-VltEd 4.6 runs it (NFS-VltEd compatible is on)\n") != std::string::npos);
         CHECK(s.logText().find("Kit.nfsms:3:") != std::string::npos);
     }
-    CHECK(Get(global / "ATTRIBUTES.BIN", "presetride/player_d_day", "Parts").find("mKitNumber = 4") == std::string::npos);
+    CHECK(Get(global / "ATTRIBUTES.BIN", "presetride/player_d_day", "Parts").find("mPartArrayIndex = 7") == std::string::npos);
     {
-        // Off in Advanced Options, before a mod is chosen: the editor's own reading takes our member names.
+        // Off in Advanced Options, before a mod is chosen: OGVI mode takes VaultLib's names.
         Session s(PathsIn(root));
         CHECK(s.click("Advanced Options"));
         CHECK(s.drawn("NFS-VltEd compatible"));
@@ -432,10 +432,10 @@ TEST("installer: Advanced Options' NFS-VltEd compatible switch is on by default,
         s.frames(1);
         install(s);
         CHECK(s.inst.outcome() == Outcome::Succeeded);
-        CHECK(s.logText().find("  read the editor's own way (NFS-VltEd compatible is off)\n") != std::string::npos);
+        CHECK(s.logText().find("  run in OGVI mode, as OGVI runs it (NFS-VltEd compatible is off)\n") != std::string::npos);
         CHECK(test::UiProbe::get().conflicts.empty());
     }
-    CHECK(Get(global / "ATTRIBUTES.BIN", "presetride/player_d_day", "Parts").find("mKitNumber = 4") != std::string::npos);
+    CHECK(Get(global / "ATTRIBUTES.BIN", "presetride/player_d_day", "Parts").find("mPartArrayIndex = 7") != std::string::npos);
     {
         // The next run starts with it off, and turning it on again is kept.
         Session s(PathsIn(root));

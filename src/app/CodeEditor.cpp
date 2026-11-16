@@ -14,6 +14,64 @@
 
 namespace app
 {
+	namespace
+	{
+		bool gCopyCrLf = false;
+		void (*gPlatformCopy)(ImGuiContext*, const char*) = nullptr;
+		void CopyWithCrLf(ImGuiContext* ctx, const char* text)
+		{
+			gPlatformCopy(ctx, CodeEditor::WithCrLf(text ? text : "").c_str());
+		}
+		// The InputText's own Ctrl+C and Ctrl+X go through the platform's clipboard
+		// function: while the editor draws it, that function puts CRLF line ends on.
+		struct CrLfCopies
+		{
+			bool on = false;
+			CrLfCopies()
+			{
+				ImGuiPlatformIO& pio = ImGui::GetPlatformIO();
+				if (!gCopyCrLf || !pio.Platform_SetClipboardTextFn || pio.Platform_SetClipboardTextFn == CopyWithCrLf) return;
+				gPlatformCopy = pio.Platform_SetClipboardTextFn;
+				pio.Platform_SetClipboardTextFn = CopyWithCrLf;
+				on = true;
+			}
+			void restore()
+			{
+				if (on) ImGui::GetPlatformIO().Platform_SetClipboardTextFn = gPlatformCopy;
+				on = false;
+			}
+			~CrLfCopies()
+			{
+				restore();
+			}
+		};
+		// The editor's own Copy and Cut.
+		void Copy(const std::string& text)
+		{
+			ImGui::SetClipboardText(gCopyCrLf ? CodeEditor::WithCrLf(text).c_str() : text.c_str());
+		}
+	}
+
+	void CodeEditor::setCopyCrLf(bool on)
+	{
+		gCopyCrLf = on;
+	}
+	bool CodeEditor::copyCrLf()
+	{
+		return gCopyCrLf;
+	}
+	std::string CodeEditor::WithCrLf(const std::string& text)
+	{
+		std::string out;
+		out.reserve(text.size() + text.size() / 16);
+		for (size_t i = 0; i < text.size(); ++i)
+		{
+			if (text[i] == '\n' && (i == 0 || text[i - 1] != '\r')) out += '\r';
+			out += text[i];
+		}
+		return out;
+	}
+
 
 	namespace
 	{
@@ -910,10 +968,10 @@ namespace app
 		ImGui::Separator();
 		if (ImGui::MenuItem("Cut", "Ctrl+X", false, !readOnly && sel))
 		{
-			ImGui::SetClipboardText(text.substr(a, b - a).c_str());
+			Copy(text.substr(a, b - a));
 			change(text.substr(0, a) + text.substr(b), a);
 		}
-		if (ImGui::MenuItem("Copy", "Ctrl+C", false, sel)) ImGui::SetClipboardText(text.substr(a, b - a).c_str());
+		if (ImGui::MenuItem("Copy", "Ctrl+C", false, sel)) Copy(text.substr(a, b - a));
 		if (ImGui::MenuItem("Paste", "Ctrl+V", false, !readOnly && canPaste) && ImGui::GetClipboardText())
 		{
 			std::string in = ImGui::GetClipboardText();
@@ -1134,9 +1192,11 @@ namespace app
 		}
 		ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(0, 0, 0, 0)); // the overlay draws the text
 		settingText_ = false;
+		CrLfCopies crlf;
 		bool edited = ImGui::InputTextMultiline(label, &text, ImVec2(boxW, full.y - barH),
 												flags | ImGuiInputTextFlags_CallbackAlways | ImGuiInputTextFlags_NoUndoRedo,
 												&CodeEditor::Callback, this);
+		crlf.restore();
 		ImGui::PopStyleColor();
 		const bool activated = ImGui::IsItemActivated();
 		active_ = ImGui::IsItemActive();

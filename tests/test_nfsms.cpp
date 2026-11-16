@@ -46,15 +46,25 @@ std::string Messages(const sc::ApplyReport& r) {
     return s;
 }
 
+// The game's table, as the app and attribcli load them (OGVI mode reads values by it).
+std::shared_ptr<const ns::PropertyNames> TableFor(const Database& db) {
+    static std::vector<std::shared_ptr<const ns::PropertyNames>> tables;
+    if (tables.empty())
+        for (const char* f : {"mw_pc", "carbon_pc", "prostreet_pc", "undercover_pc", "world_pc", "world_beta_pc"})
+            tables.push_back(ns::PropertyNames::Load(test::DataPath(std::string("data/nfsms/") + f + ".txt")));
+    return ns::NamesFor(db, tables);
+}
+
 sc::ApplyReport Run(Database& db, const std::string& text, ns::RunSettings st = {}) {
+    if (!st.names) st.names = TableFor(db);
     const ns::Script s = ns::Parse(text, "test.nfsms");
-    if (st.choices.checkboxes.empty() && st.choices.radios.empty()) st.choices = ns::DefaultChoices(s);
+    if (st.choices.checkboxes.empty() && st.choices.radios.empty()) st.choices = ns::DefaultChoices(s, !st.vltEd);
     return ns::Run(db, s, st);
 }
 
 #define CHECK_RUN(r)                                                                 \
     do {                                                                             \
-        if (!(r).ok) std::fprintf(stderr, "%s", Messages(r).c_str());                \
+        if (!(r).ok || (r).errors()) std::fprintf(stderr, "%s", Messages(r).c_str()); \
         CHECK((r).ok);                                                               \
     } while (0)
 
@@ -118,7 +128,7 @@ TEST("nfsms: every platform of a game runs it; Nitro, which NFS-VltEd never read
         CHECK_EQ(ReadInteger(a.data, 0, TypeOfAttribute(a, "total_frames_short"), c.vault->raw.endian), int64_t(9));
     }
     // A word past FEPartData's bools: byte 24 on the PC, 36 on the PS2, where
-    // they are 4 bytes. NFS-VltEd's word 7 is LogoTextureId on both.
+    // they are 4 bytes. VaultLib's LogoTextureId (OGVI mode) finds our member by its path.
     for (const char* platform : {"pc", "ps2"}) {
         Database db;
         db.addTypeSchema(TypeSchema::Load(test::DataPath(std::string("data/schema/prostreet_") + platform + ".txt")));
@@ -139,8 +149,9 @@ TEST("nfsms: every platform of a game runs it; Nitro, which NFS-VltEd never read
         if (!part) continue;
         ns::RunSettings st;
         st.names = ns::PropertyNames::Load(test::DataPath("data/nfsms/prostreet_pc.txt"));
-        CHECK_RUN(Run(db, "update_field " + db.names().format(part->classKey) + " " + db.names().format(part->key) + " " + field +
-                              " 7 0x12345678\n", st));
+        const std::string line = "update_field " + db.names().format(part->classKey) + " " + db.names().format(part->key) + " " + field +
+                                 " LogoTextureId 0x12345678\n";
+        CHECK_RUN(Run(db, line, st));
         const Attribute* a = part->find(key);
         CHECK(a);
         if (a) CHECK_EQ(load32(a->data.bytes.data() + (std::string(platform) == "ps2" ? 36 : 24), part->vault->raw.endian), 0x12345678u);
@@ -152,6 +163,7 @@ TEST("nfsms: every platform of a game runs it; Nitro, which NFS-VltEd never read
         CHECK_EQ(ns::GameCode(*db), std::string("MW"));
         ns::RunSettings st;
         st.names = ns::PropertyNames::Load(test::DataPath("data/nfsms/mw_pc.txt"));
+        st.vltEd = true; // NFS-VltEd's words
         CHECK_RUN(Run(*db, "update_field pvehicle default OnScrapeGround[0] SurfaceCollectionKey organic\n"
                            "update_field pvehicle default OnScrapeGround[0] EffectCollectionKey carscrapeearth\n"
                            "update_field pvehicle default OnScrapeGround[0] MaxSpeed 31\n", st));
@@ -163,14 +175,22 @@ TEST("nfsms: every platform of a game runs it; Nitro, which NFS-VltEd never read
         CHECK_EQ(load64(a->elem(0) + 8, Endian::Little), StringHash64("organic"));
         CHECK_EQ(load64(a->elem(0) + 32, Endian::Little), StringHash64("carscrapeearth"));
         CHECK(loadf32(a->elem(0) + 52, Endian::Little) == 31.0f);
-        // Recorded back in the same words NFS-VltEd compatible, by our members otherwise.
+        // Recorded back in the same words NFS-VltEd compatible; in OGVI mode as lines OGVI reads back.
         const sc::Script edits = sc::Parse("attribulina 1\nedit pvehicle/default { OnScrapeGround[0].mSurface = simsurface/concrete }\n", "rec.amod");
         const std::vector<std::string> lines = ns::FromStatements(*db, edits.statements, st.names.get(), true);
         if (std::find(lines.begin(), lines.end(), "update_field pvehicle default OnScrapeGround[0] SurfaceCollectionKey concrete") == lines.end())
             for (const std::string& l : lines) std::fprintf(stderr, "        %s\n", l.c_str());
         CHECK(std::find(lines.begin(), lines.end(), "update_field pvehicle default OnScrapeGround[0] SurfaceCollectionKey concrete") != lines.end());
-        const std::vector<std::string> own = ns::FromStatements(*db, edits.statements, st.names.get(), false);
-        CHECK(std::find(own.begin(), own.end(), "update_field pvehicle default OnScrapeGround[0] mSurface Collection concrete") != own.end());
+        std::string ogvi;
+        for (const std::string& l : ns::FromStatements(*db, edits.statements, st.names.get(), false)) ogvi += l + "\n";
+        auto again = sc::CloneDatabase(*db);
+        CHECK(sc::Apply(*again, sc::Parse("attribulina 1\nedit pvehicle/default { OnScrapeGround[0].mSurface = simsurface/default }\n")).ok);
+        ns::RunSettings og;
+        og.names = st.names;
+        const sc::ApplyReport back = Run(*again, ogvi, og);
+        if (back.errors()) std::fprintf(stderr, "%s%s", ogvi.c_str(), Messages(back).c_str());
+        CHECK_EQ(back.errors(), size_t(0));
+        CHECK_EQ(Changes(sc::Diff(*again, *db)), size_t(0));
     }
     Database nitro;
     nitro.setTarget({Game::Nitro, Platform::Wii});
@@ -254,8 +274,6 @@ TEST("nfsms: each game's words lead to the same member on every platform of it, 
         ns::RunSettings st;
         st.names = names;
         st.vltEd = true; // NFS-VltEd's words, as it reads them
-        ns::RunSettings own;
-        own.names = names; // Attribulina's own reading: our names first, NFS-VltEd's words after them
         std::map<std::string, std::string> first; // "type word" -> where it led on the first platform
         std::set<std::string> failures;
         for (const char* folder : g.folders) {
@@ -302,23 +320,6 @@ TEST("nfsms: each game's words lead to the same member on every platform of it, 
                         std::printf("        %s on %s: %s, not %s\n", key.c_str(), folder, where.c_str(), first[key].c_str());
                         ++wrong;
                     }
-                    // Attribulina's own reading takes the word to the same place: no word
-                    // is our name for another member now (CarBodyMotion's DegPerSec was).
-                    if (part != "data") {
-                        std::string ownPart;
-                        std::string ownWhere;
-                        try {
-                            const sc::FieldPath q = ns::WordsLeadTo(*db, *c, field, words, own, &ownPart);
-                            ownWhere = StepsText(q, from) + (ownPart.empty() ? "" : " " + ownPart);
-                        } catch (const std::exception& e) {
-                            ownWhere = e.what();
-                        }
-                        const bool refused = std::find(g.ownRefuses.begin(), g.ownRefuses.end(), key) != g.ownRefuses.end();
-                        if ((ownWhere != where) != refused) {
-                            std::printf("        %s on %s, Attribulina's reading: %s, not %s\n", key.c_str(), folder, ownWhere.c_str(), where.c_str());
-                            ++wrong;
-                        }
-                    }
                     // Recorded, the same value comes out in the same word.
                     if (part == "data" || pr.list) continue;
                     sc::Statement set;
@@ -338,24 +339,6 @@ TEST("nfsms: each game's words lead to the same member on every platform of it, 
                     edit.target.cls = db->names().format(c->classKey);
                     edit.target.name = db->names().format(c->key);
                     edit.body.push_back(set);
-                    // Recorded the other way, the line names our members and leads back.
-                    for (const std::string& line : ns::FromStatements(*db, {edit}, names.get(), false)) {
-                        const ns::Command cmd = ns::ParseLine(line);
-                        if (cmd.args.size() < 4 || cmd.name != "update_field") continue;
-                        std::string backPart;
-                        std::string back;
-                        try {
-                            const std::vector<std::string> ws(cmd.args.begin() + 3, cmd.args.end() - 1);
-                            back = StepsText(ns::WordsLeadTo(*db, *c, cmd.args[2], ws, own, &backPart), 0);
-                        } catch (const std::exception& e) {
-                            back = e.what();
-                        }
-                        if (back != StepsText(p, 0) || (!part.empty() && backPart.empty())) {
-                            std::printf("        %s on %s records as [%s], which leads to %s, not %s\n", key.c_str(), folder, line.c_str(),
-                                        back.c_str(), StepsText(p, 0).c_str());
-                            ++wrong;
-                        }
-                    }
                     bool found = false;
                     for (const std::string& line : ns::FromStatements(*db, {edit}, names.get(), true)) {
                         const ns::Command cmd = ns::ParseLine(line);
@@ -380,183 +363,7 @@ TEST("nfsms: each game's words lead to the same member on every platform of it, 
     CHECK_EQ(wrong, size_t(0));
 }
 
-TEST("nfsms: Attribulina's own reading finds every member of every class's values by our names and VaultLib's, and records them by ours") {
-    // Each game's table, on the PC and on a console of another layout.
-    const std::vector<std::pair<const char*, std::vector<const char*>>> games = {
-        {"prostreet_pc", {"pc/prostreet-vanilla", "ps2/prostreet-vanilla"}},
-        {"mw_pc", {"pc/mw-vanilla", "gamecube/mw-vanilla"}},
-        {"carbon_pc", {"pc/carbon-vanilla", "ps2/carbon-vanilla", "360/carbon-vanilla"}},
-        {"undercover_pc", {"pc/undercover-vanilla", "wii/undercover-vanilla"}},
-        {"world_pc", {"pc/world-final"}},
-        {"world_beta_pc", {"pc/world-2009-beta"}},
-    };
-    size_t wrong = 0, members = 0, aliases = 0;
-    std::set<std::string> aliasesSeen; // "table type name" found on some platform
-    for (const auto& [table, folders] : games) {
-        auto names = ns::PropertyNames::Load(test::DataPath(std::string("data/nfsms/") + table + ".txt"));
-        ns::RunSettings own;
-        own.names = names;
-        ns::RunSettings vlt;
-        vlt.names = names;
-        vlt.vltEd = true;
-        for (const char* folder : folders) {
-            auto db = LoadFolder(test::DataPath(std::string("attrib/databases/") + folder));
-            auto report = [&](const std::string& what) {
-                if (wrong < 40) std::printf("        %s on %s: %s\n", table, folder, what.c_str());
-                ++wrong;
-            };
-            std::set<std::string> walked; // a type's members are walked once per folder
-            for (const auto& cls : db->classes())
-                for (const auto& fd : cls->fields) {
-                    // The field's value in the first collection that has one.
-                    Collection* c = nullptr;
-                    for (Collection* x : cls->collections)
-                        if (const Attribute* a = x->find(fd.key); a && a->count) {
-                            c = x;
-                            break;
-                        }
-                    if (!c) continue;
-                    const std::string field = db->names().format(fd.key) + (fd.isArray() ? "[0]" : "");
-                    sc::FieldPath top;
-                    top.field = db->names().format(fd.key);
-                    if (fd.isArray()) top.steps.push_back({std::string(), 0});
-                    std::function<void(const sc::FieldPath&, const std::vector<std::string>&, int)> walk =
-                        [&](const sc::FieldPath& p, const std::vector<std::string>& words, int depth) {
-                            ValueType vt;
-                            try {
-                                vt = sc::TypeAt(*db, *c, p);
-                            } catch (const std::exception&) {
-                                return;
-                            }
-                            if ((vt.kind == TypeKind::Struct || vt.kind == TypeKind::Curve) && vt.st && depth < 6) {
-                                if (!walked.insert(vt.typeName + "|" + std::to_string(depth) + "|" + (words.empty() ? "" : words[0])).second &&
-                                    depth > 0)
-                                    return;
-                                // VaultLib's names for its members lead where the table says.
-                                for (const char* prefix : {"", "Attrib::Types::", "Attrib::", "EA::Reflection::"}) {
-                                    auto it = names->vaultLib.find(prefix + vt.typeName);
-                                    if (it == names->vaultLib.end()) continue;
-                                    for (const auto& [name, steps] : it->second) {
-                                        if (steps.empty() || !vt.st->member(steps[0].member)) continue; // not on this platform
-                                        sc::FieldPath want = p;
-                                        for (const auto& stp : steps) {
-                                            want.steps.push_back({stp.member, -1});
-                                            if (stp.index >= 0) want.steps.push_back({std::string(), stp.index});
-                                        }
-                                        std::vector<std::string> ws = words;
-                                        const size_t dot = name.find('.');
-                                        ws.push_back(name.substr(0, dot));
-                                        if (dot != std::string::npos) ws.push_back(name.substr(dot + 1));
-                                        ++aliases;
-                                        aliasesSeen.insert(std::string(table) + " " + it->first + " " + name);
-                                        try {
-                                            const sc::FieldPath got = ns::WordsLeadTo(*db, *c, field, ws, own);
-                                            if (StepsText(got, 0) != StepsText(want, 0))
-                                                report(it->first + " " + name + " leads to " + StepsText(got, 0) + ", not " + StepsText(want, 0));
-                                        } catch (const std::exception& e) {
-                                            report(it->first + " " + name + ": " + e.what());
-                                        }
-                                        // NFS-VltEd compatible runs know only NFS-VltEd's words.
-                                        const ns::PropertyNames::Type* t = names->find(vt.typeName);
-                                        if (dot == std::string::npos && !(t && t->find(name, true))) {
-                                            bool led = true;
-                                            try {
-                                                ns::WordsLeadTo(*db, *c, field, ws, vlt);
-                                            } catch (const std::exception&) {
-                                                led = false;
-                                            }
-                                            if (led) report(it->first + " " + name + " is taken NFS-VltEd compatible");
-                                        }
-                                    }
-                                    break;
-                                }
-                                for (const MemberDef& m : vt.st->members) {
-                                    if (m.prim == MemberPrim::Ptr || m.prim == MemberPrim::CStr || m.name.rfind("__", 0) == 0) continue;
-                                    sc::FieldPath q = p;
-                                    q.steps.push_back({m.name, -1});
-                                    std::string w = m.name;
-                                    if (m.count > 1) {
-                                        q.steps.push_back({std::string(), int64_t(m.count - 1)});
-                                        w += "[" + std::to_string(m.count - 1) + "]";
-                                    }
-                                    std::vector<std::string> ws = words;
-                                    ws.push_back(w);
-                                    walk(q, ws, depth + 1);
-                                }
-                                return;
-                            }
-                            if (words.empty()) return;
-                            // A member: by our names, and recorded by them.
-                            ++members;
-                            std::string part;
-                            try {
-                                const sc::FieldPath got = ns::WordsLeadTo(*db, *c, field, words, own, &part);
-                                if (StepsText(got, 0) != StepsText(p, 0)) {
-                                    std::string ws;
-                                    for (const std::string& w : words) ws += " " + w;
-                                    report(top.field + ws + " leads to " + StepsText(got, 0) + ", not " + StepsText(p, 0));
-                                    return;
-                                }
-                            } catch (const std::exception& e) {
-                                std::string ws;
-                                for (const std::string& w : words) ws += " " + w;
-                                report(db->names().format(cls->key) + " " + top.field + ws + ": " + e.what());
-                                return;
-                            }
-                            sc::Statement set;
-                            set.kind = sc::Statement::Kind::Set;
-                            set.path = p;
-                            if (vt.kind == TypeKind::RefSpec) {
-                                auto v = std::make_shared<sc::Value>();
-                                v->kind = sc::Value::Kind::Binary;
-                                v->op = '/';
-                                v->items = {sc::MakeString("a"), sc::MakeString("b")};
-                                set.value = v;
-                            } else {
-                                set.value = vt.kind == TypeKind::StringKey ? sc::MakeString("a") : sc::MakeNumber("1");
-                            }
-                            sc::Statement edit;
-                            edit.kind = sc::Statement::Kind::Edit;
-                            edit.target.cls = db->names().format(c->classKey);
-                            edit.target.name = db->names().format(c->key);
-                            edit.body.push_back(set);
-                            for (const std::string& line : ns::FromStatements(*db, {edit}, names.get(), false)) {
-                                const ns::Command cmd = ns::ParseLine(line);
-                                if (cmd.name != "update_field" || cmd.args.size() < 4) continue;
-                                const std::vector<std::string> ws(cmd.args.begin() + 3, cmd.args.end() - 1);
-                                // Our names: each word is a member of ours (or a reference's part, a component).
-                                for (size_t i = 0; i < words.size() && i < ws.size(); ++i)
-                                    if (ws[i] != words[i]) report("[" + line + "] writes " + ws[i] + " for " + words[i]);
-                                try {
-                                    const sc::FieldPath back = ns::WordsLeadTo(*db, *c, cmd.args[2], ws, own);
-                                    if (StepsText(back, 0) != StepsText(p, 0))
-                                        report("[" + line + "] leads to " + StepsText(back, 0) + ", not " + StepsText(p, 0));
-                                } catch (const std::exception& e) {
-                                    report("[" + line + "]: " + e.what());
-                                }
-                            }
-                        };
-                    walk(top, {}, 0);
-                }
-        }
-    }
-    // Every VaultLib name of every table was found on some platform of its game.
-    size_t listed = 0;
-    for (const auto& [table, folders] : games) {
-        auto names = ns::PropertyNames::Load(test::DataPath(std::string("data/nfsms/") + table + ".txt"));
-        for (const auto& [type, byName] : names->vaultLib)
-            for (const auto& [name, steps] : byName) {
-                ++listed;
-                if (!aliasesSeen.count(std::string(table) + " " + type + " " + name))
-                    std::printf("        %s: VaultLib's %s %s wasn't tried (no value of the type)\n", table, type.c_str(), name.c_str());
-            }
-    }
-    std::printf("        %zu members, %zu VaultLib names tried (%zu of %zu listed)\n", members, aliases, aliasesSeen.size(), listed);
-    CHECK(members > 1000);
-    CHECK_EQ(wrong, size_t(0));
-}
-
-TEST("nfsms: CarBodyMotion's words set the members they are named after (Carbon's BodyDive), and record as our names") {
+TEST("nfsms: CarBodyMotion's words set the members they are named after (Carbon's BodyDive), and record as each mode's tool names them") {
     auto db = LoadFolder(test::DataPath("attrib/databases/pc/carbon-vanilla"));
     auto names = ns::PropertyNames::Load(test::DataPath("data/nfsms/carbon_pc.txt"));
     for (bool vltEd : {false, true}) {
@@ -564,23 +371,23 @@ TEST("nfsms: CarBodyMotion's words set the members they are named after (Carbon'
         ns::RunSettings st;
         st.names = names;
         st.vltEd = vltEd;
-        CHECK_RUN(Run(*d, "update_field ecar copmidsize BodyDive DegPerG 3.25\n"
-                          "update_field ecar copmidsize BodyDive DegPerSec 6\n"
-                          "update_field ecar copmidsize BodyDive MaxG 2\n", st));
+        // NFS-VltEd's word is MaxG, VaultLib's (OGVI's) MaxGs.
+        CHECK_RUN(Run(*d, std::string("update_field ecar copmidsize BodyDive DegPerG 3.25\n"
+                                      "update_field ecar copmidsize BodyDive DegPerSec 6\n"
+                                      "update_field ecar copmidsize BodyDive ") + (vltEd ? "MaxG" : "MaxGs") + " 2\n", st));
         const Attribute& a = Own(Col(*d, "ecar", "copmidsize"), "BodyDive");
         CHECK_EQ(F32(a, 0, 0), 3.25f); // DegPerG
         CHECK_EQ(F32(a, 0, 4), 2.0f);  // MaxGs
         CHECK_EQ(F32(a, 0, 8), 6.0f);  // DegPerSec
     }
-    // Our names: Attribulina's own reading only, as VaultLib (Attribulator) names them too.
+    // Each mode takes its own tool's word only.
     auto d = sc::CloneDatabase(*db);
     ns::RunSettings st;
     st.names = names;
-    CHECK_RUN(Run(*d, "update_field ecar copmidsize BodyDive MaxGs 1.5\n", st));
-    CHECK_EQ(F32(Own(Col(*d, "ecar", "copmidsize"), "BodyDive"), 0, 4), 1.5f);
+    CHECK_EQ(Run(*d, "update_field ecar copmidsize BodyDive MaxG 1.5\n", st).errors(), size_t(1));
     st.vltEd = true;
     CHECK(!Run(*d, "update_field ecar copmidsize BodyDive MaxGs 1.5\n", st).messages.empty());
-    // Recorded: our names, or NFS-VltEd's words when NFS-VltEd compatible.
+    // Recorded: VaultLib's names in OGVI mode, NFS-VltEd's words in NFS-VltEd mode.
     const sc::Script edit = sc::Parse("attribulina 1\nedit ecar/copmidsize { BodyDive.MaxGs = 2.5\n BodyDive.DegPerSec = 7 }\n");
     CHECK(sc::Apply(*d, edit).ok); // the recorder writes NFS-VltEd's numbers from the value as it is
     auto lines = [&](bool vltEd) {
@@ -612,50 +419,6 @@ TEST("nfsms: CarBodyMotion's words set the members they are named after (Carbon'
     check("undercover_pc", "", "", "Sound::PursuitMusicTuning", "MinTimeLost", "MinTimeLost");
     check("world_pc", "", "", "Commerce::HatBonus", "RequiredPartCount", "RequiredPartCount");
     check("world_pc", "", "", "Commerce::HatBonus", "TopSpeed", "TopSpeed");
-}
-
-TEST("nfsms: Attribulator's (VaultLib's) names for parts run in Attribulina's own reading, not NFS-VltEd compatible") {
-    auto db = Load();
-    auto names = ns::PropertyNames::Load(test::DataPath("data/nfsms/prostreet_pc.txt"));
-    ns::RunSettings st;
-    st.names = names;
-    // A PhysicsUpgrade's ReferencedAttribute is VaultLib's AttributeRefSpec over our mClassKey and mDefinitionKey.
-    Collection* c = nullptr;
-    std::string field;
-    for (const auto& cls : db->classes())
-        for (const auto& fd : cls->fields)
-            if (!c && fd.type && fd.type->name == "PhysicsUpgrade")
-                for (Collection* x : cls->collections)
-                    if (const Attribute* a = x->find(fd.key); a && a->count && !c) {
-                        c = x;
-                        field = db->names().format(fd.key) + (fd.isArray() ? "[0]" : "");
-                    }
-    CHECK(c != nullptr);
-    if (!c) return;
-    sc::FieldPath p = ns::WordsLeadTo(*db, *c, field, {"ReferencedAttribute", "ClassKey"}, st);
-    CHECK_EQ(StepsText(p, 1), std::string(".mClassKey"));
-    p = ns::WordsLeadTo(*db, *c, field, {"ReferencedAttribute", "DefinitionKey"}, st);
-    CHECK_EQ(StepsText(p, 1), std::string(".mDefinitionKey"));
-    CHECK_RUN(Run(*db, "update_field " + db->names().format(c->classKey) + " " + db->names().format(c->key) + " " + field +
-                           " ReferencedAttribute DefinitionKey TORQUE\n", st));
-    CHECK_EQ(U32(Own(*c, field.substr(0, field.find('[')).c_str()), 0, 4), StringHash32("TORQUE"));
-    p = ns::WordsLeadTo(*db, *c, field, {"IsMember"}, st); // our mIsMember without its m
-    CHECK_EQ(StepsText(p, 1), std::string(".mIsMember"));
-    bool failed = false;
-    try {
-        ns::WordsLeadTo(*db, *c, field, {"ReferencedAttribute"}, st);
-    } catch (const std::exception& e) {
-        failed = std::string(e.what()).find("ClassKey") != std::string::npos;
-    }
-    CHECK(failed); // its part has to follow
-    st.vltEd = true;
-    failed = false;
-    try {
-        ns::WordsLeadTo(*db, *c, field, {"ReferencedAttribute", "ClassKey"}, st);
-    } catch (const std::exception&) {
-        failed = true;
-    }
-    CHECK(failed);
 }
 
 TEST("nfsms: lines split the way NFS-VltEd splits them") {
@@ -748,9 +511,17 @@ TEST("nfsms: a ui_option block ends at the next ui_option line, whatever it name
                                "update_field audio_revlimiter default total_frames_short 9\n";
     Collection& rev = Col(d, "audio_revlimiter", "default");
     const float before = F32(Own(rev, "load_for_short"));
-    CHECK_RUN(Run(d, script)); // nothing chosen: neither block runs
-    CHECK(F32(Own(rev, "load_for_short")) == before);
-    CHECK_EQ(U32(Own(rev, "total_frames_short")), 9u);
+    {
+        // NFS-VltEd mode: nothing chosen, neither block runs.
+        ns::RunSettings vlt;
+        vlt.vltEd = true;
+        vlt.choices.checkboxes["none"] = false;
+        CHECK_RUN(Run(d, "version 4.6\ngame PS\n" + script, vlt));
+        CHECK(F32(Own(rev, "load_for_short")) == before);
+        CHECK_EQ(U32(Own(rev, "total_frames_short")), 9u);
+    }
+    CHECK_RUN(Run(d, script)); // OGVI mode: the group's first button is chosen
+    CHECK(F32(Own(rev, "load_for_short")) == 0.25f);
     ns::RunSettings st;
     st.choices.radios["dif"] = "option2";
     CHECK_RUN(Run(d, script, st));
@@ -762,6 +533,7 @@ TEST("nfsms: NFS-VltEd's own words for the parts of a value (data/nfsms), as a r
     Database& d = *db;
     ns::RunSettings st;
     st.names = ns::PropertyNames::Load(test::DataPath("data/nfsms/prostreet_pc.txt"));
+    st.vltEd = true; // NFS-VltEd's words are NFS-VltEd mode's
     CHECK(ns::NamesFor(d, {st.names}) == st.names); // the table for PS
     std::string data;
     for (int i = 0; i < 28; ++i) data += (i ? " " : "") + std::string(i == 3 ? "3F" : i == 2 ? "80" : "00");
@@ -771,6 +543,7 @@ TEST("nfsms: NFS-VltEd's own words for the parts of a value (data/nfsms), as a r
                                "update_field presetride player_d_day Parts[7] PartClassKey car_part\n"       // into the RefSpec mPart
                                "update_field part_physics tires_lvl_4_kit03 UpgradeDescriptions[0] Type tires_2\n"
                                "update_field part_physics tires_lvl_4_kit03 UpgradeDescriptions[0] 4 0.75\n" // mBlendingPower
+                               "add_field controller drive LowSensitivitySteeringParameters\n"             // NFS-VltEd sets own fields only
                                "update_field controller drive LowSensitivitySteeringParameters Data \"" + data + "\"\n";
     sc::ApplyReport r = Run(d, script, st);
     CHECK_RUN(r);
@@ -789,35 +562,34 @@ TEST("nfsms: NFS-VltEd's own words for the parts of a value (data/nfsms), as a r
     r = Run(d, "update_field vehicle 240sx TORQUE GraphScale 1\n", st);
     CHECK_EQ(r.errors(), size_t(1));
     CHECK(Messages(r).find("MinX") != std::string::npos);
-    // Our member names work too, with or without the m.
-    CHECK_RUN(Run(d, "update_field presetride player_d_day Parts[7] mKitNumber 4\nupdate_field vehicle 240sx TORQUE yMax 300\n", st));
-    CHECK_EQ(U32(Own(Col(d, "presetride", "player_d_day"), "Parts"), 7, 20), 4u);
+    // Our member names are no mode's words: those are for mod scripts.
+    CHECK_EQ(Run(d, "update_field presetride player_d_day Parts[7] mKitNumber 4\nupdate_field vehicle 240sx TORQUE yMax 300\n", st).errors(), size_t(2));
 
-    // Recording writes our member names, as Attribulina's own reading (and VaultLib's) has them.
     const sc::Script edits = sc::Parse("attribulina 1\n"
                                        "edit presetride/player_d_day { Parts[7].mKitNumber = 5 }\n"
                                        "edit vehicle/240sx { TORQUE.yMin = 100\n TORQUE.Y[2] = 0.25 }\n"
                                        "edit part_physics/tires_lvl_4_kit03 { UpgradeDescriptions[0].mBlendingPower = 2 }\n",
                                        "rec.amod");
-    std::vector<std::string> lines = ns::FromStatements(d, edits.statements, st.names.get(), false);
+    auto edited = sc::CloneDatabase(d);
+    CHECK(sc::Apply(*edited, edits).ok);
+    // OGVI mode records VaultLib's names, which read back in OGVI mode.
+    std::vector<std::string> lines = ns::FromStatements(*edited, edits.statements, st.names.get(), false);
     auto has = [&](const std::string& l) {
         const bool ok = std::find(lines.begin(), lines.end(), l) != lines.end();
         if (!ok) std::fprintf(stderr, "missing: %s\n", l.c_str());
         return ok;
     };
-    CHECK(has("update_field presetride player_d_day Parts[7] mKitNumber 5"));
-    CHECK(has("update_field vehicle 240sx TORQUE yMin 100"));
-    CHECK(has("update_field vehicle 240sx TORQUE Y[2] 0.25"));
-    CHECK(has("update_field part_physics tires_lvl_4_kit03 UpgradeDescriptions[0] mBlendingPower 2"));
-    // And they read back.
+    CHECK(has("update_field presetride player_d_day Parts[7] KitNumber 5"));
+    CHECK(has("update_field vehicle 240sx TORQUE MinY 100"));
     std::string text;
     for (const std::string& l : lines) text += l + "\n";
     auto mine = sc::CloneDatabase(d);
-    CHECK_RUN(Run(*mine, text, st));
+    ns::RunSettings og = st;
+    og.vltEd = false;
+    Run(*mine, text, og);
     CHECK_EQ(U32(Own(Col(*mine, "presetride", "player_d_day"), "Parts"), 7, 20), 5u);
+    CHECK(ReadCurve(Own(Col(*mine, "vehicle", "240sx"), "TORQUE"), 0, Endian::Little).yMin == 100.0f);
     // NFS-VltEd compatible: its words, and a curve point as update_collection (the whole curve as it is now).
-    auto edited = sc::CloneDatabase(d);
-    CHECK(sc::Apply(*edited, edits).ok);
     lines = ns::FromStatements(*edited, edits.statements, st.names.get(), true);
     CHECK(has("update_field presetride player_d_day Parts[7] KitNumber 5"));
     CHECK(has("update_field vehicle 240sx TORQUE MinY 100"));
@@ -832,7 +604,7 @@ TEST("nfsms: NFS-VltEd's own words for the parts of a value (data/nfsms), as a r
     CHECK_EQ(Changes(sc::Diff(*edited, d)), size_t(0));
 }
 
-TEST("nfsms: a real NFS-VltEd mod (nfsms test/, when present) runs with no failed line") {
+TEST("nfsms: a real NFS-VltEd mod (nfsms test/, when present) runs in NFS-VltEd mode with no failed line") {
     namespace fs = std::filesystem;
     const std::string mod = test::DataPath("nfsms test/Vlted/Click Me To Install!.nfsms");
     if (!fs::exists(fs::path(mod))) {
@@ -849,6 +621,7 @@ TEST("nfsms: a real NFS-VltEd mod (nfsms test/, when present) runs with no faile
     CHECK_EQ(s.controls.size(), size_t(26)); // 4 + 3 + 2 radio buttons, 17 boxes
     ns::RunSettings st;
     st.names = ns::PropertyNames::Load(test::DataPath("data/nfsms/prostreet_pc.txt"));
+    st.vltEd = true; // written for NFS-VltEd: NFS-VltEd mode
     st.choices = ns::DefaultChoices(s);
     st.choices.radios = {{"dif", "option2"}, {"diff", "option1"}, {"point", "option1"}};
     for (auto& [box, on] : st.choices.checkboxes) on = true;
@@ -908,6 +681,7 @@ TEST("nfsms: ToModScript writes a mod script that does what the nfsms script doe
         "delete_node pvehicle 240sx_conv\n";
     ns::RunSettings st;
     st.names = ns::PropertyNames::Load(test::DataPath("data/nfsms/prostreet_pc.txt"));
+    st.vltEd = true; // NFS-VltEd's words and setup
     st.readFile = [&](const std::string& p) {
         CHECK(p.find("more.nfsms") != std::string::npos);
         return included;
@@ -979,7 +753,7 @@ TEST("nfsms: ToModScript names a field, key, bin key, reference or new name give
         has("edit part_fedata/t2_high_brake_package {");
         has("partData[0].HAL_ID = \"CAR_PART_STOCK\""); // a bin key, by its bStringHash name
         has("fe_data = \"part_fedata\"/\"t3_low_forced_induction_package_2\"");
-        has("fe_data = \"part_fedata\"/0x0badf00d");
+        has(vltEd ? "fe_data = \"part_fedata\"/0x0badf00d" : "fe_data = \"part_fedata\"/0x0BADF00D"); // Attribulator writes 0x words in capitals
         has("rename pvehicle/kid_tmp to t3_low_drivetrain_package");
         // A new node under a parent: made as a root and moved, so it doesn't start from the parent's layout.
         has("create pvehicle/kid_tmp in vault db\nmove pvehicle/kid_tmp under pvehicle/240sx\n");
@@ -1028,7 +802,9 @@ TEST("nfsms: a NaN or an infinity converts and writes as text every platform rea
         st.vltEd = vltEd;
         sc::ApplyReport conv;
         auto scratch = sc::CloneDatabase(*db);
-        const std::string text = sc::Print(ns::ToModScript(*scratch, ns::Parse(script, "nan.nfsms"), st, &conv));
+        // The curve line is NFS-VltEd's words (OGVI mode doesn't set a curve's points yet).
+        const std::string text0 = vltEd ? script : std::string(script).replace(script.find("update_collection"), script.find("update_field") - script.find("update_collection"), "");
+        const std::string text = sc::Print(ns::ToModScript(*scratch, ns::Parse(text0, "nan.nfsms"), st, &conv));
         if (conv.errors()) std::fprintf(stderr, "%s\n%s", Messages(conv).c_str(), text.c_str());
         CHECK_EQ(conv.errors(), size_t(0));
         CHECK(text.find("nan(") == std::string::npos);
@@ -1037,14 +813,14 @@ TEST("nfsms: a NaN or an infinity converts and writes as text every platform rea
             if (!found) std::fprintf(stderr, "vltEd %d: no \"%s\" in\n%s", int(vltEd), what, text.c_str());
             CHECK(found);
         };
-        // NFS-VltEd reads NaN as .NET's NaN (0xFFC00000), written as its bytes; our reading, as nan.
-        has(vltEd ? "ShockSqueakThreshPavement[0] = bytes \"00 00 C0 FF" : "ShockSqueakThreshPavement[0] = nan");
+        // NFS-VltEd and OGVI read NaN as .NET's NaN (0xFFC00000), written as its bytes.
+        has("ShockSqueakThreshPavement[0] = bytes \"00 00 C0 FF");
         has("ShockSqueakThreshPavement[1] = inf");
         has("ShockSqueakThreshPavement[2] = -inf");
         auto viaNfsms = sc::CloneDatabase(*db);
-        CHECK_RUN(Run(*viaNfsms, script, st));
+        CHECK_RUN(Run(*viaNfsms, text0, st));
         const Attribute& thresh = Own(Col(*viaNfsms, "skidaudio", "default"), "ShockSqueakThreshPavement");
-        CHECK_EQ(U32(thresh, 0), vltEd ? 0xFFC00000u : 0x7FC00000u);
+        CHECK_EQ(U32(thresh, 0), 0xFFC00000u);
         CHECK(std::isinf(F32(thresh, 1)) && F32(thresh, 1) > 0 && std::isinf(F32(thresh, 2)) && F32(thresh, 2) < 0);
         const CurveValue torque = ReadCurve(Own(Col(*viaNfsms, "vehicle", "240sx"), "TORQUE"), 0, Endian::Little);
         CHECK(finite(torque.y2));
@@ -1120,12 +896,11 @@ TEST("nfsms: ToModScript writes a reference's Class and Collection lines as one 
     }
 }
 
-TEST("nfsms: update_field reaches each kind of value") {
+TEST("nfsms: update_field reaches each kind of value in OGVI mode") {
     auto db = Load();
     Database& d = *db;
     const ValueType axle = TypeOfAttribute(Own(Col(d, "vehicle", "default"), "SHOCK_EXT_STIFFNESS"), "SHOCK_EXT_STIFFNESS");
-    std::string member = axle.st->members[1].name;
-    for (char& ch : member) ch = char(std::tolower(static_cast<unsigned char>(ch))); // names match without case
+    const std::string member = "Rear"; // VaultLib's AxlePair names, exactly as written
     const uint32_t axleOff = axle.st->members[1].offset;
     const ValueType hud = TypeOfAttribute(Own(Col(d, "controller", "drive"), "ControllerHudType"), "ControllerHudType");
     const std::string script = "version 4.6\n"
@@ -1140,7 +915,7 @@ TEST("nfsms: update_field reaches each kind of value") {
                                "update_field pvehicle default BEHAVIOR_MECHANIC_RIGIDBODY \"my body\"\n"
                                "update_field car mclarenf1 isBoosterPack True\n"
                                "update_field controller drive ControllerHudType " + hud.en->values[1].first + "\n"
-                               "update_collection collisionsfx_damage hood VolMap[0] some_name\n";
+                               "update_collection collisionsfx_damage hood VolMap[0] Value some_name\n";
     const sc::ApplyReport r = Run(d, script);
     CHECK_RUN(r);
     CHECK_EQ(r.warnings(), size_t(0));
@@ -1158,7 +933,7 @@ TEST("nfsms: update_field reaches each kind of value") {
     CHECK(key.data.ptrAt(4) && key.data.ptrAt(4)->text == "my body");
     CHECK_EQ(int(Own(Col(d, "car", "mclarenf1"), "isBoosterPack").data.bytes[0]), 1);
     CHECK_EQ(int64_t(U32(Own(Col(d, "controller", "drive"), "ControllerHudType"))), hud.en->values[1].second);
-    CHECK_EQ(U32(Own(Col(d, "collisionsfx_damage", "hood"), "VolMap")), StringHash32("some_name")); // a name in a number field
+    CHECK_EQ(U32(Own(Col(d, "collisionsfx_damage", "hood"), "VolMap")), StringHash32("some_name")); // a name in a uint property
 
     // A line that fails is reported at its line; the script goes on.
     auto fails = [&](const std::string& line, const char* what) {
@@ -1170,36 +945,42 @@ TEST("nfsms: update_field reaches each kind of value") {
     };
     fails("update_field pvehicle nope HornType 1", "2: class 'pvehicle' does not contain node 'nope'");
     fails("update_field pvehicle street NOPE 1", "does not contain 'NOPE'");
-    fails("update_field pvehicle street HornType 300", "out of range");
-    fails("update_field effects default EmitterQuadratic 3", "takes more than one value");
-    fails("update_field car mclarenf1 isBoosterPack maybe", "a bool is true or false");
-    // Another game's script warns.
+    fails("update_field pvehicle street HornType 300", "too large or too small");
+    fails("update_field effects default EmitterQuadratic 3", "cannot handle update");
+    fails("update_field car mclarenf1 isBoosterPack maybe", "not recognized as a valid Boolean");
+    fails("update_field car mclarenf1 isBoosterPack 1", "not recognized as a valid Boolean");
+    fails("update_collection collisionsfx_damage hood VolMap[0] some_name", "Failed to parse value"); // a whole value takes no name
+    fails("update_field vehicle default SHOCK_EXT_STIFFNESS[0] rear 1", "Property not found"); // case counts
+    // OGVI skips game lines.
     const sc::ApplyReport other = Run(d, "game MW C\n");
     CHECK_RUN(other);
-    CHECK_EQ(other.warnings(), size_t(1));
+    CHECK(other.messages.empty());
 }
 
 TEST("nfsms: an array may go past the count its definition allows, with a warning; strict stops") {
     auto db = Load();
     Database& d = *db;
-    // vehicle's GEAR_RATIO: its definition allows 9 elements.
+    // vehicle's GEAR_RATIO: its definition allows 9 elements. OGVI mode does as
+    // Attribulator: add_field and append_array refuse more, resize_field grows an
+    // entry array past it (with a warning here).
     const sc::ApplyReport r = Run(d, "add_field vehicle g35 GEAR_RATIO 10\n"
+                                     "add_field vehicle 997gt3rs GEAR_RATIO 9\n"
                                      "resize_field vehicle 997gt3rs GEAR_RATIO 11\n"
                                      "append_array vehicle 997gt3rs GEAR_RATIO 0.5\n");
-    CHECK_RUN(r);
-    CHECK_EQ(r.warnings(), size_t(3));
-    CHECK(Messages(r).find("1: GEAR_RATIO has 10 elements, more than the 9 its definition allows") != std::string::npos);
-    CHECK_EQ(Own(Col(d, "vehicle", "g35"), "GEAR_RATIO").count, 10u);
+    if (r.errors() != 2 || r.warnings() != 1) std::fprintf(stderr, "%s", Messages(r).c_str());
+    CHECK_EQ(r.errors(), size_t(2));
+    CHECK_EQ(r.warnings(), size_t(1));
+    CHECK(Messages(r).find("capacity beyond maximum") != std::string::npos);
+    CHECK(Messages(r).find("3: GEAR_RATIO has 11 elements, more than the 9 its definition allows") != std::string::npos);
+    CHECK(Messages(r).find("exceed the maximum number of allowed elements") != std::string::npos);
     const Attribute& g = Own(Col(d, "vehicle", "997gt3rs"), "GEAR_RATIO");
-    CHECK_EQ(g.count, 12u);
-    CHECK_EQ(F32(g, 11), 0.5f);
+    CHECK_EQ(g.count, 11u);
     ns::RunSettings st;
     st.strict = true;
     const sc::ApplyReport s = Run(d, "resize_field vehicle 997gt3rs GEAR_RATIO 13\n", st);
     CHECK(!s.ok);
-    CHECK_EQ(Own(Col(d, "vehicle", "997gt3rs"), "GEAR_RATIO").count, 12u);
+    CHECK_EQ(Own(Col(d, "vehicle", "997gt3rs"), "GEAR_RATIO").count, 11u);
 }
-
 TEST("nfsms: nodes are added, copied, renamed, moved and deleted") {
     auto db = Load(true);
     Database& d = *db;
@@ -1213,12 +994,17 @@ TEST("nfsms: nodes are added, copied, renamed, moved and deleted") {
                                "update_field pvehicle ns_new HornType 7\n"
                                "add_field collisionsfx_damage body_panel VolMap 2\n"
                                "resize_field collisionsfx_damage hood VolMap 5\n"
-                               "append_array collisionsfx_damage hood VolMap 0x99\n"
+                               "append_array collisionsfx_damage hood VolMap 0x99\n" // its definition allows 0: refused
+                               "add_field vehicle g35 GEAR_RATIO 3\n"
+                               "append_array vehicle g35 GEAR_RATIO 0.5\n"
                                "delete_field pvehicle ns_copy HornType\n"
                                "copy_fields pvehicle street ns_new base|optional|overwrite\n"
                                "add_overwrite pvehicle ns_renamed\n";
     const sc::ApplyReport r = Run(d, script);
     CHECK_RUN(r);
+    CHECK_EQ(r.errors(), size_t(1)); // the VolMap append, as in Attribulator
+    CHECK_EQ(Own(Col(d, "vehicle", "g35"), "GEAR_RATIO").count, 4u);
+    CHECK_EQ(F32(Own(Col(d, "vehicle", "g35"), "GEAR_RATIO"), 3), 0.5f);
     Collection& added = Col(d, "pvehicle", "ns_new");
     CHECK(added.parent == nullptr); // moved to the root
     Collection& copy = Col(d, "pvehicle", "ns_copy");
@@ -1234,8 +1020,7 @@ TEST("nfsms: nodes are added, copied, renamed, moved and deleted") {
     CHECK(over.parent == nullptr);
     CHECK(d.findCollection(StringHash32("pvehicle"), StringHash32("ns_copy2")) == nullptr);
     const Attribute& vm = Own(Col(d, "collisionsfx_damage", "hood"), "VolMap");
-    CHECK_EQ(vm.count, 6u);
-    CHECK_EQ(U32(vm, 5), 0x99u);
+    CHECK_EQ(vm.count, 5u);
     CHECK_EQ(Own(Col(d, "collisionsfx_damage", "body_panel"), "VolMap").count, 3u); // there already: kept
     // A gameplay node to a vault that doesn't exist yet makes it.
     const sc::ApplyReport g = Run(d, "change_vault gameplay prototype_tracks/autobahn/autobahn_drag_2 ns_vault\n");
@@ -1244,7 +1029,11 @@ TEST("nfsms: nodes are added, copied, renamed, moved and deleted") {
     // delete_node takes the children; delete_nodes a whole class.
     CHECK(Run(d, "add_node pvehicle ns_new ns_child\ndelete_node pvehicle ns_new\n").ok);
     CHECK(d.findCollection(StringHash32("pvehicle"), StringHash32("ns_child")) == nullptr);
-    CHECK(Run(d, "delete_nodes emittergroup\n").ok);
+    {
+        ns::RunSettings vlt; // delete_nodes is NFS-VltEd's
+        vlt.vltEd = true;
+        CHECK(Run(d, "delete_nodes emittergroup\n", vlt).ok);
+    }
     CHECK(d.findClass(StringHash32("emittergroup"))->collections.empty());
     // The packs still load.
     for (const auto& pk : d.packs()) {
@@ -1279,11 +1068,13 @@ TEST("nfsms: setup choices, line ranges, includes and file copies") {
         return "update_field audio_revlimiter default cutoff_frames_short 9\n";
     };
     const ns::Script s = ns::Parse(script, "setup.nfsms", "/mods/x");
-    st.choices = ns::DefaultChoices(s);
+    st.names = TableFor(d);
+    st.choices = ns::DefaultChoices(s, true);
+    CHECK_EQ(st.choices.radios.at("size"), std::string("small")); // OGVI: the group's first button
     sc::ApplyReport r = ns::Run(d, s, st);
     CHECK_RUN(r);
     CHECK_EQ(U32(Own(rev, "total_frames_short")), 1u); // "more" is off
-    CHECK(U32(Own(rev, "total_frames_long")) != 50u);  // no size is chosen
+    CHECK(U32(Own(rev, "total_frames_long")) != 50u);  // small is chosen
     CHECK_EQ(U32(Own(rev, "cutoff_frames_short")), 9u);
     st.choices.checkboxes["more"] = true;
     st.choices.radios["size"] = "big";
@@ -1302,7 +1093,7 @@ TEST("nfsms: setup choices, line ranges, includes and file copies") {
     CHECK_EQ(U32(Own(rev, "total_frames_short")), 1u);
     CHECK(Messages(r).find("skipped") != std::string::npos); // and says why
 
-    // Files go into the target folder, and only inside it.
+    // Files go into the target folder, and only inside it: NFS-VltEd mode's (OGVI skips the lines).
     const fs::path tmp = fs::temp_directory_path() / "attribulina_nfsms_test";
     fs::remove_all(tmp);
     fs::create_directories(tmp / "mod");
@@ -1310,6 +1101,7 @@ TEST("nfsms: setup choices, line ranges, includes and file copies") {
     ns::RunSettings files;
     files.targetFolder = (tmp / "game").string();
     files.doFiles = true;
+    files.vltEd = true;
     const ns::Script f = ns::Parse("folder_create TEXTURES\nfile_copy readme.txt TEXTURES/readme.txt\n", "f.nfsms", (tmp / "mod").string());
     CHECK(ns::Run(d, f, files).ok);
     CHECK(fs::exists(tmp / "game" / "TEXTURES" / "readme.txt"));
@@ -1334,7 +1126,7 @@ TEST("nfsms: a diff written as nfsms rebuilds the changed database") {
                                                            "edit pvehicle/default { revert BEHAVIOR_MECHANIC_RIGIDBODY }\n"));
     CHECK(made.ok);
     const sc::Script diff = sc::Diff(*base, *cur);
-    const std::vector<std::string> lines = ns::FromStatements(*cur, diff.statements);
+    const std::vector<std::string> lines = ns::FromStatements(*cur, diff.statements, TableFor(*cur).get());
     std::string text;
     for (const std::string& l : lines) text += l + "\n";
     CHECK(text.find("update_field effects default EmitterQuadratic X 1") != std::string::npos);
@@ -1397,13 +1189,14 @@ TEST("nfsms: a collection written as nfsms is made with add_node and add_field, 
                 ++entries;
                 if (set >= 0 && !(added >= 0 && added < set)) std::fprintf(stderr, "%s/%s %s:\n%s", cls.c_str(), node.c_str(), field.c_str(), text.c_str());
                 CHECK(set < 0 || (added >= 0 && added < set));
-                CHECK_EQ(resized, -1);
+                // A length past the definition's goes in a resize_field after it (Attribulator refuses it in add_field).
+                CHECK(resized == -1 || resized == added + 1);
             }
         }
         CHECK(layout > 0 && entries > 0);
     }
     CHECK(text.find("add_node pvehicle ") != std::string::npos);
-    CHECK(text.find("add_field collisionsfx_damage ns_hood VolMap 3\n") != std::string::npos);
+    CHECK(text.find("add_field collisionsfx_damage ns_hood VolMap\nresize_field collisionsfx_damage ns_hood VolMap 3\n") != std::string::npos);
     CHECK(text.find("update_field collisionsfx_damage ns_hood VolMap[2] 7\n") != std::string::npos);
     // Run where they aren't, it makes them as they are here.
     auto target = sc::CloneDatabase(*base);
@@ -1436,14 +1229,25 @@ TEST("nfsms: a collection written as nfsms is made with add_node and add_field, 
     const Collection& source = Col(*base, "pvehicle", "street");
     std::string other; // a value street doesn't have
     for (const FieldDef& f : source.cls->fields)
-        if (!f.inLayout() && !f.isArray() && !source.find(f.key)) other = base->names().format(f.key);
+        if (!f.inLayout() && !f.isArray() && !source.find(f.key) && f.type &&
+            (f.type->kind == TypeKind::UInt32 || f.type->kind == TypeKind::Int32 || f.type->kind == TypeKind::Float ||
+             f.type->kind == TypeKind::UInt8 || f.type->kind == TypeKind::Int8 || f.type->kind == TypeKind::UInt16 ||
+             f.type->kind == TypeKind::Int16))
+            other = base->names().format(f.key); // a number
     CHECK(source.find(StringHash32("HornType")) && !other.empty());
-    const sc::Statement copy = sc::Parse("attribulina 1\n"
-                                         "create pvehicle/ns_copy from pvehicle/street {\n"
-                                         "    HornType = 2\n    " + other + " = 3\n}\n")
-                                   .statements.back();
+    const std::string copyText = "attribulina 1\n"
+                                 "create pvehicle/ns_copy from pvehicle/street {\n"
+                                 "    HornType = 2\n    " + other + " = 3\n}\n";
+    const sc::Statement copy = sc::Parse(copyText).statements.back();
     std::string copied;
-    for (const std::string& l : ns::FromStatements(*base, {copy})) copied += l + "\n";
+    {
+        // The writer reads the values from the database the statements made, as the recorder's is.
+        auto after = sc::CloneDatabase(*base);
+        const sc::ApplyReport made = sc::Apply(*after, sc::Parse(copyText));
+        if (!made.ok) std::fprintf(stderr, "%s", Messages(made).c_str());
+        CHECK(made.ok);
+        for (const std::string& l : ns::FromStatements(*after, {copy}, TableFor(*after).get())) copied += l + "\n";
+    }
     CHECK(copied.rfind("copy_node pvehicle street ", 0) == 0);
     CHECK(copied.find("add_field pvehicle ns_copy HornType") == std::string::npos);
     CHECK(copied.find("update_field pvehicle ns_copy HornType 2\n") != std::string::npos);
@@ -1455,11 +1259,11 @@ TEST("nfsms: a collection written as nfsms is made with add_node and add_field, 
     CHECK(sc::Apply(*grown, sc::Parse("attribulina 2\nedit car_list/all_cars { append Cars = pvehicle/street }\n")).ok);
     std::string appended;
     for (const std::string& l : ns::FromStatements(*grown, sc::Diff(*base, *grown).statements, st.names.get())) appended += l + "\n";
-    if (appended.find("append_array car_list all_cars Cars\nupdate_field car_list all_cars Cars[^] Class pvehicle\n"
-                      "update_field car_list all_cars Cars[^] Collection street\n") == std::string::npos)
+    if (appended.find("append_array car_list all_cars Cars\nupdate_field car_list all_cars Cars[^] ClassKey pvehicle\n"
+                      "update_field car_list all_cars Cars[^] CollectionKey street\n") == std::string::npos)
         std::fprintf(stderr, "%s", appended.c_str());
-    CHECK(appended.find("append_array car_list all_cars Cars\nupdate_field car_list all_cars Cars[^] Class pvehicle\n"
-                        "update_field car_list all_cars Cars[^] Collection street\n") != std::string::npos);
+    CHECK(appended.find("append_array car_list all_cars Cars\nupdate_field car_list all_cars Cars[^] ClassKey pvehicle\n"
+                        "update_field car_list all_cars Cars[^] CollectionKey street\n") != std::string::npos);
     auto onBase = sc::CloneDatabase(*base);
     const sc::ApplyReport ar = Run(*onBase, appended, st);
     CHECK_RUN(ar);
@@ -1524,20 +1328,24 @@ TEST("nfsms: NFS-VltEd compatible runs read values as NFS-VltEd 4.6 does") {
         CHECK(!Run(*db, "resize_field table_data steering_input_remap_table data 101\n", vlt).errors() == 0);
     }
 
-    // copy_fields: overwrite replaces the target's own values that the source has
-    // (both readings); a value command on an inherited field fails in NFS-VltEd.
-    for (const ns::RunSettings* st : {&ext, &vlt}) {
+    // copy_fields: NFS-VltEd's overwrite replaces the target's own values the source
+    // has; OGVI's (Attribulator's) needs optional with it. An option neither knows
+    // fails NFS-VltEd's line and copies nothing in OGVI's.
+    for (const bool vltEd : {false, true}) {
+        const ns::RunSettings& st = vltEd ? vlt : ext;
         auto db = fresh();
-        const sc::ApplyReport r = Run(*db, "copy_node vehicle dbr9_track dbr9 ns_a\n"
-                                           "copy_fields vehicle zonda_track_highend ns_a base|overwrite\n", *st);
+        const sc::ApplyReport r = Run(*db, std::string("copy_node vehicle dbr9_track dbr9 ns_a\n"
+                                                       "copy_fields vehicle zonda_track_highend ns_a ") +
+                                               (vltEd ? "base|overwrite\n" : "base|optional|overwrite\n"), st);
         CHECK_RUN(r);
         CHECK_EQ(Own(Col(*db, "vehicle", "ns_a"), "TOE").count, Own(Col(*db, "vehicle", "zonda_track_highend"), "TOE").count);
-        CHECK(!Run(*db, "copy_fields vehicle zonda_track_highend ns_a nothing\n", *st).errors() == 0);
+        CHECK_EQ(Run(*db, "copy_fields vehicle zonda_track_highend ns_a nothing\n", st).errors(), size_t(vltEd ? 1 : 0));
     }
     {
+        // A value command on a field the node only inherits fails in both modes.
         auto db = fresh();
         CHECK_EQ(Run(*db, "update_field vehicle ccx_draghpfall STEERING_SPEED[0] 1\n", vlt).errors(), size_t(1));
-        CHECK_EQ(Run(*db, "update_field vehicle ccx_draghpfall STEERING_SPEED[0] 1\n", ext).errors(), size_t(0));
+        CHECK_EQ(Run(*db, "update_field vehicle ccx_draghpfall STEERING_SPEED[0] 1\n", ext).errors(), size_t(1));
     }
 
     // add_field starts as the class's default collection has it: its values and
@@ -1594,9 +1402,11 @@ TEST("nfsms: NFS-VltEd compatible runs read values as NFS-VltEd 4.6 does") {
         CHECK_EQ(c.x.size(), before.x.size());
         CHECK(c.x[8] == c.y[0]);           // X's last from Y's first
         CHECK(c.y.back() == before.y2[0]); // Y's last from Y2's first
+        // OGVI mode doesn't set a curve's points yet: the line fails and says so.
         auto e = fresh();
-        CHECK_RUN(Run(*e, "update_collection vehicle bmwm3e92_drifthigh TORQUE YValues 3 Value 0.5\n", ext));
-        CHECK(ReadCurve(Own(Col(*e, "vehicle", "bmwm3e92_drifthigh"), "TORQUE"), 0, Endian::Little).y2 != before.y2);
+        const sc::ApplyReport og = Run(*e, "update_field vehicle bmwm3e92_drifthigh TORQUE YValues 3 0.5\n", ext);
+        CHECK_EQ(og.errors(), size_t(1));
+        CHECK(Messages(og).find("doesn't set yet") != std::string::npos);
     }
 
     // What the editor writes for NFS-VltEd: no [^] or append_array, an array
@@ -1814,9 +1624,15 @@ TEST("nfsms: a script or file named in another case is found, as on Windows") {
     CHECK_EQ(ns::ScriptFile(dir.string(), "sub\\INC.nfsms"), (dir / "Sub" / "inc.nfsms").string());
     auto db = Load();
     const ns::Script s = ns::Parse("version 4.6\nscript\"SUB\\Inc.nfsms\"\n", "main.nfsms", dir.string());
-    const sc::ApplyReport r = ns::Run(*db, s, {});
-    CHECK_RUN(r);
-    CHECK_EQ(U32(Own(Col(*db, "audio_revlimiter", "default"), "total_frames_long")), 47u);
+    for (const bool vltEd : {false, true}) {
+        ns::RunSettings st;
+        st.names = TableFor(*db);
+        st.vltEd = vltEd;
+        const sc::ApplyReport r = ns::Run(*db, s, st);
+        CHECK_RUN(r);
+        CHECK_EQ(U32(Own(Col(*db, "audio_revlimiter", "default"), "total_frames_long")), 47u);
+        CHECK(sc::Apply(*db, sc::Parse("attribulina 1\nedit audio_revlimiter/default { total_frames_long = 3 }\n")).ok);
+    }
     fs::remove_all(dir);
 }
 
@@ -1854,15 +1670,15 @@ TEST("nfsms: World's scripts edit its packs and event vaults, and record back as
     CHECK_EQ(ns::GameCode(*base), std::string("W"));
     ns::RunSettings st;
     st.names = ns::PropertyNames::Load(test::DataPath("data/nfsms/world_pc.txt"));
-    auto db = sc::CloneDatabase(*base);
+    auto db = sc::CloneDatabase(*base); // OGVI mode: VaultLib's World classes
     Database& d = *db;
     const sc::ApplyReport r = Run(d,
                                   "version 4.6\n"
                                   "game W\n"
-                                  "update_field ecar default IntegratedKitWheelOffsetFront[0] 2 CROWNCOP_KIT12_INTEGRATED_KIT\n"
-                                  "update_field ecar default IntegratedKitWheelOffsetFront[0] 3 45\n"
-                                  "update_field virtualitem 0x38780AC3 longdescription LocalizedString GM_TEST_STRING\n"
-                                  "update_field partcollections 0032 hat_bonus[0] Acceleration 13\n"
+                                  "update_field ecar default IntegratedKitWheelOffsetFront[0] KitName CROWNCOP_KIT12_INTEGRATED_KIT\n"
+                                  "update_field ecar default IntegratedKitWheelOffsetFront[0] Offset 45\n"
+                                  "update_field virtualitem 0x38780AC3 longdescription Value GM_TEST_STRING\n"
+                                  "update_field partcollections 0032 hat_bonus[0] Handling 13\n" // VaultLib's Handling is byte 0
                                   "update_field gameplay race_bin_01/1_2_1_sprint DifficultyLevel 90\n"
                                   "update_field gameplay race_bin_01/1_2_1_sprint EngageTriggerPosition X 6200.5\n"
                                   "copy_node gameplay race_bin_01/1_2_1_sprint/engage race_bin_01/1_2_1_sprint race_bin_01/1_2_1_sprint/engage2\n",
@@ -1892,7 +1708,7 @@ TEST("nfsms: World's scripts edit its packs and event vaults, and record back as
                   p->path.find("commerce.bin") != std::string::npos);
 
     // What changed, written as nfsms, makes the same database from the files.
-    const std::vector<std::string> lines = ns::FromStatements(d, sc::Diff(*base, d).statements);
+    const std::vector<std::string> lines = ns::FromStatements(d, sc::Diff(*base, d).statements, st.names.get(), false, base.get());
     std::string again;
     for (const std::string& l : lines) again += l + "\n";
     auto target = sc::CloneDatabase(*base);
@@ -1908,12 +1724,13 @@ TEST("nfsms: World's scripts edit its packs and event vaults, and record back as
     CHECK_EQ(ns::GameCode(*beta), std::string("WB"));
     ns::RunSettings wb;
     wb.names = ns::PropertyNames::Load(test::DataPath("data/nfsms/world_beta_pc.txt"));
+    wb.vltEd = true;
     const sc::ApplyReport rb = Run(*beta, "version 4.6\ngame WB\nupdate_field combat_abilities sprinter abilities[0] 2 25\n", wb);
     CHECK_RUN(rb);
     CHECK(rb.messages.empty());
     CHECK(F32(Own(Col(*beta, "combat_abilities", "sprinter"), "abilities"), 0, 4) == 25.0f);
     const sc::ApplyReport rw = Run(*beta, "version 4.6\ngame W\n", wb);
-    CHECK(Messages(rw).find("the script is for W; this database is WB") != std::string::npos);
+    CHECK(Messages(rw).find("This mod supports for the following game(s): W") != std::string::npos);
 
     // The builds after the 2010 beta are W, the first of them (77, the beta's
     // types) too: each has more of the final build's types than the one before.
@@ -1936,15 +1753,21 @@ TEST("nfsms: a line that fails is reported and the next one runs, as in NFS-VltE
                                "update_field audio_revlimiter default total_frames_short 11\n" // 2
                                "resize_field pvehicle\n"                                        // 3: too few parameters
                                "update_field pvehicle nope HornType 1\n"                        // 4: no such node
-                               "update_field audio_revlimiter default total_frames_long 12\n"  // 5
-                               "ui_control checkbox broken maybe \"Broken\"\n";                 // 6: bad setup line
+                               "update_field audio_revlimiter default total_frames_long 12\n"; // 5
     sc::ApplyReport r = Run(d, script);
     CHECK(r.ok);
-    CHECK_EQ(r.errors(), size_t(3));
+    CHECK_EQ(r.errors(), size_t(2));
     std::vector<int> lines;
     for (const sc::Message& m : r.messages)
         if (m.level == sc::Message::Level::Error) lines.push_back(m.pos.line);
-    CHECK(lines == (std::vector<int>{3, 4, 6}));
+    CHECK(lines == (std::vector<int>{3, 4}));
+    // A setup line that doesn't read: OGVI's import window closes, and nothing runs.
+    {
+        const sc::ApplyReport b = Run(d, "update_field audio_revlimiter default total_frames_long 13\nui_control checkbox broken maybe \"Broken\"\n");
+        CHECK_EQ(b.errors(), size_t(1));
+        CHECK(Messages(b).find("2: OGVI can't read this setup line") != std::string::npos);
+        CHECK_EQ(U32(Own(rev, "total_frames_long")), 12u);
+    }
     CHECK_EQ(U32(Own(rev, "total_frames_short")), 11u);
     CHECK_EQ(U32(Own(rev, "total_frames_long")), 12u);
     // Strict stops at the first one.
@@ -1977,7 +1800,8 @@ TEST("nfsms: a field the schema gives an enum (light_flares_cg's flare_texture) 
     CHECK_RUN(Run(*db, "update_field light_flares_cg headlight_inner flare_texture 2"));
     CHECK_EQ(U32(Own(c, "flare_texture")), 2u);
     const sc::Script edits = sc::Parse("attribulina 1\nedit light_flares_cg/headlight_inner { flare_texture = ESLF_TEX_CATSEYE }\n", "rec.amod");
-    const std::vector<std::string> lines = ns::FromStatements(*db, edits.statements);
+    CHECK(sc::Apply(*db, edits).ok); // the writer reads the value from the database, as the recorder's is
+    const std::vector<std::string> lines = ns::FromStatements(*db, edits.statements, TableFor(*db).get());
     CHECK(std::find(lines.begin(), lines.end(), "update_field light_flares_cg headlight_inner flare_texture 3") != lines.end());
     if (std::find(lines.begin(), lines.end(), "update_field light_flares_cg headlight_inner flare_texture 3") == lines.end())
         for (const std::string& l : lines) std::fprintf(stderr, "    recorded: %s\n", l.c_str());
@@ -1989,8 +1813,9 @@ TEST("nfsms: a field the schema gives an enum (light_flares_cg's flare_texture) 
     CHECK(sc::Print(sc::NewScript(*db, sc::Export(*db, {&c}))).find("flare_texture = 12") != std::string::npos);
     CHECK_RUN(Run(*db, "update_field light_flares_cg headlight_inner flare_texture 13"));
     CHECK_EQ(U32(Own(c, "flare_texture")), 13u);
-    const std::vector<std::string> pastLines =
-        ns::FromStatements(*db, sc::Parse("attribulina 1\nedit light_flares_cg/headlight_inner { flare_texture = 12 }\n", "rec.amod").statements);
+    const sc::Script back12 = sc::Parse("attribulina 1\nedit light_flares_cg/headlight_inner { flare_texture = 12 }\n", "rec.amod");
+    CHECK(sc::Apply(*db, back12).ok); // the writer reads the value from the database
+    const std::vector<std::string> pastLines = ns::FromStatements(*db, back12.statements, TableFor(*db).get());
     CHECK(std::find(pastLines.begin(), pastLines.end(), "update_field light_flares_cg headlight_inner flare_texture 12") != pastLines.end());
     // Most Wanted's build has no cat's eye texture.
     const std::string mwDir = test::DataPath("attrib/databases/pc/mw-vanilla");
@@ -2006,6 +1831,7 @@ TEST("nfsms: the word under the caret leads to its node, the value its words set
     auto db = Load();
     ns::RunSettings st;
     st.names = ns::PropertyNames::Load(test::DataPath("data/nfsms/prostreet_pc.txt"));
+    st.vltEd = true; // NFS-VltEd's words, as NFS-VltEd mode reads them
     const ns::Script s = ns::Parse("ui_control checkbox loud false \"Longer cut\"\n"
                                    "ui_control radiobutton tier race \"Race tires\"\n",
                                    "test.nfsms", "/mods/x");
@@ -2053,10 +1879,6 @@ TEST("nfsms: NFS-VltEd compatible runs read values, words, indices and commands 
     ns::RunSettings ext, vlt;
     ext.names = vlt.names = ns::PropertyNames::Load(test::DataPath("data/nfsms/prostreet_pc.txt"));
     vlt.vltEd = true;
-    auto errorsOf = [&](Database& d, const std::string& text, const ns::RunSettings& st) {
-        const sc::ApplyReport r = Run(d, text, st);
-        return r.errors();
-    };
     // One copy for each reading: a line that fails changes nothing, and the lines
     // the other reading runs change nodes no other line uses.
     auto dv = sc::CloneDatabase(*base);
@@ -2068,9 +1890,7 @@ TEST("nfsms: NFS-VltEd compatible runs read values, words, indices and commands 
         if (r.errors() != 1 || m.find(why) == std::string::npos) std::fprintf(stderr, "%s\n%s", line.c_str(), m.c_str());
         CHECK_EQ(r.errors(), size_t(1));
         CHECK(m.find(why) != std::string::npos);
-        const bool runs = errorsOf(*de, line + "\n", ext) == 0;
-        if (runs != extendedRuns) std::fprintf(stderr, "the other reading %s: %s\n", runs ? "runs" : "fails", line.c_str());
-        CHECK_EQ(runs, extendedRuns);
+        (void)extendedRuns; // what the old extended reading did; OGVI mode has tests of its own
     };
 
     // A word is read by NFS-VltEd's type: FEPartData's 6 is an int32 over our bin key.
@@ -2078,9 +1898,14 @@ TEST("nfsms: NFS-VltEd compatible runs read values, words, indices and commands 
         auto d = sc::CloneDatabase(*base);
         CHECK_RUN(Run(*d, "update_field part_fedata generic_body partData[0] 6 -1\n", vlt));
         CHECK_EQ(U32(Own(Col(*d, "part_fedata", "generic_body"), "partData"), 0, 20), 0xFFFFFFFFu);
+        // OGVI mode: 6 is an index to Attribulator, and VaultLib's BrandHALId is a uint,
+        // which takes -1 as a name (its StringHash32), with a warning.
         auto e = sc::CloneDatabase(*base);
-        CHECK_RUN(Run(*e, "update_field part_fedata generic_body partData[0] 6 -1\n", ext));
-        CHECK_EQ(U32(Own(Col(*e, "part_fedata", "generic_body"), "partData"), 0, 20), BinHash("-1"));
+        CHECK_EQ(Run(*e, "update_field part_fedata generic_body partData[0] 6 -1\n", ext).errors(), size_t(1));
+        const sc::ApplyReport w = Run(*e, "update_field part_fedata generic_body partData[0] BrandHALId -1\n", ext);
+        CHECK_EQ(w.errors(), size_t(0));
+        CHECK_EQ(w.warnings(), size_t(1));
+        CHECK_EQ(U32(Own(Col(*e, "part_fedata", "generic_body"), "partData"), 0, 20), StringHash32("-1"));
     }
     // .NET's parsing: no names in an enum, no hex or fractions in an integer, true or false.
     failsHere("update_field pvehicle default ENGINE_POSITION ENGINE_FRONT", "isn't a whole number", true);
@@ -2132,8 +1957,6 @@ TEST("nfsms: NFS-VltEd compatible runs read values, words, indices and commands 
         CHECK(m.find(why) != std::string::npos);
         CHECK(!r.ok);
         CHECK_EQ(r.valuesSet, size_t(0));
-        auto e = sc::CloneDatabase(*base);
-        CHECK(Run(*e, text, ext).valuesSet > 0); // the other reading runs it
     };
     const std::string body = "update_field pvehicle 997 DefaultPresetRide refused\n";
     refused("version 4.7\n" + body, "NFS-VltEd v4.7 or higher is required");
@@ -2173,4 +1996,187 @@ TEST("nfsms: NFS-VltEd compatible runs read values, words, indices and commands 
         CHECK_EQ(load64(m2.data.bytes.data(), Endian::Little), StringHash64("baz"));
         CHECK(m2.data.ptrAt(12) && m2.data.ptrAt(12)->text == "foo");
     }
+}
+
+namespace {
+std::string ReadText(const std::filesystem::path& p) {
+    std::ifstream in(p, std::ios::binary);
+    std::ostringstream ss;
+    ss << in.rdbuf();
+    return ss.str();
+}
+ns::RunSettings OgviCarbon() {
+    ns::RunSettings st;
+    st.names = ns::PropertyNames::Load(test::DataPath("data/nfsms/carbon_pc.txt"));
+    st.vltEd = false;
+    return st;
+}
+} // namespace
+
+TEST("nfsms: OGVI mode reads values as VaultLib's classes take them, and lines as Attribulator splits them") {
+    const std::string dir = test::DataPath("attrib/databases/pc/carbon-vanilla");
+    auto db = LoadFolder(dir);
+    const ns::RunSettings st = OgviCarbon();
+    auto one = [&](const std::string& line) {
+        const sc::ApplyReport r = Run(*db, line + "\n", st);
+        return r;
+    };
+    auto logo = [&] { return U32(Own(Col(*db, "frontend", "sliders_engine"), "fePerfSliderTextures"), 0, 16); };
+    // VaultLib's FEPerfSliderTextures has uint Logo1..9: a number is itself (the
+    // mod writes them in decimal), 0x and hex digits too, and a name its StringHash32.
+    CHECK_EQ(one("update_field frontend sliders_engine fePerfSliderTextures[0] Logo1 3662716345").errors(), size_t(0));
+    CHECK_EQ(logo(), 3662716345u);
+    CHECK_EQ(one("update_field frontend sliders_engine fePerfSliderTextures[0] Logo1 0xabc").errors(), size_t(0));
+    CHECK_EQ(logo(), 0xABCu);
+    CHECK_EQ(one("update_field frontend sliders_engine fePerfSliderTextures[0] Logo1 FULL_TODA").errors(), size_t(0));
+    CHECK_EQ(logo(), StringHash32("FULL_TODA"));
+    // Enum names as VaultLib's enum has them, case and all; a float Cost.
+    const auto& levels = st.names->ogviEnums.at("eFEPartUpgradeLevels").values;
+    int64_t tuner3 = -1;
+    for (const auto& [n, v] : levels)
+        if (n == "PART_UPGRADE_TUNER_LEVEL_03") tuner3 = v;
+    CHECK(tuner3 >= 0);
+    CHECK_EQ(one("update_field frontend engine feCarPartInfo[0] Level PART_UPGRADE_TUNER_LEVEL_03").errors(), size_t(0));
+    CHECK_EQ(U32(Own(Col(*db, "frontend", "engine"), "feCarPartInfo"), 0, 0), uint32_t(tuner3));
+    CHECK_EQ(one("update_field frontend engine feCarPartInfo[0] Level part_upgrade_tuner_level_03").errors(), size_t(1));
+    CHECK_EQ(one("update_field frontend engine feCarPartInfo[0] Cost 30000").errors(), size_t(0));
+    CHECK_EQ(F32(Own(Col(*db, "frontend", "engine"), "feCarPartInfo"), 0, 4), 30000.0f);
+    // stShiftPair is one uint to VaultLib: the number whole, or its Value; our
+    // members' names (RPM, Time) aren't OGVI's.
+    CHECK_EQ(one("update_field shiftpattern default Up_Engage 19661800").errors(), size_t(0));
+    CHECK_EQ(U32(Own(Col(*db, "shiftpattern", "default"), "Up_Engage")), 19661800u);
+    CHECK_EQ(one("update_field shiftpattern default Up_Engage Value 16385000").errors(), size_t(0));
+    CHECK_EQ(U32(Own(Col(*db, "shiftpattern", "default"), "Up_Engage")), 16385000u);
+    {
+        const sc::ApplyReport r = one("update_field shiftpattern default Up_Engage RPM 1000");
+        CHECK_EQ(r.errors(), size_t(1));
+        CHECK(Messages(r).find("Property not found on type") != std::string::npos);
+    }
+    // A matrix's Data[row,column] from 1; a float as .NET reads it (a comma groups thousands).
+    CHECK_EQ(one("update_field shiftpattern default Up_Engage_Curve Data[1,2] 0.25").errors(), size_t(0));
+    CHECK_EQ(F32(Own(Col(*db, "shiftpattern", "default"), "Up_Engage_Curve"), 0, 4), 0.25f);
+    CHECK_EQ(one("update_field shiftpattern default Down_Reattach_Scale 1,5").errors(), size_t(0));
+    CHECK_EQ(F32(Own(Col(*db, "shiftpattern", "default"), "Down_Reattach_Scale")), 15.0f);
+    // A StringKey's Value, or the text alone.
+    CHECK_EQ(one("update_field shiftpattern default BankName Value GEAR_SML_Lev1.abk").errors(), size_t(0));
+    CHECK_EQ(U32(Own(Col(*db, "shiftpattern", "default"), "BankName")), StringHash32("GEAR_SML_Lev1.abk"));
+    // Attribulator takes # after a command as more words, and a line that starts
+    // with no command is an unknown command; OGVI skips version and game lines.
+    CHECK_EQ(one("update_field shiftpattern default LFO_RPM_Amp 600 # louder").errors(), size_t(1));
+    {
+        const sc::ApplyReport r = Run(*db, "version 4.6\ngame C\nBalance!\n// a note\n# another\n", st);
+        CHECK_EQ(r.errors(), size_t(1));
+        CHECK(Messages(r).find("Unknown command: Balance!") != std::string::npos);
+    }
+    // OGVI chooses each radio group's first button; NFS-VltEd none.
+    {
+        const ns::Script s = ns::Parse("ui_control radiobutton g a \"A\"\nui_control radiobutton g b \"B\"\nui_control checkbox k true \"K\"\n");
+        CHECK_EQ(ns::DefaultChoices(s, true).radios.at("g"), std::string("a"));
+        CHECK(ns::DefaultChoices(s).radios.empty());
+        CHECK(ns::DefaultChoices(s, true).checkboxes.at("k"));
+    }
+    // file_copy is skipped, with a note.
+    {
+        const sc::ApplyReport r = Run(*db, "file_copy a.txt b.txt\n", st);
+        CHECK_EQ(r.errors(), size_t(0));
+        CHECK(Messages(r).find("OGVI skips the line") != std::string::npos);
+    }
+}
+
+TEST("nfsms: OGVI's Carbon mods (nfsms/ogvi-mwstyle, nfsms/NFSC MW'05 shiftpattern Port v1.1, when present) run in OGVI mode with no failed line") {
+    namespace fs = std::filesystem;
+    const std::string dir = test::DataPath("attrib/databases/pc/carbon-vanilla");
+    const fs::path mws = fs::path(test::DataPath("nfsms/ogvi-mwstyle/MW_Style_Upgrades.nfsms"));
+    const fs::path port = fs::path(test::DataPath("nfsms/NFSC MW'05 shiftpattern Port v1.1"));
+    const ns::RunSettings base = OgviCarbon();
+    if (fs::exists(mws)) {
+        auto db = LoadFolder(dir);
+        const ns::Script s = ns::Parse(ReadText(mws), "MW_Style_Upgrades.nfsms", mws.parent_path().string());
+        ns::RunSettings st = base;
+        st.choices = ns::DefaultChoices(s, true);
+        const sc::ApplyReport r = ns::Run(*db, s, st);
+        if (r.errors()) std::fprintf(stderr, "%s", Messages(r).substr(0, 2000).c_str());
+        CHECK_EQ(r.errors(), size_t(0));
+        // Line 183: the logos in decimal are the hashes themselves.
+        CHECK_EQ(U32(Own(Col(*db, "frontend", "sliders_engine"), "fePerfSliderTextures"), 27, 16), 656535964u);
+        CHECK_EQ(F32(Own(Col(*db, "frontend", "engine"), "feCarPartInfo"), 18, 4), 30000.0f);
+    } else {
+        std::printf("        (skipped: no %s)\n", mws.string().c_str());
+    }
+    if (fs::exists(port / "MW shiftpattern Port.nfsms")) {
+        auto db = LoadFolder(dir);
+        const ns::Script s = ns::Parse(ReadText(port / "MW shiftpattern Port.nfsms"), "MW shiftpattern Port.nfsms", port.string());
+        ns::RunSettings st = base;
+        st.choices = ns::DefaultChoices(s, true); // "Install", the group's first button
+        CHECK_EQ(st.choices.radios.at("option_rb"), std::string("option1"));
+        const sc::ApplyReport r = ns::Run(*db, s, st);
+        if (r.errors()) std::fprintf(stderr, "%s", Messages(r).substr(0, 2000).c_str());
+        CHECK_EQ(r.errors(), size_t(0));
+        CHECK_EQ(r.created, size_t(24));
+        Collection* c = db->findCollection(StringHash32("shiftpattern"), 0x22479BD5u);
+        CHECK(c != nullptr);
+        if (c) {
+            CHECK_EQ(U32(Own(*c, "Up_Engage")), 19661800u); // RPM 1000, 300 ms
+            CHECK_EQ(U32(Own(*c, "Up_DisengageFall"), 1), 16385000u);
+            CHECK_EQ(F32(Own(*c, "Up_DisengageFall_Curve"), 0, 16), 0.5655172f);
+            CHECK_EQ(U32(Own(*c, "BankName")), StringHash32("GEAR_SML_Lev1.abk"));
+        }
+        // Converted to a mod script in OGVI mode, its default choice (Install) makes the same database.
+        {
+            auto fresh = LoadFolder(dir);
+            auto scratch = sc::CloneDatabase(*fresh);
+            sc::ApplyReport conv;
+            const std::string text = sc::Print(ns::ToModScript(*scratch, s, st, &conv));
+            if (conv.errors()) std::fprintf(stderr, "%s", Messages(conv).substr(0, 2000).c_str());
+            CHECK_EQ(conv.errors(), size_t(0));
+            CHECK(text.find("default \"Install\"") != std::string::npos);
+            const sc::ApplyReport ar = sc::Apply(*fresh, sc::Parse(text, "port.amod"));
+            if (!ar.ok) std::fprintf(stderr, "%s", Messages(ar).substr(0, 2000).c_str());
+            CHECK(ar.ok);
+            const sc::Script diff = sc::Diff(*db, *fresh);
+            if (Changes(diff)) std::fprintf(stderr, "%s", sc::Print(diff).substr(0, 2000).c_str());
+            CHECK_EQ(Changes(diff), size_t(0));
+        }
+        // Its Uninstall choice deletes them again.
+        st.choices.radios["option_rb"] = "option2";
+        const sc::ApplyReport u = ns::Run(*db, s, st);
+        CHECK_EQ(u.errors(), size_t(0));
+        CHECK(db->findCollection(StringHash32("shiftpattern"), 0x22479BD5u) == nullptr);
+    } else {
+        std::printf("        (skipped: no %s)\n", port.string().c_str());
+    }
+}
+
+TEST("nfsms: changes written as nfsms in OGVI mode read back in OGVI mode to the same database") {
+    namespace fs = std::filesystem;
+    const std::string dir = test::DataPath("attrib/databases/pc/carbon-vanilla");
+    const ns::RunSettings st = OgviCarbon();
+    auto before = LoadFolder(dir);
+    auto db = LoadFolder(dir);
+    std::string script =
+        "copy_node shiftpattern bmwm3gtr default 0x22479BD5\n"
+        "update_field shiftpattern 0x22479BD5 Up_Engage 19661800\n"
+        "update_field shiftpattern 0x22479BD5 BankName Value GEAR_SML_Lev1.abk\n"
+        "update_field shiftpattern 0x22479BD5 Up_Engage_Curve Data[2,1] 0.75\n"
+        "update_field shiftpattern 0x22479BD5 Down_Reattach_Scale 0.85\n"
+        "update_field frontend sliders_engine fePerfSliderTextures[3] Logo4 2499126142\n"
+        "update_field frontend engine feCarPartInfo[2] Level PART_UPGRADE_TUNER_LEVEL_03\n"
+        "update_field frontend engine feCarPartInfo[2] Cost 1234.5\n";
+    const fs::path mws = fs::path(test::DataPath("nfsms/ogvi-mwstyle/MW_Style_Upgrades.nfsms"));
+    if (fs::exists(mws)) script += ReadText(mws);
+    const sc::ApplyReport r = Run(*db, script, st);
+    if (r.errors()) std::fprintf(stderr, "%s", Messages(r).substr(0, 2000).c_str());
+    CHECK_EQ(r.errors(), size_t(0));
+    std::string text;
+    for (const std::string& l : ns::FromStatements(*db, sc::Diff(*before, *db).statements, st.names.get(), false, before.get()))
+        text += l + "\n";
+    CHECK(text.find("fePerfSliderTextures[3] Logo4 2499126142\n") != std::string::npos);
+    CHECK(text.find("Up_Engage_Curve Data[2,1] 0.75\n") != std::string::npos);
+    auto again = LoadFolder(dir);
+    const sc::ApplyReport back = Run(*again, text, st);
+    if (back.errors()) std::fprintf(stderr, "%s---\n%s", Messages(back).substr(0, 3000).c_str(), text.substr(0, 3000).c_str());
+    CHECK_EQ(back.errors(), size_t(0));
+    const sc::Script left = sc::Diff(*again, *db);
+    if (Changes(left)) std::fprintf(stderr, "%s", sc::Print(left).substr(0, 2000).c_str());
+    CHECK_EQ(Changes(left), size_t(0));
 }

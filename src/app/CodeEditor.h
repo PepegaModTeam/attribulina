@@ -94,6 +94,14 @@ namespace app
 		// the text was edited. Call with the font it should use pushed.
 		bool draw(const char* label, std::string& text, const ImVec2& size, ImGuiInputTextFlags flags = 0);
 
+		// Copy and Cut (Ctrl+C, Ctrl+X and the right-click menu) put CRLF line
+		// ends on the clipboard, for every code editor; LF otherwise, the
+		// default. Edit > Copy Code with CRLF Line Ends (CopyCrLf in the ini).
+		static void setCopyCrLf(bool on);
+		static bool copyCrLf();
+		// The text with each LF that has no CR before it made CRLF.
+		static std::string WithCrLf(const std::string& text);
+
 		// Marks lines (1-based) with a message shown when the line number is hovered.
 		void setMarks(std::map<int, std::string> errors, std::map<int, std::string> warnings = {});
 		void clearMarks()

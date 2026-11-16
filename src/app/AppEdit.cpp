@@ -628,6 +628,14 @@ namespace app
 		ImGui::SetItemTooltip("Lets an array hold more elements than its field's definition allows (GEAR_RATIO's 9), with a "
 							  "warning.\nGame code made for that count may ignore the rest or misbehave. An array in the "
 							  "layout keeps its fixed space.\nScripts may always go past the limit, with a warning.");
+		bool crlf = CodeEditor::copyCrLf();
+		if (ImGui::MenuItem("Copy Code with CRLF Line Ends", nullptr, &crlf))
+		{
+			CodeEditor::setCopyCrLf(crlf);
+			ImGui::MarkIniSettingsDirty();
+		}
+		ImGui::SetItemTooltip("Copy and Cut in the Script panel, the nfsms window and the Lua editors put Windows line ends "
+							  "(CRLF) on the clipboard.\nOff (the default): LF line ends. Pasting takes either.");
 		ImGui::EndMenu();
 	}
 

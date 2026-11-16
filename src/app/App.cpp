@@ -137,6 +137,7 @@ namespace app
 
 	App::App(Host& host) : host_(host)
 	{
+		CodeEditor::setCopyCrLf(false); // LF until the ini says otherwise
 		// Tells this window's clipboard text from another window's.
 		std::random_device rd;
 		instanceId_ = (uint64_t(rd()) << 32) ^ uint64_t(rd()) ^
@@ -221,6 +222,7 @@ namespace app
 			else if (k == "GameplayView") self->view_.gameplayView = v == "1";
 			else if (k == "DetectGame") self->detectTarget_ = v != "0";
 			else if (k == "ArraysPastLimit") self->arraysPastLimit_ = v == "1";
+			else if (k == "CopyCrLf") CodeEditor::setCopyCrLf(v == "1");
 			else if (k == "SaveOnlyChanged") self->saveOnlyChanged_ = v == "1";
 			else if (k == "UpdateMemoryFiles") self->updateMemoryFiles_ = v != "0";
 			else if (k == "TrackMods") self->trackMods_ = v != "0";
@@ -233,6 +235,7 @@ namespace app
 			out->appendf("GameplayView=%d\n", self->view_.gameplayView ? 1 : 0);
 			out->appendf("DetectGame=%d\n", self->detectTarget_ ? 1 : 0);
 			out->appendf("ArraysPastLimit=%d\n", self->arraysPastLimit_ ? 1 : 0);
+			out->appendf("CopyCrLf=%d\n", CodeEditor::copyCrLf() ? 1 : 0);
 			out->appendf("SaveOnlyChanged=%d\n", self->saveOnlyChanged_ ? 1 : 0);
 			out->appendf("UpdateMemoryFiles=%d\n", self->updateMemoryFiles_ ? 1 : 0);
 			out->appendf("TrackMods=%d\n", self->trackMods_ ? 1 : 0);

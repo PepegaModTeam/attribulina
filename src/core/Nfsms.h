@@ -168,13 +168,18 @@ namespace attrib::nfsms
 		std::string game; // the nfsms game code (PS)
 		std::map<std::string, Type> types;
 		const Type* find(const std::string& typeName) const; // also with the prefix a type label leaves off
-		// The older tables' vaultlib blocks (VaultLib's names for parts our members
-		// name otherwise), read for an older table; the tables now give OGVI's
-		// model in ogvi blocks (below), which OGVI mode reads.
+#if 0 // RETIRED (2026-11-16): the extended nfsms reading, put aside.
+		// VaultLib's names (the community Attribulator's) for parts our members
+		// name otherwise: by type, the name (a reference's part after a '.':
+		// ReferencedRow.ClassKey; looked up in any case) to our members. The
+		// extended reading took them after our member names and before
+		// NFS-VltEd's words. The tables' vaultlib blocks held them; the tables
+		// now give OGVI's model in ogvi blocks (below), which OGVI mode reads.
 		std::map<std::string, std::map<std::string, std::vector<Step>>> vaultLib;
 		const std::vector<Step>* vaultLibPath(const std::string& typeName, std::string_view name) const;
 		// A VaultLib name whose parts follow as the next word (ReferencedRow ClassKey).
 		bool vaultLibHead(const std::string& typeName, std::string_view name) const;
+#endif
 
 		// OGVI's reading (RunSettings::vltEd off): the class VaultLib registers for
 		// each type the game's fields have (the tables' ogvi blocks,
@@ -244,6 +249,10 @@ namespace attrib::nfsms
 		// Attribulator's editor) imports it: its setup, the community Attribulator's
 		// commands and VaultLib's names and value types (doc/nfsms.md, "OGVI
 		// mode"). Neither takes Attribulina's own names: those are for mod scripts.
+		// Attribulina's extended reading (our schema's member names in any case,
+		// then VaultLib's names, then NFS-VltEd's words, with Attribulator's forms)
+		// was the default before 2026-11-16. It is retired: its code is in
+		// "#if 0 // RETIRED" blocks in Nfsms.cpp and here, kept to restore it.
 		bool vltEd = false;
 	};
 
